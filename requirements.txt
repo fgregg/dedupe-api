@@ -1,0 +1,7 @@
+Flask
+gunicorn
+SQLAlchemy
+flask_login
+flask-wtf
+flask-bcrypt
+dedupe

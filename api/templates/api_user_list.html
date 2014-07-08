@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %} | Add API User {% endblock %}
+{% block content %}
+    <div class="row">
+        <div class="col-md-12">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>API Key</th>
+                        <th>Dedupe Sessions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        <tr>
+                            <td>
+                                {{user.name}}
+                            </td>
+                            <td>
+                                {{user.email}}
+                            </td>
+                            <td>
+                                {{user.api_key}}
+                            </td>
+                            <td>
+                                {{user.sessions|length}}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}
