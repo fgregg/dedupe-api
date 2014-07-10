@@ -1,6 +1,7 @@
 from flask import request, make_response, render_template, \
     session as flask_session, redirect, url_for, send_from_directory, jsonify,\
     Blueprint, current_app
+from flask_security import login_required, current_user
 from werkzeug import secure_filename
 import time
 from datetime import datetime, timedelta
@@ -34,28 +35,15 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def send_ga_log(action, cid, label=None, value=None):
-    data = {
-        'v': 1,
-        'tid': 'UA-47418030-1',
-        'cid': cid,
-        't': 'event',
-        'ec': 'Dedupe Session',
-        'ea': action,
-        'el': label,
-        'ev': value,
-    }
-    r = requests.post('http://www.google-analytics.com/collect', data=data)
-
 @trainer.route('/training/', methods=['GET', 'POST'])
+@login_required
 def index():
     status_code = 200
     error = None
-    if flask_session.get('ga_cid') is None:
-        try:
-            flask_session['ga_cid'] = request.cookies['_ga']
-        except KeyError:
-            flask_session['ga_cid'] = str(uuid4())
+    api_key = request.args.get('api_key')
+    if api_key is not None:
+        flask_session['api_key'] = api_key
+        flask_session['session_key'] = unicode(uuid4())
     if request.method == 'POST':
         f = request.files['input_file']
         if f and allowed_file(f.filename):
@@ -72,26 +60,14 @@ def index():
                 flask_session['filename'] = inp_file.filename
                 flask_session['file_path'] = inp_file.file_path
                 flask_session['row_count'] = inp_file.line_count
-                send_ga_log(
-                    'Row Count', 
-                    flask_session['ga_cid'], 
-                    value=inp_file.line_count
-                )
-                send_ga_log(
-                    'File Type', 
-                    flask_session['ga_cid'], 
-                    label=inp_file.file_type, 
-                )
                 return redirect(url_for('trainer.select_fields'))
             except DedupeFileError as e:
-                send_ga_log('Upload Error', flask_session['ga_cid'], label=e.message)
                 error = e.message
                 status_code = 500
         else:
             error = 'Error uploading file. Did you forget to select one?'
-            send_ga_log('Upload Error', flask_session['ga_cid'], label=error)
             status_code = 500
-    return make_response(render_app_template('train.html', error=error), status_code)
+    return make_response(render_app_template('training.html', error=error), status_code)
 
 def preProcess(column):
     column = AsciiDammit.asciiDammit(column)
@@ -110,6 +86,7 @@ def readData(inp):
     return data
 
 @trainer.route('/select_fields/', methods=['GET', 'POST'])
+@login_required
 def select_fields():
     status_code = 200
     error = None
@@ -137,28 +114,23 @@ def select_fields():
                 deduper.sample(data_d, 150000)
                 flask_session['deduper']['deduper'] = deduper
                 end = time.time()
-                send_ga_log(
-                    'Dedupe initialization', 
-                    flask_session['ga_cid'], 
-                    label='Timing in seconds',
-                    value=int(end-start)
-                )
                 return redirect(url_for('trainer.training_run'))
             else:
                 error = 'You must select at least one field to compare on.'
-                send_ga_log('Select Fields Error', flask_session['ga_cid'], label=error)
                 status_code = 500
         return render_app_template('select_fields.html', error=error, fields=fields, filename=filename)
 
 @trainer.route('/training_run/')
+@login_required
 def training_run():
     if not flask_session.get('deduper'):
-        return redirect(url_for('index'))
+        return redirect(url_for('trainer.index'))
     else:
         filename = flask_session['filename']
         return render_app_template('training_run.html', filename=filename)
 
 @trainer.route('/get-pair/')
+@login_required
 def get_pair():
     if not flask_session.get('deduper'):
         return make_response(jsonify(status='error', message='need to start a session'), 400)
@@ -184,6 +156,7 @@ def get_pair():
         return resp
 
 @trainer.route('/mark-pair/')
+@login_required
 def mark_pair():
     if not flask_session.get('deduper'):
         return make_response(jsonify(status='error', message='need to start a session'), 400)
@@ -222,6 +195,8 @@ def mark_pair():
                 'training_data': training_file_path,
                 'file_io': file_io,
                 'data_sample': sample,
+                'session_key': flask_session['session_key'],
+                'api_key': flask_session['api_key'],
             }
             rv = dedupeit.delay(**args)
             flask_session['deduper_key'] = rv.key
@@ -241,10 +216,12 @@ def mark_pair():
     return resp
 
 @trainer.route('/dedupe_finished/')
+@login_required
 def dedupe_finished():
     return render_app_template("dedupe_finished.html")
 
 @trainer.route('/adjust_threshold/')
+@login_required
 def adjust_threshold():
     filename = flask_session['filename']
     file_path = flask_session['file_path']
@@ -268,10 +245,12 @@ def adjust_threshold():
     return resp
 
 @trainer.route('/about/')
+@login_required
 def about():
   return render_app_template("about.html")
 
 @trainer.route('/working/')
+@login_required
 def working():
     key = flask_session.get('deduper_key')
     if key is None:
@@ -284,24 +263,13 @@ def working():
     if flask_session.get('dedupe_start'):
         start = flask_session['dedupe_start']
         end = time.time()
-        send_ga_log(
-            'Dedupe matching', 
-            flask_session['ga_cid'], 
-            label='Timing in seconds',
-            value=int(end-start)
-        )
     if flask_session.get('adjust_start'):
         start = flask_session['adjust_start']
         end = time.time()
-        send_ga_log(
-            'Dedupe Adjust', 
-            flask_session['ga_cid'], 
-            label='Timing in seconds',
-            value=int(end-start)
-        )
     return jsonify(ready=True, result=rv.return_value)
 
 @trainer.route('/upload_data/<path:filename>/')
+@login_required
 def upload_data(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 

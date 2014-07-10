@@ -10,11 +10,28 @@ from collections import defaultdict, OrderedDict
 import logging
 from datetime import datetime
 from api.queue import queuefunc
+from api.database import DedupeSession, ApiUser, canon_table
 from operator import itemgetter
 from csvkit import convert
 import xlwt
 from openpyxl import Workbook
 from openpyxl.cell import get_column_letter
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.pool import NullPool
+
+db_path = os.path.abspath(os.path.dirname(__file__))
+
+def create_session():
+    engine = create_engine(
+        'sqlite:///%s/dedupe.db' % db_path,
+        convert_unicode=True,
+        poolclass=NullPool)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    session = Session()
+    session._model_changes = {}
+    return session
 
 try:
     from raven import Client
@@ -53,10 +70,6 @@ class DedupeFileIO(object):
             raise DedupeFileError('We had a problem with the file you uploaded. \
                     This might be related to encoding or the file name having the wrong file extension.')
         self.line_count = self.converted.count('\n')
-        if self.line_count > 10000:
-            if client:
-                client.captureMessage(' %s File too big: %s, (%s)' % (now, self.line_count, self.filename))
-            raise DedupeFileError('Your file has %s rows and we can only currently handle 10,000.' % self.line_count)
         if client:
             client.captureMessage(' %s Format: %s, Line Count: %s' % (now, self.file_type, self.line_count))
 
@@ -133,6 +146,16 @@ class DedupeFileIO(object):
         f.close()
         return self.unique_rows
     
+    def writeDB(self, session_key):
+        # Create session specific table and write unique rows to it
+        print session_key
+        session_canon = canon_table('%s_canon' % session_key)
+        session_canon.create(bind=engine)
+        rows = [{'row_id': c_id, 'row_blob': c} for c_id, c in enumerate(self.clustered_dupes)]
+        conn = engine.contextual_connect()
+        conn.execute(session_canon.insert(), rows)
+        return None
+
     def writeCSV(self):
         u_path = '%s-deduped_unique.csv' % self.file_path
         d_path = '%s-deduped.csv' % self.file_path
@@ -195,12 +218,16 @@ class WebDeduper(object):
     def __init__(self, deduper,
             file_io=None, 
             training_data=None,
-            recall_weight=2):
+            recall_weight=2,
+            session_key=None,
+            api_key=None):
         self.file_io = file_io
         self.data_d = self.readData()
         self.deduper = deduper
         self.recall_weight = float(recall_weight)
         self.training_data = training_data
+        self.session_key = session_key
+        self.api_key = api_key
         if training_data:
             self.deduper.readTraining(self.training_data)
             self.deduper.train()
@@ -218,6 +245,21 @@ class WebDeduper(object):
             deduped, deduped_unique, cluster_count, line_count = self.file_io.writeXLS()
         if self.file_io.file_type == 'xlsx':
             deduped, deduped_unique, cluster_count, line_count = self.file_io.writeXLSX()
+        db_session = create_session()
+        dd_session = db_session.query(DedupeSession).get(self.session_key)
+        if not dd_session:
+            user = db_session.query(ApiUser).get(self.api_key)
+            s_info = {
+                'user': user,
+                'name': self.file_io.filename,
+                'uuid': self.session_key,
+                'training_data': open(self.training_data).read(),
+                'settings_file': open(self.settings_path).read(),
+            }
+            dd_session = DedupeSession(**s_info)
+            db_session.add(dd_session)
+            db_session.commit()
+        self.file_io.writeDB(self.session_key)
         files = {
             'deduped': os.path.relpath(deduped, __file__),
             'deduped_unique': os.path.relpath(deduped_unique, __file__),
@@ -251,7 +293,9 @@ def dedupeit(**kwargs):
     d = dedupe.Dedupe(kwargs['field_defs'], kwargs['data_sample'])
     deduper = WebDeduper(d, 
         file_io=kwargs['file_io'],
-        training_data=kwargs['training_data'])
+        training_data=kwargs['training_data'],
+        session_key=kwargs['session_key'],
+        api_key=kwargs['api_key'])
     files = deduper.dedupe()
     del d
     return files

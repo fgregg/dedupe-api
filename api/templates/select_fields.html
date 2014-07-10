@@ -1,41 +1,45 @@
 {% extends 'base.html' %}
 {% block content %}
+    <div class="col-md-12">
     {% include "dedupe_steps.html" %}
     <h3>2. Fields to compare</h3>
     {% include "error.html" %}
-    <div class="row">
-        <div class="col-md-8">
-            <div class='well'>
-                <form id="fields" role="form" action="{{ url_for('trainer.select_fields')}}" method="post" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                    <div class="form-group">
-                        <p class="help-block">Check the columns in your spreadsheet you want to use for comparing records. </p>
-                        {% for field in fields %}
-                            <label class="col-md-6">
-                                <input type="checkbox" name="{{field}}"> {{field}}
-                            </label>
-                        {% endfor %}
-                    </div>
+    </div>
+    <div class="col-md-12">
+        <div class="row">
+            <div class="col-md-8">
+                <div class='well'>
+                    <form id="fields" role="form" action="{{ url_for('trainer.select_fields')}}" method="post" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                        <div class="form-group">
+                            <p class="help-block">Check the columns in your spreadsheet you want to use for comparing records. </p>
+                            {% for field in fields %}
+                                <label class="col-md-6">
+                                    <input type="checkbox" name="{{field}}"> {{field}}
+                                </label>
+                            {% endfor %}
+                        </div>
 
-                    <div class='clearfix'></div>
-                    <button type="submit" class="btn btn-primary" id="start-training">
-                        Start training &raquo;
-                    </button>
-                </form>
+                        <div class='clearfix'></div>
+                        <button type="submit" class="btn btn-primary" id="start-training">
+                            Start training &raquo;
+                        </button>
+                    </form>
+                </div>
             </div>
-        </div>
-        <div class='col-md-4'>
-            <div class='alert alert-info'>
-                <p><i class='icon-info-sign'></i> Select the column headers, or fields, that you think <a target='_blank' href='https://github.com/datamade/dedupe/wiki/Matching-records'>tell the most information</a> about each row in your spreadsheet.</p>
+            <div class='col-md-4'>
+                <div class='alert alert-info'>
+                    <p><i class='icon-info-sign'></i> Select the column headers, or fields, that you think <a target='_blank' href='https://github.com/datamade/dedupe/wiki/Matching-records'>tell the most information</a> about each row in your spreadsheet.</p>
 
-                <p>Useful fields include:</p>
+                    <p>Useful fields include:</p>
 
-                <ul>
-                    <li>Name (organization or person)</li>
-                    <li>Address</li>
-                    <li>Phone number</li>
-                    <li>Category</li>
-                </ul>
+                    <ul>
+                        <li>Name (organization or person)</li>
+                        <li>Address</li>
+                        <li>Phone number</li>
+                        <li>Category</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>

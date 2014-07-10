@@ -46,7 +46,8 @@ def queue_daemon(rv_ttl=500):
         try:
             rv = func(*args, **kwargs)
         except Exception, e:
-            client.captureException()
+            if client:
+                client.captureException()
             rv = 'Exc: %s' % (e.message)
         if rv is not None:
             redis.set(key, dumps(rv))

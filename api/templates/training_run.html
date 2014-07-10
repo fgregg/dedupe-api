@@ -1,8 +1,11 @@
 {% extends 'base.html' %}
 {% block content %}
+    <div class="col-md-12">
     {% include "dedupe_steps.html" %}
     <h3>3. Training</h3>
     {% include "error.html" %}
+  </div>
+
     <div class='col-md-8'>
         <table id='labeler' class='table table-bordered'>
             <thead>
