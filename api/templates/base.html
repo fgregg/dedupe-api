@@ -10,6 +10,7 @@
 
     <!-- Bootstrap core CSS -->
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/bootstrap-nav-wizard.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/font-awesome.css') }}" rel="stylesheet">
 
     <!-- Custom styles for this template -->
@@ -37,14 +38,14 @@
         <div class="navbar-collapse collapse pull-right">
           <ul class="nav navbar-nav">
             <li><a href="{{ url_for('auth.add_api_user') }}">Add User</a></li>
-            <li><a href="{{ url_for('auth.api_user_list') }}">User List</a></li>
             <li><a href="{{ url_for('security.login') }}">Login</a></li>
             <li><a href="{{ url_for('security.logout') }}">Logout</a></li>
           </ul>
         </div><!--/.nav-collapse -->
       </div>
+    <div class="row">
     {% block content %}{% endblock %}
-
+    </div>
 
     <!-- Bootstrap core JavaScript
     ================================================== -->

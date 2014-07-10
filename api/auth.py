@@ -2,6 +2,7 @@ from flask import session, redirect, url_for, request, Blueprint, \
     render_template, abort, flash
 from flask_security import Security, login_required
 from flask_wtf import Form
+from flask_wtf.csrf import CsrfProtect
 from wtforms import TextField, validators
 from api.database import db, ApiUser
 import os
@@ -11,6 +12,8 @@ from uuid import uuid4
 auth = Blueprint('auth', __name__)
 
 security = Security()
+
+csrf = CsrfProtect()
 
 class AddApiUser(Form):
     name = TextField('name', [validators.DataRequired()])
