@@ -4,8 +4,8 @@ from flask.ext.security import UserMixin
 
 db = SQLAlchemy()
 
-def canon_table(name):
-    table = db.Table(name, db.metadata, 
+def canon_table(name, metadata):
+    table = db.Table(name, metadata, 
         db.Column('row_id', db.Integer, primary_key=True), 
         db.Column('row_blob', db.LargeBinary),
         extend_existing=True

@@ -43,3 +43,8 @@ def add_api_user():
 def api_user_list():
     users = db.session.query(ApiUser).all()
     return render_template('api_user_list.html', users=users)
+
+@auth.route('/sessions/<api_key>/')
+def user_sessions(api_key):
+    user = db.session.query(ApiUser).get(api_key)
+    return render_template('user_sessions.html', user=user)

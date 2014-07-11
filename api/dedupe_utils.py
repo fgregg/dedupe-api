@@ -16,8 +16,9 @@ from csvkit import convert
 import xlwt
 from openpyxl import Workbook
 from openpyxl.cell import get_column_letter
+from cPickle import dumps
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
 
@@ -148,10 +149,15 @@ class DedupeFileIO(object):
     
     def writeDB(self, session_key):
         # Create session specific table and write unique rows to it
-        print session_key
-        session_canon = canon_table('%s_canon' % session_key)
-        session_canon.create(bind=engine)
-        rows = [{'row_id': c_id, 'row_blob': c} for c_id, c in enumerate(self.clustered_dupes)]
+        path = 'sqlite:///%s/dedupe.db' % db_path
+        engine = create_engine(
+            path,
+            convert_unicode=True,
+            poolclass=NullPool)
+        metadata = MetaData()
+        session_canon = canon_table('%s_canon' % session_key, metadata)
+        session_canon.create(bind=engine, checkfirst=True)
+        rows = [{'row_id': c_id, 'row_blob': dumps(c)} for c_id, c in enumerate(self.unique_rows)]
         conn = engine.contextual_connect()
         conn.execute(session_canon.insert(), rows)
         return None

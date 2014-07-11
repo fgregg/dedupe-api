@@ -1,34 +1,34 @@
 {% extends "base.html" %}
-{% block title %} | Add API User {% endblock %}
+{% block title %} | Sessions for {{user.name}}{% endblock %}
 {% block content %}
         <div class="col-md-12">
             <table class="table">
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Email</th>
-                        <th>API Key</th>
-                        <th>Dedupe Sessions</th>
-                        <th></th>
+                        <th>Session ID</th>
+                        <th>Training Data</th>
+                        <th>Settings File</th>
+                        <th>Delete</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for user in users %}
+                    {% for sess in user.sessions %}
                         <tr>
                             <td>
-                                {{user.name}}
+                                {{sess.name}}
                             </td>
                             <td>
-                                {{user.email}}
+                                {{sess.uuid}}
                             </td>
                             <td>
-                                {{user.api_key}}
+                                <a href="{{ url_for('endpoints.training_data', session_id=sess.uuid) }}">Download</a>
                             </td>
                             <td>
-                                <a href="{{ url_for('auth.user_sessions', api_key=user.api_key) }}">{{user.sessions|length}}</a>
+                                <a href="{{ url_for('endpoints.settings_file', session_id=sess.uuid) }}">Download</a>
                             </td>
                             <td>
-                              <a href="{{ url_for('trainer.index', api_key=user.api_key ) }}">Add Training</a>
+                                <a href="{{ url_for('endpoints.delete_session', session_id=sess.uuid ) }}">Delete</a>
                             </td>
                         </tr>
                     {% endfor %}
