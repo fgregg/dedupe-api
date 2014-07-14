@@ -9,6 +9,7 @@
                         <th>Session ID</th>
                         <th>Training Data</th>
                         <th>Settings File</th>
+                        <th>Field Definitions</th>
                         <th>Delete</th>
                     </tr>
                 </thead>
@@ -26,6 +27,9 @@
                             </td>
                             <td>
                                 <a href="{{ url_for('endpoints.settings_file', session_id=sess.uuid) }}">Download</a>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('endpoints.field_definitions', session_id=sess.uuid) }}">Download</a>
                             </td>
                             <td>
                                 <a href="{{ url_for('endpoints.delete_session', session_id=sess.uuid ) }}">Delete</a>

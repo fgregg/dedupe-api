@@ -1,9 +1,11 @@
 if __name__ == "__main__":
-    from api.dedupe_utils import DedupeFileIO, WebDeduper
+    import json
+    from api.dedupe_utils import DedupeFileIO, WebDeduper, create_session
+    from api.database import DedupeSession, ApiUser
     from api.trainer import readData
     from uuid import uuid4
     import dedupe
-    api_key = '03b1511b-0739-44b4-b65c-a559b28f6899'
+    api_key = '38bd9ff2-cdf5-41dc-86eb-af137b9b1218 '
     sess_key = unicode(uuid4())
     fname = '1405091863.42_csv_example_messy_input.csv'
     training = 'api/upload_data/%s-training.json' % fname
@@ -15,12 +17,21 @@ if __name__ == "__main__":
         'Address': {'type':'String'}, 
         'Zip':{'type':'String'}
     }
+    db_session = create_session()
+    user = db_session.query(ApiUser).get(api_key)
+    dd_session = DedupeSession(
+        user=user,
+        name='csv_messy_test.csv',
+        uuid=sess_key,
+        training_data=open(training, 'rb').read(),
+        field_defs=json.dumps(fields))
+    db_session.add(dd_session)
+    db_session.commit()
     d = dedupe.Dedupe(fields)
     d.sample(data)
     fileio = DedupeFileIO(fpath,fname)
     deduper = WebDeduper(d, 
         api_key=api_key, 
         session_key=sess_key,
-        training_data=training,
         file_io=fileio)
     deduper.dedupe()

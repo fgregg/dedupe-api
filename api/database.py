@@ -19,6 +19,7 @@ class DedupeSession(db.Model):
     user = db.relationship('ApiUser', backref=db.backref('sessions'))
     training_data = db.Column(db.LargeBinary)
     settings_file = db.Column(db.LargeBinary)
+    field_defs = db.Column(db.LargeBinary)
 
     def __repr__(self):
         return '<DedupeSession %r (%r)>' % (self.user.name, self.name)

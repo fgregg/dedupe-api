@@ -5,6 +5,7 @@ import json
 import time
 from dedupe import AsciiDammit
 import dedupe
+from dedupe.serializer import _to_json, dedupe_decoder
 from cStringIO import StringIO
 from collections import defaultdict, OrderedDict
 import logging
@@ -162,68 +163,10 @@ class DedupeFileIO(object):
         conn.execute(session_canon.insert(), rows)
         return None
 
-    def writeCSV(self):
-        u_path = '%s-deduped_unique.csv' % self.file_path
-        d_path = '%s-deduped.csv' % self.file_path
-        unique = open(u_path, 'wb')
-        writer = csv.DictWriter(unique, self.unique_rows[0].keys())
-        writer.writeheader()
-        writer.writerows(self.unique_rows)
-        unique.close()
-        clusters = open(d_path, 'wb')
-        writer = csv.DictWriter(clusters, self.clustered_rows[0].keys())
-        writer.writeheader()
-        writer.writerows(self.clustered_rows)
-        clusters.close()
-        return d_path, u_path, self.cluster_count, self.line_count
-
-    def _iterExcel(self, outp_type):
-        rows = getattr(self,outp_type)
-        header = rows[0].keys()
-        for r, row in enumerate(rows):
-            for c, key in enumerate(header):
-                value = row[key]
-                yield r,c,value
-
-    def writeXLS(self):
-        u_path = '%s-deduped_unique.xls' % self.file_path
-        d_path = '%s-deduped.xls' % self.file_path
-        clustered_book = xlwt.Workbook(encoding='utf-8')
-        clustered_sheet = clustered_book.add_sheet('Clustered Results')
-        for r,c,value in self._iterExcel('clustered_rows'):
-            clustered_sheet.write(r,c,label=value)
-        clustered_book.save(d_path)
-        unique_book = xlwt.Workbook(encoding='utf-8')
-        unique_sheet = unique_book.add_sheet('Unique Results')
-        for r,c,value in self._iterExcel('unique_rows'):
-            unique_sheet.write(r,c,label=value)
-        unique_book.save(u_path)
-        return d_path, u_path, self.cluster_count, self.line_count
-    
-    def writeXLSX(self):
-        u_path = '%s-deduped_unique.xlsx' % self.file_path
-        d_path = '%s-deduped.xlsx' % self.file_path
-        d_book = Workbook()
-        d_ws = d_book.active
-        d_ws.title = 'Clustered Results'
-        for r,c,value in self._iterExcel('clustered_rows'):
-            col = get_column_letter(c + 1)
-            d_ws.cell('%s%s' % (col, r + 1)).value = value
-        d_book.save(filename=d_path)
-        u_book = Workbook()
-        u_ws = u_book.active
-        u_ws.title = 'Unique Results'
-        for r,c,value in self._iterExcel('unique_rows'):
-            col = get_column_letter(c + 1)
-            u_ws.cell('%s%s' % (col, r + 1)).value = value
-        u_book.save(filename=u_path)
-        return d_path, u_path, self.cluster_count, self.line_count
-
 class WebDeduper(object):
     
     def __init__(self, deduper,
             file_io=None, 
-            training_data=None,
             recall_weight=2,
             session_key=None,
             api_key=None):
@@ -231,51 +174,29 @@ class WebDeduper(object):
         self.data_d = self.readData()
         self.deduper = deduper
         self.recall_weight = float(recall_weight)
-        self.training_data = training_data
+        self.db_session = create_session()
+        self.dd_session = self.db_session.query(DedupeSession).get(session_key)
+        self.training_data = StringIO(self.dd_session.training_data)
         self.session_key = session_key
         self.api_key = api_key
-        if training_data:
-            self.deduper.readTraining(self.training_data)
-            self.deduper.train()
-            self.settings_path = '%s-settings.dedupe' % self.file_io.file_path
-            self.deduper.writeTraining(self.training_data)
-            self.deduper.writeSettings(self.settings_path)
+        self.field_defs = json.loads(self.dd_session.field_defs)
+        # Will need to figure out static dedupe, maybe
+        self.deduper.readTraining(self.training_data)
+        self.deduper.train()
+        settings_file_obj = StringIO()
+        self.deduper.writeSettings(settings_file_obj)
+        settings_file_obj.seek(0)
+        self.dd_session.settings_file = settings_file_obj.getvalue()
+        self.db_session.add(self.dd_session)
+        self.db_session.commit()
+
 
     def dedupe(self):
         threshold = self.deduper.threshold(self.data_d, recall_weight=self.recall_weight)
         clustered_dupes = self.deduper.match(self.data_d, threshold)
         self.file_io.prepare(clustered_dupes)
-        if self.file_io.file_type == 'csv':
-            deduped, deduped_unique, cluster_count, line_count = self.file_io.writeCSV()
-        if self.file_io.file_type == 'xls':
-            deduped, deduped_unique, cluster_count, line_count = self.file_io.writeXLS()
-        if self.file_io.file_type == 'xlsx':
-            deduped, deduped_unique, cluster_count, line_count = self.file_io.writeXLSX()
-        db_session = create_session()
-        dd_session = db_session.query(DedupeSession).get(self.session_key)
-        if not dd_session:
-            user = db_session.query(ApiUser).get(self.api_key)
-            s_info = {
-                'user': user,
-                'name': self.file_io.filename,
-                'uuid': self.session_key,
-                'training_data': open(self.training_data).read(),
-                'settings_file': open(self.settings_path).read(),
-            }
-            dd_session = DedupeSession(**s_info)
-            db_session.add(dd_session)
-            db_session.commit()
         self.file_io.writeDB(self.session_key)
-        files = {
-            'deduped': os.path.relpath(deduped, __file__),
-            'deduped_unique': os.path.relpath(deduped_unique, __file__),
-            'cluster_count': cluster_count, 
-            'line_count': line_count,
-        }
-        if self.training_data:
-            files['training'] = os.path.relpath(self.training_data, __file__)
-            files['settings'] = os.path.relpath(self.settings_path, __file__)
-        return files
+        return 'ok'
     
     def preProcess(self, column):
         column = AsciiDammit.asciiDammit(column)
@@ -293,13 +214,24 @@ class WebDeduper(object):
             row_id = i
             data[row_id] = dedupe.core.frozendict(clean_row)
         return data
-    
+
+@queuefunc
+def retrain(session_key):
+    db_session = create_session()
+    sess = db_session.query(DedupeSession).get(session_key)
+    field_defs = json.loads(sess.field_defs)
+    training = json.loads(sess.training_data)
+    d = dedupe.Dedupe(field_defs)
+    d.sample()
+    d.readTraining(training)
+    d.train()
+    return None
+
 @queuefunc
 def dedupeit(**kwargs):
     d = dedupe.Dedupe(kwargs['field_defs'], kwargs['data_sample'])
     deduper = WebDeduper(d, 
         file_io=kwargs['file_io'],
-        training_data=kwargs['training_data'],
         session_key=kwargs['session_key'],
         api_key=kwargs['api_key'])
     files = deduper.dedupe()
