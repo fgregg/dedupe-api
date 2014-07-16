@@ -12,6 +12,8 @@ def canon_table(name, metadata):
     )
     return table
 
+
+
 class DedupeSession(db.Model):
     uuid = db.Column(db.String, primary_key=True)
     name = db.Column(db.String, nullable=False)

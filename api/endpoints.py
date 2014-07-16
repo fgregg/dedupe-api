@@ -6,6 +6,7 @@ from api.auth import csrf
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from cPickle import loads
+from cStringIO import StringIO
 from api.dedupe_utils import retrain
 
 endpoints = Blueprint('endpoints', __name__)
@@ -55,19 +56,17 @@ def match():
         canon_data = {}
         for c in canon:
             canon_data[c.row_id] = loads(c.row_blob)
-        settings_file = '/tmp/%s.settings' % session_key
-        with open('/tmp/%s.settings' % session_key, 'wb') as f:
-            f.write(sess.settings_file)
-        deduper = dedupe.StaticRecordLink(str(settings_file))
+        deduper = dedupe.StaticRecordLink(StringIO(sess.settings_file))
         o = {'blob': obj}
         linked = deduper.match(canon_data, o, 0)
+        print linked
         match_list = []
-        if linked:
-            row_id = linked[0].tolist()[0]
-            matches = db.session.query(canon_table)\
-                .filter(canon_table.c.row_id == row_id)\
-                .all()
-            match_list = [loads(m.row_blob) for m in matches]
+       #if linked:
+       #    row_id = linked[0].tolist()[0]
+       #    matches = db.session.query(canon_table)\
+       #        .filter(canon_table.c.row_id == row_id)\
+       #        .all()
+       #    match_list = [loads(m.row_blob) for m in matches]
         r['matches'] = match_list
 
     resp = make_response(json.dumps(r), status_code)

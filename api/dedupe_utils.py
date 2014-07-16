@@ -87,7 +87,8 @@ class DedupeFileIO(object):
         """
         cluster_membership = {}
         for cluster_id, cluster in enumerate(self.clustered_dupes):
-            for record_id in cluster:
+            id_set, confidence_score = cluster
+            for record_id in id_set:
                 cluster_membership[record_id] = cluster_id
 
         unique_record_id = cluster_id + 1
@@ -143,7 +144,7 @@ class DedupeFileIO(object):
         for row in rows:
             d = OrderedDict()
             for k,v in zip(rows[0], row):
-                d[k] = v
+                d[k] = AsciiDammit.asciiDammit(v)
             self.unique_rows.append(d)
         f.close()
         return self.unique_rows
