@@ -58,7 +58,7 @@ def match():
             canon_data[c.row_id] = loads(c.row_blob)
         deduper = dedupe.StaticRecordLink(StringIO(sess.settings_file))
         o = {'blob': obj}
-        linked = deduper.match(canon_data, o, 0)
+        linked = deduper.match(o, canon_data, 0)
         print linked
         match_list = []
        #if linked:

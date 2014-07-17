@@ -8,6 +8,7 @@ def canon_table(name, metadata):
     table = db.Table(name, metadata, 
         db.Column('row_id', db.Integer, primary_key=True), 
         db.Column('row_blob', db.LargeBinary),
+        db.Column('row_confidence', db.Float(precision=64)),
         extend_existing=True
     )
     return table

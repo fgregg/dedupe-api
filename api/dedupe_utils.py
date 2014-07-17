@@ -3,6 +3,7 @@ import re
 import os
 import json
 import time
+from itertools import groupby
 from dedupe import AsciiDammit
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
@@ -60,6 +61,7 @@ class DedupeFileIO(object):
         self.file_path = file_path
         self.filename = filename
         self.file_type = convert.guess_format(self.filename)
+        self.data_d = None
         if self.file_type not in ['xls', 'csv', 'xlsx']:
             if client:
                 client.captureMessage(' %s Unsupported Format: %s, (%s)' % (now, self.file_type, self.filename))
@@ -83,70 +85,30 @@ class DedupeFileIO(object):
     def _prepareResults(self):
         """ 
         Prepare deduplicated file for writing to various formats with
-        duplicates clustered. 
+        duplicates clustered.
         """
-        cluster_membership = {}
+        rows = []
         for cluster_id, cluster in enumerate(self.clustered_dupes):
             id_set, confidence_score = cluster
-            for record_id in id_set:
-                cluster_membership[record_id] = cluster_id
-
-        unique_record_id = cluster_id + 1
-        
-        f = StringIO(self.converted)
-        reader = csv.reader(f)
- 
-        heading_row = reader.next()
-        heading_row.insert(0, 'Group ID')
-    
-        rows = []
-
-        for row_id, row in enumerate(reader):
-            if row_id in cluster_membership:
-                cluster_id = cluster_membership[row_id]
-            else:
-                cluster_id = unique_record_id
-                unique_record_id += 1
-            row.insert(0, cluster_id)
-            rows.append(row)
-        rows = sorted(rows, key=itemgetter(0))
-        rows.insert(0, heading_row)
-        self.clustered_rows = []
-        for row in rows:
-            d = OrderedDict()
-            for k,v in zip(heading_row, row):
-                d[k] = v
-            self.clustered_rows.append(d)
-        f.close()
-        return unique_record_id
+            cluster_list = [self.data_d[c] for c in id_set]
+            for member in cluster_list:
+                m = OrderedDict([
+                    ('Group ID', str(cluster_id),),
+                    ('Confidence', '%.7f' % confidence_score,),
+                ])
+                for k,v in member.items():
+                    m[k] = v
+                rows.append(m)
+        self.clustered_rows = sorted(rows, key=itemgetter('Group ID'))
+        return len(self.clustered_rows)
  
     def _prepareUniqueResults(self):
         """ """
-        cluster_membership = {}
-        for (cluster_id, cluster) in enumerate(self.clustered_dupes):
-            for record_id in cluster:
-                cluster_membership[record_id] = cluster_id
- 
-        f = StringIO(self.converted)
-        reader = csv.reader(f)
- 
-        rows = [reader.next()]
-        seen_clusters = set()
-        for row_id, row in enumerate(reader):
-            if row_id in cluster_membership: 
-                cluster_id = cluster_membership[row_id]
-                if cluster_id not in seen_clusters:
-                    rows.append(row)
-                    seen_clusters.add(cluster_id)
-            else:
-                rows.append(row)
+
         self.unique_rows = []
-        for row in rows:
-            d = OrderedDict()
-            for k,v in zip(rows[0], row):
-                d[k] = AsciiDammit.asciiDammit(v)
-            self.unique_rows.append(d)
-        f.close()
+        for k,g in groupby(self.clustered_rows, key=itemgetter('Group ID')):
+            canonical = dedupe.canonicalize(list(g))
+            self.unique_rows.append(canonical)
         return self.unique_rows
     
     def writeDB(self, session_key):
@@ -159,7 +121,18 @@ class DedupeFileIO(object):
         metadata = MetaData()
         session_canon = canon_table('%s_canon' % session_key, metadata)
         session_canon.create(bind=engine, checkfirst=True)
-        rows = [{'row_id': c_id, 'row_blob': dumps(c)} for c_id, c in enumerate(self.unique_rows)]
+        rows = []
+        for row in self.unique_rows:
+            group_id = row['Group ID']
+            conf = row['Confidence']
+            del row['Group ID']
+            del row['Confidence']
+            row_blob = dumps(row)
+            rows.append({
+                'row_id': group_id,
+                'row_confidence': conf,
+                'row_blob': row_blob
+            })
         conn = engine.contextual_connect()
         conn.execute(session_canon.insert(), rows)
         return None
@@ -214,6 +187,7 @@ class WebDeduper(object):
             clean_row = [(k, self.preProcess(v)) for (k,v) in row.items()]
             row_id = i
             data[row_id] = dedupe.core.frozendict(clean_row)
+        self.file_io.data_d = data
         return data
 
 @queuefunc

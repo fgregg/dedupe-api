@@ -5,10 +5,10 @@ if __name__ == "__main__":
     from api.trainer import readData
     from uuid import uuid4
     import dedupe
-    api_key = '38bd9ff2-cdf5-41dc-86eb-af137b9b1218 '
+    api_key = '99cf602a-21cd-44ae-aca0-7da0d7d3408e'
     sess_key = unicode(uuid4())
-    fname = '1405091863.42_csv_example_messy_input.csv'
-    training = 'api/upload_data/%s-training.json' % fname
+    fname = '1405614456.36_csv_example_messy_input.csv'
+    training = 'api/upload_data/%s.json' % fname
     fpath = 'api/upload_data/%s' % fname
     data = readData(open(fpath).read())
     fields = {
