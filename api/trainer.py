@@ -18,11 +18,10 @@ from api.dedupe_utils import dedupeit, static_dedupeit, DedupeFileIO,\
     DedupeFileError
 from cStringIO import StringIO
 import csv
+from redis import Redis
 from api.queue import DelayedResult
 from uuid import uuid4
 import collections
-from redis import Redis
-from redis_session import RedisSessionInterface
 from api.database import DedupeSession, db, ApiUser
 
 redis = Redis()
@@ -31,6 +30,8 @@ ALLOWED_EXTENSIONS = set(['csv', 'xls', 'xlsx'])
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'upload_data')
 
 trainer = Blueprint('trainer', __name__)
+
+db_path = os.path.abspath(os.path.dirname(__file__))
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -52,19 +53,23 @@ def index():
             file_path = os.path.abspath(os.path.join(UPLOAD_FOLDER, fname))
             f.save(file_path)
             try:
-                inp_file = DedupeFileIO(file_path, fname)
+                inp_file = DedupeFileIO(
+                    conn_string='sqlite:///%s/dedupe.db' % db_path,
+                    session_key=flask_session['session_key'],
+                    filename=fname,
+                    file_obj=open(file_path, 'rb'))
                 flask_session['last_interaction'] = datetime.now()
-                flask_session['deduper'] = {'csv': inp_file}
+                flask_session['deduper'] = {'file_io': inp_file}
                 old = datetime.now() - timedelta(seconds=60 * 30)
                 if flask_session['last_interaction'] < old:
                     del flask_session['deduper']
-                flask_session['filename'] = inp_file.filename
-                flask_session['file_path'] = inp_file.file_path
-                flask_session['row_count'] = inp_file.line_count
+                flask_session['filename'] = fname
+                flask_session['file_path'] = file_path
                 api_user = db.session.query(ApiUser).get(flask_session['api_key'])
                 sess = DedupeSession(
                     uuid=flask_session['session_key'], 
-                    name=fname, user=api_user)
+                    name=fname, 
+                    user=api_user)
                 db.session.add(sess)
                 db.session.commit()
                 return redirect(url_for('trainer.select_fields'))
@@ -100,7 +105,7 @@ def select_fields():
     if not flask_session.get('deduper'):
         return redirect(url_for('trainer.index'))
     else:
-        inp = flask_session['deduper']['csv'].converted
+        inp = flask_session['deduper']['file_io'].converted
         filename = flask_session['filename']
         flask_session['last_interaction'] = datetime.now()
         reader = csv.reader(StringIO(inp))
@@ -194,7 +199,7 @@ def mark_pair():
             counter['no'] += 1
             resp = {'counter': counter}
         elif action == 'finish':
-            file_io = flask_session['deduper']['csv']
+            file_io = flask_session['deduper']['file_io']
             training_data = flask_session['deduper']['training_data']
             sess = db.session.query(DedupeSession).get(flask_session['session_key'])
             sess.training_data = json.dumps(training_data, default=_to_json)

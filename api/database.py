@@ -4,16 +4,15 @@ from flask.ext.security import UserMixin
 
 db = SQLAlchemy()
 
-def canon_table(name, metadata):
+def data_table(name, metadata):
     table = db.Table(name, metadata, 
-        db.Column('row_id', db.Integer, primary_key=True), 
-        db.Column('row_blob', db.LargeBinary),
-        db.Column('row_confidence', db.Float(precision=64)),
+        db.Column('id', db.Integer, primary_key=True),
+        db.Column('group_id', db.Integer), 
+        db.Column('blob', db.LargeBinary),
+        db.Column('confidence', db.Float(precision=64)),
         extend_existing=True
     )
     return table
-
-
 
 class DedupeSession(db.Model):
     uuid = db.Column(db.String, primary_key=True)

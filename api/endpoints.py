@@ -8,6 +8,7 @@ from dedupe.serializer import _to_json, dedupe_decoder
 from cPickle import loads
 from cStringIO import StringIO
 from api.dedupe_utils import retrain
+import sqlalchemy.exc
 
 endpoints = Blueprint('endpoints', __name__)
 
@@ -50,26 +51,30 @@ def match():
         api_key = post['api_key']
         session_key = post['session_key']
         obj = post['object']
-        canon_table = db.Table('%s_canon' % session_key, 
+        data_table = db.Table('%s_data' % session_key, 
             db.metadata, autoload=True, autoload_with=db.engine)
-        canon = db.session.query(canon_table).all()
-        canon_data = {}
-        for c in canon:
-            canon_data[c.row_id] = loads(c.row_blob)
-        deduper = dedupe.StaticRecordLink(StringIO(sess.settings_file))
+        all_data = db.session.query(data_table).all()
+        data_d = {}
+        for d in all_data:
+            data_d[d.id] = loads(d.blob)
+        deduper = dedupe.StaticGazetteer(StringIO(sess.settings_file))
         o = {'blob': obj}
-        linked = deduper.match(o, canon_data, 0)
-        print linked
+        linked = deduper.match(data_d, o, 0, n_matches=post.get('num_results', 5))
+        ids = []
+        confs = {}
+        for l in linked:
+            id_set, confidence = l[0]
+            ids.extend([i for i in id_set if i not in ids])
+            confs[id_set[0]] = confidence
+        matches = db.session.query(data_table).filter(data_table.c.id.in_(ids)).all()
         match_list = []
-       #if linked:
-       #    row_id = linked[0].tolist()[0]
-       #    matches = db.session.query(canon_table)\
-       #        .filter(canon_table.c.row_id == row_id)\
-       #        .all()
-       #    match_list = [loads(m.row_blob) for m in matches]
+        for match in matches:
+            m = dict(loads(match.blob))
+            m['match_confidence'] = float(confs[str(match.id)])
+            match_list.append(m)
         r['matches'] = match_list
 
-    resp = make_response(json.dumps(r), status_code)
+    resp = make_response(json.dumps(r, default=_to_json), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
@@ -136,6 +141,12 @@ def delete_session(session_id):
     data = db.session.query(DedupeSession).get(session_id)
     db.session.delete(data)
     db.session.commit()
+    data_table = db.Table('%s_data' % session_id, 
+        db.metadata, autoload=True, autoload_with=db.engine)
+    try:
+        data_table.drop(db.engine)
+    except db.exc.NoSuchTableError:
+        pass
     resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
     resp.headers['Content-Type'] = 'application/json'
     return resp
