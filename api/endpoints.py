@@ -59,18 +59,18 @@ def match():
             data_d[d.id] = loads(d.blob)
         deduper = dedupe.StaticGazetteer(StringIO(sess.settings_file))
         o = {'blob': obj}
-        linked = deduper.match(data_d, o, 0, n_matches=post.get('num_results', 5))
+        linked = deduper.match(o, data_d, threshold=0, n_matches=post.get('num_results', 5))
         ids = []
         confs = {}
-        for l in linked:
-            id_set, confidence = l[0]
+        for l in linked[0]:
+            id_set, confidence = l
             ids.extend([i for i in id_set if i not in ids])
-            confs[id_set[0]] = confidence
+            confs[id_set[1]] = confidence
         matches = db.session.query(data_table).filter(data_table.c.id.in_(ids)).all()
         match_list = []
         for match in matches:
             m = dict(loads(match.blob))
-            m['match_confidence'] = float(confs[str(match.id)])
+            # m['match_confidence'] = float(confs[str(match.id)])
             match_list.append(m)
         r['matches'] = match_list
 

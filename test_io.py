@@ -77,10 +77,10 @@ if __name__ == "__main__":
     }}
     sf = StringIO(dd_session.settings_file)
     d = dedupe.StaticGazetteer(sf)
-    linked = d.match(data_d, match_blob, threshold=0, n_matches=20)
+    linked = d.match(match_blob, data_d, threshold=0, n_matches=20)
     ids = []
-    for l in linked:
-        id_set, confidence = l[0]
+    for l in linked[0]:
+        id_set, confidence = l
         ids.extend([i for i in id_set if i not in ids])
     them = db_session.query(data_table).filter(data_table.c.id.in_(ids)).all()
     print [loads(t.blob)['Address'] for t in them]
