@@ -79,9 +79,10 @@ if __name__ == "__main__":
     d = dedupe.StaticGazetteer(sf)
     linked = d.match(match_blob, data_d, threshold=0, n_matches=20)
     ids = []
-    for l in linked[0]:
-        id_set, confidence = l
-        ids.extend([i for i in id_set if i not in ids])
+    if linked:
+        for l in linked[0]:
+            id_set, confidence = l
+            ids.extend([i for i in id_set if i not in ids])
     them = db_session.query(data_table).filter(data_table.c.id.in_(ids)).all()
     print [loads(t.blob)['Address'] for t in them]
     print len(linked)

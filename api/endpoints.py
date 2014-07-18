@@ -51,6 +51,8 @@ def match():
         api_key = post['api_key']
         session_key = post['session_key']
         obj = post['object']
+        for k,v in obj.items():
+            obj[k] = v.lower()
         data_table = db.Table('%s_data' % session_key, 
             db.metadata, autoload=True, autoload_with=db.engine)
         all_data = db.session.query(data_table).all()
@@ -60,18 +62,19 @@ def match():
         deduper = dedupe.StaticGazetteer(StringIO(sess.settings_file))
         o = {'blob': obj}
         linked = deduper.match(o, data_d, threshold=0, n_matches=post.get('num_results', 5))
-        ids = []
-        confs = {}
-        for l in linked[0]:
-            id_set, confidence = l
-            ids.extend([i for i in id_set if i not in ids])
-            confs[id_set[1]] = confidence
-        matches = db.session.query(data_table).filter(data_table.c.id.in_(ids)).all()
         match_list = []
-        for match in matches:
-            m = dict(loads(match.blob))
-            # m['match_confidence'] = float(confs[str(match.id)])
-            match_list.append(m)
+        if linked:
+            ids = []
+            confs = {}
+            for l in linked[0]:
+                id_set, confidence = l
+                ids.extend([i for i in id_set if i not in ids])
+                confs[id_set[1]] = confidence
+            matches = db.session.query(data_table).filter(data_table.c.id.in_(ids)).all()
+            for match in matches:
+                m = dict(loads(match.blob))
+                # m['match_confidence'] = float(confs[str(match.id)])
+                match_list.append(m)
         r['matches'] = match_list
 
     resp = make_response(json.dumps(r, default=_to_json), status_code)
