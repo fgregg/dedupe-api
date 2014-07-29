@@ -22,7 +22,8 @@ from redis import Redis
 from api.queue import DelayedResult
 from uuid import uuid4
 import collections
-from api.database import DedupeSession, db, User
+from api.models import DedupeSession, User
+from api.database import session as db_session
 
 redis = Redis()
 
@@ -65,13 +66,13 @@ def index():
                     del flask_session['deduper']
                 flask_session['filename'] = fname
                 flask_session['file_path'] = file_path
-                api_user = db.session.query(User).get(flask_session['api_key'])
+                api_user = db_session.query(User).get(flask_session['api_key'])
                 sess = DedupeSession(
                     uuid=flask_session['session_key'], 
                     name=fname, 
                     user=api_user)
-                db.session.add(sess)
-                db.session.commit()
+                db_session.add(sess)
+                db_session.commit()
                 return redirect(url_for('trainer.select_fields'))
             except DedupeFileError as e:
                 error = e.message
@@ -122,10 +123,10 @@ def select_fields():
                 flask_session['deduper']['data_d'] = data_d
                 flask_session['deduper']['field_defs'] = copy.deepcopy(field_defs)
                 start = time.time()
-                sess = db.session.query(DedupeSession).get(flask_session['session_key'])
+                sess = db_session.query(DedupeSession).get(flask_session['session_key'])
                 sess.field_defs = json.dumps(field_defs)
-                db.session.add(sess)
-                db.session.commit()
+                db_session.add(sess)
+                db_session.commit()
                 deduper = dedupe.Dedupe(field_defs)
                 deduper.sample(data_d, 150000)
                 flask_session['deduper']['deduper'] = deduper
@@ -201,10 +202,10 @@ def mark_pair():
         elif action == 'finish':
             file_io = flask_session['deduper']['file_io']
             training_data = flask_session['deduper']['training_data']
-            sess = db.session.query(DedupeSession).get(flask_session['session_key'])
+            sess = db_session.query(DedupeSession).get(flask_session['session_key'])
             sess.training_data = json.dumps(training_data, default=_to_json)
-            db.session.add(sess)
-            db.session.commit()
+            db_session.add(sess)
+            db_session.commit()
             field_defs = flask_session['deduper']['field_defs']
             sample = deduper.data_sample
             args = {

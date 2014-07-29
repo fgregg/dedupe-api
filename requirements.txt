@@ -1,8 +1,12 @@
 Flask
 gunicorn
-SQLAlchemy
-flask-security
 redis
 dedupe
 csvkit
 xlwt
+psycopg2
+mysql-python
+cx_Oracle
+Flask-WTF
+Flask-Login
+flask-bcrypt

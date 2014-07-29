@@ -12,29 +12,16 @@ from collections import defaultdict, OrderedDict
 import logging
 from datetime import datetime
 from api.queue import queuefunc
-from api.database import DedupeSession, User, data_table
+from api.database import session as db_session, Base
+from api.models import DedupeSession, User, data_table
 from operator import itemgetter
 from csvkit import convert
 import xlwt
 from openpyxl import Workbook
 from openpyxl.cell import get_column_letter
 from cPickle import dumps
-
-from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
-
-db_path = os.path.abspath(os.path.dirname(__file__))
-
-def create_session():
-    engine = create_engine(
-        'sqlite:///%s/dedupe.db' % db_path,
-        convert_unicode=True,
-        poolclass=NullPool)
-    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    session = Session()
-    session._model_changes = {}
-    return session
 
 try:
     from raven import Client
@@ -45,6 +32,15 @@ except KeyError:
     client = None
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'upload_data')
+
+def create_session(conn_string):
+    engine = create_engine(
+        conn_string,
+        convert_unicode=True,
+        poolclass=NullPool)
+    return scoped_session(sessionmaker(bind=engine,
+                                       autocommit=False, 
+                                       autoflush=False))
 
 class DedupeFileError(Exception): 
     def __init__(self, message):
@@ -61,8 +57,7 @@ class DedupeFileIO(object):
         self.conn_string = conn_string
         file_type = convert.guess_format(filename)
         self.converted = convert.convert(file_obj, file_type)
-        metadata = MetaData()
-        self.data_table = data_table('%s_data' % session_key, metadata)
+        self.data_table = data_table('%s_data' % session_key, Base.metadata)
         self.readData()
     
     @property
@@ -121,7 +116,6 @@ class WebDeduper(object):
         self.file_io = file_io
         self.deduper = deduper
         self.recall_weight = float(recall_weight)
-        self.db_session = create_session()
         self.dd_session = self.db_session.query(DedupeSession).get(session_key)
         self.training_data = StringIO(self.dd_session.training_data)
         self.api_key = api_key
@@ -135,17 +129,21 @@ class WebDeduper(object):
         self.db_session.add(self.dd_session)
         self.db_session.commit()
 
+    @property
+    def db_session(self):
+        return scoped_session(sessionmaker(bind=self.engine,
+                                           autocommit=False, 
+                                           autoflush=False))
 
     def dedupe(self):
         threshold = self.deduper.threshold(self.file_io.data_d, recall_weight=self.recall_weight)
         clustered_dupes = self.deduper.match(self.file_io.data_d, threshold)
         self.file_io.writeDB(clustered_dupes)
         return 'ok'
-    
 
 @queuefunc
-def retrain(session_key):
-    db_session = create_session()
+def retrain(session_key, conn_string):
+    db_session = create_session(conn_string)
     sess = db_session.query(DedupeSession).get(session_key)
     field_defs = json.loads(sess.field_defs)
     training = json.loads(sess.training_data)

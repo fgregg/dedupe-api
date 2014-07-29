@@ -1,7 +1,8 @@
 import os
 import json
-from flask import Flask, make_response, request, session, Blueprint
-from api.database import db, DedupeSession, User
+from flask import Flask, make_response, request, Blueprint
+from api.models import DedupeSession, User
+from api.database import session as db_session
 from api.auth import csrf
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
@@ -18,8 +19,8 @@ def validate_post(post):
     obj = post.get('object')
     r = {'status': 'ok', 'message': '', 'object': obj}
     status_code = 200
-    sess = db.session.query(DedupeSession).get(session_key)
-    user = db.session.query(User).get(api_key)
+    sess = db_session.query(DedupeSession).get(session_key)
+    user = db_session.query(User).get(api_key)
     if not api_key:
         r['status'] = 'error'
         r['message'] = 'API Key is required'
@@ -53,9 +54,9 @@ def match():
         obj = post['object']
         for k,v in obj.items():
             obj[k]
-        data_table = db.Table('%s_data' % session_key, 
-            db.metadata, autoload=True, autoload_with=db.engine)
-        all_data = db.session.query(data_table).all()
+        data_table = db_Table('%s_data' % session_key, 
+            db_metadata, autoload=True, autoload_with=db_engine)
+        all_data = db_session.query(data_table).all()
         data_d = {}
         for d in all_data:
             data_d[d.id] = loads(d.blob)
@@ -70,7 +71,7 @@ def match():
                 id_set, confidence = l
                 ids.extend([i for i in id_set if i not in ids])
                 confs[id_set[1]] = confidence
-            matches = db.session.query(data_table).filter(data_table.c.id.in_(ids)).all()
+            matches = db_session.query(data_table).filter(data_table.c.id.in_(ids)).all()
             for match in matches:
                 m = dict(loads(match.blob))
                 # m['match_confidence'] = float(confs[str(match.id)])
@@ -112,8 +113,8 @@ def train():
             for n in negative:
                 training_data['distinct'].append([n,obj])
             sess.training_data = json.dumps(training_data, default=_to_json)
-            db.session.add(sess)
-            db.session.commit()
+            db_session.add(sess)
+            db_session.commit()
             retrain.delay(session_key)
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
@@ -122,7 +123,7 @@ def train():
 @csrf.exempt
 @endpoints.route('/training-data/<session_id>/')
 def training_data(session_id):
-    data = db.session.query(DedupeSession).get(session_id)
+    data = db_session.query(DedupeSession).get(session_id)
     training_data = data.training_data
     resp = make_response(training_data, 200)
     resp.headers['Content-Type'] = 'text/plain'
@@ -132,7 +133,7 @@ def training_data(session_id):
 @csrf.exempt
 @endpoints.route('/settings-file/<session_id>/')
 def settings_file(session_id):
-    data = db.session.query(DedupeSession).get(session_id)
+    data = db_session.query(DedupeSession).get(session_id)
     settings_file = data.settings_file
     resp = make_response(settings_file, 200)
     resp.headers['Content-Disposition'] = 'attachment; filename=%s.dedupe_settings' % data.uuid
@@ -141,14 +142,14 @@ def settings_file(session_id):
 @csrf.exempt
 @endpoints.route('/delete-session/<session_id>/')
 def delete_session(session_id):
-    data = db.session.query(DedupeSession).get(session_id)
-    db.session.delete(data)
-    db.session.commit()
-    data_table = db.Table('%s_data' % session_id, 
-        db.metadata, autoload=True, autoload_with=db.engine)
+    data = db_session.query(DedupeSession).get(session_id)
+    db_session.delete(data)
+    db_session.commit()
+    data_table = db_Table('%s_data' % session_id, 
+        db_metadata, autoload=True, autoload_with=db_engine)
     try:
-        data_table.drop(db.engine)
-    except db.exc.NoSuchTableError:
+        data_table.drop(db_engine)
+    except db_exc.NoSuchTableError:
         pass
     resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
     resp.headers['Content-Type'] = 'application/json'
@@ -157,7 +158,7 @@ def delete_session(session_id):
 @csrf.exempt
 @endpoints.route('/field-definitions/<session_id>/')
 def field_definitions(session_id):
-    data = db.session.query(DedupeSession).get(session_id)
+    data = db_session.query(DedupeSession).get(session_id)
     field_defs = data.field_defs
     resp = make_response(field_defs, 200)
     resp.headers['Content-Type'] = 'text/plain'
