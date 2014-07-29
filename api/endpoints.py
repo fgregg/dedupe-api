@@ -1,7 +1,7 @@
 import os
 import json
 from flask import Flask, make_response, request, session, Blueprint
-from api.database import db, DedupeSession, ApiUser
+from api.database import db, DedupeSession, User
 from api.auth import csrf
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
@@ -19,7 +19,7 @@ def validate_post(post):
     r = {'status': 'ok', 'message': '', 'object': obj}
     status_code = 200
     sess = db.session.query(DedupeSession).get(session_key)
-    user = db.session.query(ApiUser).get(api_key)
+    user = db.session.query(User).get(api_key)
     if not api_key:
         r['status'] = 'error'
         r['message'] = 'API Key is required'
@@ -52,7 +52,7 @@ def match():
         session_key = post['session_key']
         obj = post['object']
         for k,v in obj.items():
-            obj[k] = v.lower()
+            obj[k]
         data_table = db.Table('%s_data' % session_key, 
             db.metadata, autoload=True, autoload_with=db.engine)
         all_data = db.session.query(data_table).all()

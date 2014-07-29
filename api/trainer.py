@@ -22,7 +22,7 @@ from redis import Redis
 from api.queue import DelayedResult
 from uuid import uuid4
 import collections
-from api.database import DedupeSession, db, ApiUser
+from api.database import DedupeSession, db, User
 
 redis = Redis()
 
@@ -65,7 +65,7 @@ def index():
                     del flask_session['deduper']
                 flask_session['filename'] = fname
                 flask_session['file_path'] = file_path
-                api_user = db.session.query(ApiUser).get(flask_session['api_key'])
+                api_user = db.session.query(User).get(flask_session['api_key'])
                 sess = DedupeSession(
                     uuid=flask_session['session_key'], 
                     name=fname, 

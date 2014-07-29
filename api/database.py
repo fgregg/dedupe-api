@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask.ext.security import SQLAlchemyUserDatastore
 from flask.ext.security import UserMixin
+from uuid import uuid4
 
 db = SQLAlchemy()
 
@@ -15,10 +16,10 @@ def data_table(name, metadata):
     return table
 
 class DedupeSession(db.Model):
-    uuid = db.Column(db.String, primary_key=True)
+    id = db.Column(db.String, primary_key=True)
     name = db.Column(db.String, nullable=False)
-    user_id = db.Column(db.String, db.ForeignKey('api_user.api_key'))
-    user = db.relationship('ApiUser', backref=db.backref('sessions'))
+    user_id = db.Column(db.String(36), db.ForeignKey('user.id'))
+    user = db.relationship('User', backref=db.backref('sessions'))
     training_data = db.Column(db.LargeBinary)
     settings_file = db.Column(db.LargeBinary)
     field_defs = db.Column(db.LargeBinary)
@@ -26,16 +27,8 @@ class DedupeSession(db.Model):
     def __repr__(self):
         return '<DedupeSession %r (%r)>' % (self.user.name, self.name)
 
-class ApiUser(db.Model):
-    api_key = db.Column(db.String, primary_key=True)
-    name = db.Column(db.String, nullable=False)
-    email = db.Column(db.String, nullable=False)
-
-    def __repr__(self):
-        return '<ApiUser %r>' % self.name
-
 roles_users = db.Table('role_users',
-    db.Column('user_id', db.Integer(), db.ForeignKey('user.id')),
+    db.Column('user_id', db.String(36), db.ForeignKey('user.id')),
     db.Column('role_id', db.Integer(), db.ForeignKey('role.id')))
 
 class Role(db.Model):
@@ -47,7 +40,7 @@ class Role(db.Model):
         return '<Role %r>' % self.name
 
 class User(db.Model, UserMixin):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(36), default=unicode(uuid4()), primary_key=True)
     name = db.Column(db.String, nullable=False)
     email = db.Column(db.String, nullable=False)
     active = db.Column(db.Boolean())

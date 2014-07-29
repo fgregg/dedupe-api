@@ -12,7 +12,7 @@ from collections import defaultdict, OrderedDict
 import logging
 from datetime import datetime
 from api.queue import queuefunc
-from api.database import DedupeSession, ApiUser, data_table
+from api.database import DedupeSession, User, data_table
 from operator import itemgetter
 from csvkit import convert
 import xlwt

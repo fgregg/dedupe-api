@@ -19,6 +19,7 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dedupe.db'
     app.config['SECURITY_LOGIN_URL'] = '/login/'
     app.config['SECURITY_LOGOUT_URL'] = '/logout/'
+    app.config['SECURITY_PASSWORD_HASH'] = 'bcrypt'
     app.session_interface = RedisSessionInterface()
     try:
         from raven.contrib.flask import Sentry
