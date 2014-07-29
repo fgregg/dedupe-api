@@ -1,11 +1,13 @@
 from flask import session, redirect, url_for, request, Blueprint, \
     render_template, abort, flash
+from functools import wraps
 from flask_login import login_required, login_user, logout_user, LoginManager
 from flask_wtf import Form
 from flask_wtf.csrf import CsrfProtect
 from wtforms import TextField, PasswordField
 from wtforms.validators import DataRequired, Email
 from api.database import session as db_session
+from api.models import User
 import os
 import json
 from uuid import uuid4
@@ -74,6 +76,18 @@ class ResetPasswordForm(Form):
     old_password = PasswordField('old_password', validators=[DataRequired()])
     new_password = PasswordField('new_password', validators=[DataRequired()])
 
+def check_roles(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = db_session.query(User).get(flask_session['user_id'])
+        user_roles = set([r.name for r in user.roles])
+        roles = set(kwargs.get('roles'))
+        if roles.issubset(user_roles):
+            return f(*args, **kwargs)
+        else:
+            return redirect(url_for('manager.index'))
+    return decorated
+
 @login_manager.user_loader
 def load_user(userid):
     return db_session.query(User).get(userid)
@@ -84,7 +98,7 @@ def login():
     if form.validate_on_submit():
         user = form.user
         login_user(user)
-        return redirect(request.args.get('next') or url_for('auth.api_user_list'))
+        return redirect(request.args.get('next') or url_for('auth.user_list'))
     email = form.email.data
     return render_template('login.html', form=form, email=email)
 
@@ -93,29 +107,29 @@ def logout():
     logout_user()
     return redirect(url_for('auth.api_user_list'))
 
-@auth.route('/add-api-user/', methods=['GET', 'POST'])
+@auth.route('/add-user/', methods=['GET', 'POST'])
 @login_required
-def add_api_user():
+def add_user():
     form = AddUserForm()
     if form.validate_on_submit():
         user_info = {
             'name': form.name.data,
             'email': form.email.data,
         }
-        user = ApiUser(**user_info)
-        db.session.add(user)
-        db.session.commit()
+        user = User(**user_info)
+        db_session.add(user)
+        db_session.commit()
         flash('User %s added' % user.name)
-        return redirect(url_for('auth.api_user_list'))
-    return render_template('add_api_user.html', form=form)
+        return redirect(url_for('auth.user_list'))
+    return render_template('add_user.html', form=form)
 
-@auth.route('/')
+@auth.route('/user-list/')
 @login_required
-def api_user_list():
-    users = db.session.query(ApiUser).all()
-    return render_template('api_user_list.html', users=users)
+def user_list():
+    users = db_session.query(User).all()
+    return render_template('user_list.html', users=users)
 
 @auth.route('/sessions/<api_key>/')
 def user_sessions(api_key):
-    user = db.session.query(ApiUser).get(api_key)
+    user = db_session.query(User).get(api_key)
     return render_template('user_sessions.html', user=user)

@@ -54,6 +54,7 @@ def index():
             file_path = os.path.abspath(os.path.join(UPLOAD_FOLDER, fname))
             f.save(file_path)
             try:
+                # Need a better way of getting the connection string
                 inp_file = DedupeFileIO(
                     conn_string='sqlite:///%s/dedupe.db' % db_path,
                     session_key=flask_session['session_key'],

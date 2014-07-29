@@ -5,6 +5,7 @@ from api.endpoints import endpoints
 from api.auth import auth, login_manager, csrf
 from api.models import bcrypt
 from api.trainer import trainer
+from api.manager import manager
 from api.redis_session import RedisSessionInterface
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'upload_data')
@@ -30,5 +31,6 @@ def create_app():
     app.register_blueprint(endpoints)
     app.register_blueprint(auth)
     app.register_blueprint(trainer)
+    app.register_blueprint(manager)
     return app
 

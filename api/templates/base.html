@@ -37,9 +37,12 @@
         </div>
         <div class="navbar-collapse collapse pull-right">
           <ul class="nav navbar-nav">
-            <li><a href="{{ url_for('auth.add_api_user') }}">Add User</a></li>
-            <li><a href="{{ url_for('security.login') }}">Login</a></li>
-            <li><a href="{{ url_for('security.logout') }}">Logout</a></li>
+            {% if session.get('user_id') %}
+              <li><a href="{{ url_for('auth.add_user') }}">Add User</a></li>
+              <li><a href="{{ url_for('auth.logout') }}">Logout</a></li>
+            {% else %}
+              <li><a href="{{ url_for('auth.login') }}">Login</a></li>
+            {% endif %}
           </ul>
         </div><!--/.nav-collapse -->
       </div>

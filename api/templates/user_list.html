@@ -22,13 +22,13 @@
                                 {{user.email}}
                             </td>
                             <td>
-                                {{user.api_key}}
+                                {{user.id}}
                             </td>
                             <td>
-                                <a href="{{ url_for('auth.user_sessions', api_key=user.api_key) }}">{{user.sessions|length}}</a>
+                                <a href="{{ url_for('auth.user_sessions', api_key=user.id) }}">{{user.sessions|length}}</a>
                             </td>
                             <td>
-                              <a href="{{ url_for('trainer.index', api_key=user.api_key ) }}">Add Training</a>
+                              <a href="{{ url_for('trainer.index', api_key=user.id ) }}">Add Training</a>
                             </td>
                         </tr>
                     {% endfor %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %} | Sessions for {{user.name}}{% endblock %}
+{% block content %}
+    <div class="col-md-12">
+        <div class="row">
+            <div class="col-md-8 col-md-offset-2">
+                <h2>Start a new training session</h2>
+                <form role="form" action="{{ url_for('manager.new_session') }}" method="POST">
+                    <div class="form-group">
+                        <input type="text" class="form-control" placeholder="Connection String" />
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-default">Submit</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% if user.sessions %}
+    <div class="col-md-12">
+        <h4>Your trained sessions</h4>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Session ID</th>
+                    <th>Training Data</th>
+                    <th>Settings File</th>
+                    <th>Field Definitions</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sess in user.sessions %}
+                    <tr>
+                        <td>
+                            {{sess.name}}
+                        </td>
+                        <td>
+                            {{sess.id}}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('endpoints.training_data', session_id=sess.id) }}">Download</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('endpoints.settings_file', session_id=sess.id) }}">Download</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('endpoints.field_definitions', session_id=sess.id) }}">Download</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('endpoints.delete_session', session_id=sess.id ) }}">Delete</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+{% endblock %}
