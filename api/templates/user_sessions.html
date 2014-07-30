@@ -23,16 +23,16 @@
                                 {{sess.uuid}}
                             </td>
                             <td>
-                                <a href="{{ url_for('endpoints.training_data', session_id=sess.uuid) }}">Download</a>
+                                <a href="{{ url_for('endpoints.training_data', session_id=sess.id) }}">Download</a>
                             </td>
                             <td>
-                                <a href="{{ url_for('endpoints.settings_file', session_id=sess.uuid) }}">Download</a>
+                                <a href="{{ url_for('endpoints.settings_file', session_id=sess.id) }}">Download</a>
                             </td>
                             <td>
-                                <a href="{{ url_for('endpoints.field_definitions', session_id=sess.uuid) }}">Download</a>
+                                <a href="{{ url_for('endpoints.field_definitions', session_id=sess.id) }}">Download</a>
                             </td>
                             <td>
-                                <a href="{{ url_for('endpoints.delete_session', session_id=sess.uuid ) }}">Delete</a>
+                                <a href="{{ url_for('endpoints.delete_session', session_id=sess.id ) }}">Delete</a>
                             </td>
                         </tr>
                     {% endfor %}

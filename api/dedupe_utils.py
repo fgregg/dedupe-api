@@ -22,6 +22,7 @@ from openpyxl.cell import get_column_letter
 from cPickle import dumps
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
+from sqlalchemy import create_engine
 
 try:
     from raven import Client
@@ -55,17 +56,13 @@ class DedupeFileIO(object):
                  filename=None,
                  file_obj=None):
         self.conn_string = conn_string
+        self.session_key = session_key
         file_type = convert.guess_format(filename)
-        self.converted = convert.convert(file_obj, file_type)
-        self.data_table = data_table('%s_data' % session_key, Base.metadata)
-        self.readData()
-    
-    @property
-    def conn(self):
-        return self.engine.contextual_connect()
-
-    @property
-    def engine(self):
+        converted = convert.convert(file_obj, file_type)
+        self.readData(converted)
+        self.fieldnames = self.data_d[0].keys()
+   
+    def get_engine(self):
         return create_engine(
             self.conn_string,
             convert_unicode=True,
@@ -75,7 +72,9 @@ class DedupeFileIO(object):
         """ 
         Write clustered dupes with confidence score to DB table
         """
-        self.data_table.create(bind=self.engine, checkfirst=True)
+        dt = data_table('%s_data' % self.session_key, Base.metadata)
+        engine = self.get_engine()
+        dt.create(bind=engine, checkfirst=True)
         rows = []
         for cluster_id, cluster in enumerate(clustered_dupes):
             id_set, confidence_score = cluster
@@ -83,12 +82,13 @@ class DedupeFileIO(object):
             for member in cluster_list:
                 m = {
                     'group_id': cluster_id,
-                    'confidence': confidence_score,
+                    'confidence': float(confidence_score),
                     'blob': dumps(member['row']),
                     'id': member['row_id']
                 }
                 rows.append(m)
-        self.conn.execute(self.data_table.insert(), rows)
+        conn = engine.contextual_connect()
+        conn.execute(dt.insert(), rows)
     
     def preProcess(self, column):
         column = AsciiDammit.asciiDammit(column)
@@ -97,9 +97,9 @@ class DedupeFileIO(object):
         column = column.strip().strip('"').strip("'").lower().strip()
         return column
  
-    def readData(self):
+    def readData(self, converted):
         self.data_d = {}
-        f = StringIO(self.converted)
+        f = StringIO(converted)
         reader = csv.DictReader(f)
         for i, row in enumerate(reader):
             clean_row = [(k, self.preProcess(v)) for (k,v) in row.items()]
@@ -116,6 +116,7 @@ class WebDeduper(object):
         self.file_io = file_io
         self.deduper = deduper
         self.recall_weight = float(recall_weight)
+        self.db_session = create_session(file_io.conn_string)
         self.dd_session = self.db_session.query(DedupeSession).get(session_key)
         self.training_data = StringIO(self.dd_session.training_data)
         self.api_key = api_key
@@ -128,12 +129,6 @@ class WebDeduper(object):
         self.dd_session.settings_file = settings_file_obj.getvalue()
         self.db_session.add(self.dd_session)
         self.db_session.commit()
-
-    @property
-    def db_session(self):
-        return scoped_session(sessionmaker(bind=self.engine,
-                                           autocommit=False, 
-                                           autoflush=False))
 
     def dedupe(self):
         threshold = self.deduper.threshold(self.file_io.data_d, recall_weight=self.recall_weight)

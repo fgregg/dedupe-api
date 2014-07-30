@@ -2,14 +2,15 @@ import os
 import json
 from flask import Flask, make_response, request, Blueprint
 from api.models import DedupeSession, User
-from api.database import session as db_session
+from api.database import session as db_session, engine, Base
 from api.auth import csrf
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from cPickle import loads
 from cStringIO import StringIO
 from api.dedupe_utils import retrain
-import sqlalchemy.exc
+from sqlalchemy.exc import NoSuchTableError
+from sqlalchemy import Table
 
 endpoints = Blueprint('endpoints', __name__)
 
@@ -55,7 +56,7 @@ def match():
         for k,v in obj.items():
             obj[k]
         data_table = db_Table('%s_data' % session_key, 
-            db_metadata, autoload=True, autoload_with=db_engine)
+            Base.metadata, autoload=True, autoload_with=db_engine)
         all_data = db_session.query(data_table).all()
         data_d = {}
         for d in all_data:
@@ -145,11 +146,11 @@ def delete_session(session_id):
     data = db_session.query(DedupeSession).get(session_id)
     db_session.delete(data)
     db_session.commit()
-    data_table = db_Table('%s_data' % session_id, 
-        db_metadata, autoload=True, autoload_with=db_engine)
+    data_table = Table('%s_data' % session_id, 
+        Base.metadata, autoload=True, autoload_with=engine)
     try:
-        data_table.drop(db_engine)
-    except db_exc.NoSuchTableError:
+        data_table.drop(engine)
+    except NoSuchTableError:
         pass
     resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
     resp.headers['Content-Type'] = 'application/json'

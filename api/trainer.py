@@ -1,7 +1,8 @@
 from flask import request, make_response, render_template, \
     session as flask_session, redirect, url_for, send_from_directory, jsonify,\
     Blueprint, current_app
-from flask_security import login_required, current_user
+from api.auth import login_required
+from flask_login import current_user
 from werkzeug import secure_filename
 import time
 from datetime import datetime, timedelta
@@ -55,8 +56,9 @@ def index():
             f.save(file_path)
             try:
                 # Need a better way of getting the connection string
+                conn_string = current_app.config['DB_CONN']
                 inp_file = DedupeFileIO(
-                    conn_string='sqlite:///%s/dedupe.db' % db_path,
+                    conn_string=conn_string,
                     session_key=flask_session['session_key'],
                     filename=fname,
                     file_obj=open(file_path, 'rb'))
@@ -69,7 +71,7 @@ def index():
                 flask_session['file_path'] = file_path
                 api_user = db_session.query(User).get(flask_session['api_key'])
                 sess = DedupeSession(
-                    uuid=flask_session['session_key'], 
+                    id=flask_session['session_key'], 
                     name=fname, 
                     user=api_user)
                 db_session.add(sess)
@@ -107,12 +109,10 @@ def select_fields():
     if not flask_session.get('deduper'):
         return redirect(url_for('trainer.index'))
     else:
-        inp = flask_session['deduper']['file_io'].converted
         filename = flask_session['filename']
         flask_session['last_interaction'] = datetime.now()
-        reader = csv.reader(StringIO(inp))
-        fields = reader.next()
-        del reader
+        fields = flask_session['deduper']['file_io'].fieldnames
+        data_d = flask_session['deduper']['file_io'].data_d
         if request.method == 'POST':
             field_list = [r for r in request.form if r != 'csrf_token']
             if field_list:
@@ -120,8 +120,6 @@ def select_fields():
                 field_defs = {}
                 for field in field_list:
                     field_defs[field] = {'type': 'String'}
-                data_d = readData(inp)
-                flask_session['deduper']['data_d'] = data_d
                 flask_session['deduper']['field_defs'] = copy.deepcopy(field_defs)
                 start = time.time()
                 sess = db_session.query(DedupeSession).get(flask_session['session_key'])

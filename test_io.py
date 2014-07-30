@@ -3,7 +3,8 @@ if __name__ == "__main__":
     import json
     import os
     from api.dedupe_utils import DedupeFileIO, WebDeduper, create_session
-    from api.database import DedupeSession, ApiUser
+    from api.models import DedupeSession, User
+    from api.database import session as db_session
     from api.trainer import readData
     from uuid import uuid4
     import dedupe
@@ -12,10 +13,9 @@ if __name__ == "__main__":
     from sqlalchemy import MetaData, Table, create_engine
     from sqlalchemy.pool import NullPool
     
-    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'api'))
-    api_key = '29ca95b8-38f9-472f-9307-f82c90182812'
-    db_session = create_session()
-    
+    DB_CONN = os.environ['DEDUPE_CONN']
+    api_key = '44dd0042-d76e-4330-a243-c3c6e533316b'
+
     try:
         sess_key = sys.argv[1]
         use_settings = True
@@ -24,21 +24,19 @@ if __name__ == "__main__":
 
     if not use_settings:
         sess_key = unicode(uuid4())
-        fname = '1405614456.36_csv_example_messy_input.csv'
-        training = 'api/upload_data/%s.json' % fname
-        fpath = 'api/upload_data/%s' % fname
-        data = readData(open(fpath).read())
+        fname = 'Candidates.csv'
+        training = 'training.json'
+        data = readData(open(fname).read())
         fields = {
-            'Phone': {'type': 'String'}, 
-            'Site name': {'type':'String'}, 
-            'Address': {'type':'String'}, 
-            'Zip':{'type':'String'}
+            'FullName': {'type': 'String'}, 
+            'FullAddress': {'type':'String'}, 
+            'OfficeName': {'type':'String'}, 
         }
-        user = db_session.query(ApiUser).get(api_key)
+        user = db_session.query(User).get(api_key)
         dd_session = DedupeSession(
             user=user,
             name='csv_messy_test.csv',
-            uuid=sess_key,
+            id=sess_key,
             training_data=open(training, 'rb').read(),
             field_defs=json.dumps(fields))
         db_session.add(dd_session)
@@ -46,10 +44,10 @@ if __name__ == "__main__":
         d = dedupe.Dedupe(fields)
         d.sample(data)
         fileio = DedupeFileIO(
-            conn_string='sqlite:///%s/dedupe.db' % db_path,
+            conn_string=DB_CONN,
             session_key=sess_key,
             filename=fname,
-            file_obj=open(fpath, 'rb'))
+            file_obj=open(fname, 'rb'))
         deduper = WebDeduper(d, 
             api_key=api_key, 
             session_key=sess_key,
@@ -57,9 +55,8 @@ if __name__ == "__main__":
         deduper.dedupe()
     else:
         dd_session = db_session.query(DedupeSession).get(sess_key)
-    path = 'sqlite:///%s/dedupe.db' % db_path
     engine = create_engine(
-        path,
+        DB_CONN,
         convert_unicode=True,
         poolclass=NullPool)
     metadata = MetaData()
@@ -69,11 +66,11 @@ if __name__ == "__main__":
     data_d = {}
     for c in data:
         data_d[c.id] = loads(c.blob)
+    print 'SESSION ID %s' % dd_session.id
     match_blob = {'blob': {
-        'Address': '10001 s woodlawn',
-        'Site name': 'board trustees-city colleges of chicago',
-        'Phone': '',
-        'Zip': '',
+        'FullName': 'Pat Quinn',
+        'OfficeName': 'Governor',
+        'FullAddress': '',
     }}
     sf = StringIO(dd_session.settings_file)
     d = dedupe.StaticGazetteer(sf)

@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
-    Column, Table
+    Column, Table, Float
 from sqlalchemy.orm import relationship, backref, synonym
 from api.database import Base, engine, session
 from flask_bcrypt import Bcrypt
@@ -12,7 +12,7 @@ def data_table(name, metadata):
         Column('id', Integer, primary_key=True),
         Column('group_id', Integer), 
         Column('blob', LargeBinary),
-        Column('confidence', Float(precision=64)),
+        Column('confidence', Float(precision=50)),
         extend_existing=True
     )
     return table
