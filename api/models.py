@@ -11,11 +11,30 @@ def data_table(name, metadata):
     table = Table(name, metadata, 
         Column('id', Integer, primary_key=True),
         Column('group_id', Integer), 
-        Column('blob', LargeBinary),
         Column('confidence', Float(precision=50)),
         extend_existing=True
     )
     return table
+
+class DBConnection(Base):
+    __tablename__ = 'db_connection'
+    session_id = Column(Integer, primary_key=True)
+    sql_flavor = Column(String(15), nullable=False)
+    host = Column(String(12), nullable=False)
+    port = Column(Integer, nullable=False)
+    user = Column(String, nullable=False)
+    password  = Column(String, nullable=False)
+    db_name = Column(String, nullable=False)
+    table_name = Column(String, nullable=False)
+
+    @property
+    def conn_string(self):
+        parts = (self.sql_flavor, self.user, self.password, 
+                 self.host, self.port, self.db_name)
+        return '%r://%r:%r@%r:%r/%r' % parts
+
+    def __repr__(self):
+        return '<DBConnection %r>' % self.conn_string
 
 class DedupeSession(Base):
     __tablename__ = 'dedupe_session'

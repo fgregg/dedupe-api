@@ -25,7 +25,7 @@
                                 {{user.id}}
                             </td>
                             <td>
-                                <a href="{{ url_for('auth.user_sessions', api_key=user.id) }}">{{user.sessions|length}}</a>
+                                <a href="{{ url_for('manager.user_sessions', api_key=user.id) }}">{{user.sessions|length}}</a>
                             </td>
                             <td>
                               <a href="{{ url_for('trainer.index', api_key=user.id ) }}">Add Training</a>

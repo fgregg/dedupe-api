@@ -38,7 +38,7 @@
         <div class="navbar-collapse collapse pull-right">
           <ul class="nav navbar-nav">
             {% if session.get('user_id') %}
-              <li><a href="{{ url_for('auth.add_user') }}">Add User</a></li>
+              <li><a href="{{ url_for('manager.add_user') }}">Add User</a></li>
               <li><a href="{{ url_for('auth.logout') }}">Logout</a></li>
             {% else %}
               <li><a href="{{ url_for('auth.login') }}">Login</a></li>
@@ -48,6 +48,19 @@
       </div>
       <div class="container">
         <div class="row">
+          {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                  {% for message in messages %}
+                      <div class="alert alert-danger alert-dismissible" role="alert">
+                          <button type="button" class="close" data-dismiss="alert">
+                              <span aria-hidden="true">&times;</span>
+                              <span class="sr-only">Close</span>
+                          </button>
+                          {{ message }}
+                      </div>
+                  {% endfor %}
+              {% endif %}
+          {% endwith %}
           {% block content %}{% endblock %}
         </div>
       </div>

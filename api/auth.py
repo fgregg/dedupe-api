@@ -1,4 +1,5 @@
-from flask import session, redirect, url_for, request, Blueprint, \
+# -*- coding: utf-8 -*-
+from flask import session as flask_session, redirect, url_for, request, Blueprint, \
     render_template, abort, flash
 from functools import wraps
 from flask_login import login_required, login_user, logout_user, LoginManager
@@ -44,49 +45,24 @@ class LoginForm(Form):
         self.user = user
         return True
 
-class AddUserForm(Form):
-    name = TextField('name', validators=[DataRequired()])
-    email = TextField('email', validators=[DataRequired(), Email()])
-    password = PasswordField('password', validators=[DataRequired()])
-
-    def __init__(self, *args, **kwargs):
-        Form.__init__(self, *args, **kwargs)
-        self.user = None
-
-    def validate(self):
-        rv = Form.validate(self)
-        if not rv:
-            return False
-
-        existing_name = db_session.query(User)\
-            .filter(User.name == self.name.data).first()
-        if existing_name:
-            self.name.errors.append('Name is already registered')
-            return False
-
-        existing_email = db_session.query(User)\
-            .filter(User.email == self.email.data).first()
-        if existing_email:
-            self.email.errors.append('Email address is already registered')
-            return False
-        
-        return True
-
 class ResetPasswordForm(Form):
     old_password = PasswordField('old_password', validators=[DataRequired()])
     new_password = PasswordField('new_password', validators=[DataRequired()])
 
-def check_roles(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        user = db_session.query(User).get(flask_session['user_id'])
-        user_roles = set([r.name for r in user.roles])
-        roles = set(kwargs.get('roles'))
-        if roles.issubset(user_roles):
-            return f(*args, **kwargs)
-        else:
-            return redirect(url_for('manager.index'))
-    return decorated
+def check_roles(roles=[]):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            user = db_session.query(User).get(flask_session['user_id'])
+            user_roles = set([r.name for r in user.roles])
+            rs = set(roles)
+            if rs.issubset(user_roles):
+                return f(*args, **kwargs)
+            else:
+                flash('Sorry, you don\'t have access to that page')
+                return redirect(url_for('manager.index'))
+        return decorated
+    return decorator
 
 @login_manager.user_loader
 def load_user(userid):
@@ -98,38 +74,12 @@ def login():
     if form.validate_on_submit():
         user = form.user
         login_user(user)
-        return redirect(request.args.get('next') or url_for('auth.user_list'))
+        return redirect(request.args.get('next') or url_for('manager.user_list'))
     email = form.email.data
     return render_template('login.html', form=form, email=email)
 
 @auth.route('/logout/')
 def logout():
     logout_user()
-    return redirect(url_for('auth.api_user_list'))
+    return redirect(url_for('manager.api_user_list'))
 
-@auth.route('/add-user/', methods=['GET', 'POST'])
-@login_required
-def add_user():
-    form = AddUserForm()
-    if form.validate_on_submit():
-        user_info = {
-            'name': form.name.data,
-            'email': form.email.data,
-        }
-        user = User(**user_info)
-        db_session.add(user)
-        db_session.commit()
-        flash('User %s added' % user.name)
-        return redirect(url_for('auth.user_list'))
-    return render_template('add_user.html', form=form)
-
-@auth.route('/user-list/')
-@login_required
-def user_list():
-    users = db_session.query(User).all()
-    return render_template('user_list.html', users=users)
-
-@auth.route('/sessions/<api_key>/')
-def user_sessions(api_key):
-    user = db_session.query(User).get(api_key)
-    return render_template('user_sessions.html', user=user)

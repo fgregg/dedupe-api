@@ -17,3 +17,16 @@ Base.query = session.query_property()
 def init_db():
     import api.models
     Base.metadata.create_all(bind=engine)
+    default_roles = [
+        {
+            'name': 'admin', 
+            'description': 'Administrator',
+        },
+        {
+            'name': 'reviewer',
+            'description': 'Reviewer'
+        }
+    ]
+    for role in default_roles:
+        session.add(api.models.Role(**role))
+    session.commit()
