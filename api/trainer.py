@@ -15,8 +15,8 @@ import time
 from dedupe import AsciiDammit
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
-from api.dedupe_utils import dedupeit, static_dedupeit, DedupeFileIO,\
-    DedupeFileError
+from api.dedupe_utils import dedupeit, static_dedupeit, make_data_d, \
+    make_raw_table, DedupeFileError
 from cStringIO import StringIO
 import csv
 from redis import Redis
@@ -25,6 +25,7 @@ from uuid import uuid4
 import collections
 from api.models import DedupeSession, User
 from api.database import session as db_session
+from api.auth import check_roles
 
 redis = Redis()
 
@@ -41,6 +42,7 @@ def allowed_file(filename):
 
 @trainer.route('/training/', methods=['GET', 'POST'])
 @login_required
+@check_roles(roles=['admin'])
 def index():
     status_code = 200
     error = None
@@ -51,196 +53,166 @@ def index():
     if request.method == 'POST':
         f = request.files['input_file']
         if f and allowed_file(f.filename):
-            fname = secure_filename(str(time.time()) + "_" + f.filename)
-            file_path = os.path.abspath(os.path.join(UPLOAD_FOLDER, fname))
-            f.save(file_path)
-            try:
-                # Need a better way of getting the connection string
-                conn_string = current_app.config['DB_CONN']
-                inp_file = DedupeFileIO(
-                    conn_string=conn_string,
-                    session_key=flask_session['session_key'],
-                    filename=fname,
-                    file_obj=open(file_path, 'rb'))
-                flask_session['last_interaction'] = datetime.now()
-                flask_session['deduper'] = {'file_io': inp_file}
-                old = datetime.now() - timedelta(seconds=60 * 30)
-                if flask_session['last_interaction'] < old:
-                    del flask_session['deduper']
-                flask_session['filename'] = fname
-                flask_session['file_path'] = file_path
-                api_user = db_session.query(User).get(flask_session['api_key'])
-                sess = DedupeSession(
-                    id=flask_session['session_key'], 
-                    name=fname, 
-                    user=api_user)
-                db_session.add(sess)
-                db_session.commit()
-                return redirect(url_for('trainer.select_fields'))
-            except DedupeFileError as e:
-                error = e.message
-                status_code = 500
+            conn_string = current_app.config['DB_CONN']
+            make_raw_table(conn_string=conn_string,
+                session_key=flask_session['session_key'],
+                filename=f.filename,
+                file_obj=f)
+            flask_session['last_interaction'] = datetime.now()
+            data_d, fields = make_data_d(conn_string=conn_string, 
+                session_key=flask_session['session_key'])
+            flask_session['data_d'] = data_d
+            flask_session['fieldnames'] = fields
+            old = datetime.now() - timedelta(seconds=60 * 30)
+            if flask_session['last_interaction'] < old:
+                del flask_session['deduper']
+            flask_session['filename'] = f.filename
+            api_user = db_session.query(User).get(flask_session['api_key'])
+            sess = DedupeSession(
+                id=flask_session['session_key'], 
+                name=f.filename, 
+                user=api_user)
+            db_session.add(sess)
+            db_session.commit()
+            return redirect(url_for('trainer.select_fields'))
         else:
             error = 'Error uploading file. Did you forget to select one?'
             status_code = 500
     return make_response(render_app_template('training.html', error=error), status_code)
 
-def preProcess(column):
-    column = AsciiDammit.asciiDammit(column)
-    column = re.sub('  +', ' ', column)
-    column = re.sub('\n', ' ', column)
-    column = column.strip().strip('"').strip("'").lower().strip()
-    return column
-
-def readData(inp):
-    data = {}
-    reader = csv.DictReader(StringIO(inp))
-    for i, row in enumerate(reader):
-        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
-        row_id = i
-        data[row_id] = dedupe.core.frozendict(clean_row)
-    return data
-
 @trainer.route('/select_fields/', methods=['GET', 'POST'])
 @login_required
+@check_roles(roles=['admin'])
 def select_fields():
     status_code = 200
     error = None
-    if not flask_session.get('deduper'):
-        return redirect(url_for('trainer.index'))
-    else:
-        filename = flask_session['filename']
-        flask_session['last_interaction'] = datetime.now()
-        fields = flask_session['deduper']['file_io'].fieldnames
-        data_d = flask_session['deduper']['file_io'].data_d
-        if request.method == 'POST':
-            field_list = [r for r in request.form if r != 'csrf_token']
-            if field_list:
-                training = True
-                field_defs = {}
-                for field in field_list:
-                    field_defs[field] = {'type': 'String'}
-                flask_session['deduper']['field_defs'] = copy.deepcopy(field_defs)
-                start = time.time()
-                sess = db_session.query(DedupeSession).get(flask_session['session_key'])
-                sess.field_defs = json.dumps(field_defs)
-                db_session.add(sess)
-                db_session.commit()
-                deduper = dedupe.Dedupe(field_defs)
-                deduper.sample(data_d, 150000)
-                flask_session['deduper']['deduper'] = deduper
-                end = time.time()
-                return redirect(url_for('trainer.training_run'))
-            else:
-                error = 'You must select at least one field to compare on.'
-                status_code = 500
-        return render_app_template('select_fields.html', error=error, fields=fields, filename=filename)
+    filename = flask_session['filename']
+    flask_session['last_interaction'] = datetime.now()
+    fields = flask_session['fieldnames']
+    data_d = flask_session['data_d']
+    if request.method == 'POST':
+        field_list = [r for r in request.form if r != 'csrf_token']
+        if field_list:
+            training = True
+            field_defs = []
+            for field in field_list:
+              field_defs.append({'field': field, 'type': 'String'})
+            flask_session['field_defs'] = copy.deepcopy(field_defs)
+            start = time.time()
+            sess = db_session.query(DedupeSession).get(flask_session['session_key'])
+            sess.field_defs = json.dumps(field_defs)
+            db_session.add(sess)
+            db_session.commit()
+            deduper = dedupe.Dedupe(field_defs)
+            deduper.sample(data_d, 150000)
+            flask_session['deduper'] = deduper
+            end = time.time()
+            return redirect(url_for('trainer.training_run'))
+        else:
+            error = 'You must select at least one field to compare on.'
+            status_code = 500
+    return render_app_template('select_fields.html', error=error, fields=fields, filename=filename)
 
 @trainer.route('/training_run/')
 @login_required
+@check_roles(roles=['admin'])
 def training_run():
-    if not flask_session.get('deduper'):
-        return redirect(url_for('trainer.index'))
-    else:
-        filename = flask_session['filename']
-        return render_app_template('training_run.html', filename=filename)
+    filename = flask_session['filename']
+    return render_app_template('training_run.html', filename=filename)
 
 @trainer.route('/get-pair/')
 @login_required
+@check_roles(roles=['admin'])
 def get_pair():
-    if not flask_session.get('deduper'):
-        return make_response(jsonify(status='error', message='need to start a session'), 400)
-    else:
-        deduper = flask_session['deduper']['deduper']
-        filename = flask_session['filename']
-        flask_session['last_interaction'] = datetime.now()
-        #fields = [f[0] for f in deduper.data_model.field_comparators]
-        fields = deduper.data_model.field_comparators
-        record_pair = deduper.uncertainPairs()[0]
-        flask_session['deduper']['current_pair'] = record_pair
-        data = []
-        left, right = record_pair
-        for field in fields:
-            d = {
-                'field': field,
-                'left': left[field],
-                'right': right[field],
-            }
-            data.append(d)
-        resp = make_response(json.dumps(data))
-        resp.headers['Content-Type'] = 'application/json'
-        return resp
+    deduper = flask_session['deduper']
+    filename = flask_session['filename']
+    flask_session['last_interaction'] = datetime.now()
+    fields = [f[0] for f in deduper.data_model.field_comparators]
+    #fields = deduper.data_model.field_comparators
+    record_pair = deduper.uncertainPairs()[0]
+    flask_session['current_pair'] = record_pair
+    data = []
+    left, right = record_pair
+    for field in fields:
+        d = {
+            'field': field,
+            'left': left[field],
+            'right': right[field],
+        }
+        data.append(d)
+    resp = make_response(json.dumps(data))
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
 
 @trainer.route('/mark-pair/')
 @login_required
+@check_roles(roles=['admin'])
 def mark_pair():
-    if not flask_session.get('deduper'):
-        return make_response(jsonify(status='error', message='need to start a session'), 400)
+    action = request.args['action']
+    flask_session['last_interaction'] = datetime.now()
+    if flask_session.get('counter'):
+        counter = flask_session['counter']
     else:
-        action = request.args['action']
-        flask_session['last_interaction'] = datetime.now()
-        if flask_session['deduper'].get('counter'):
-            counter = flask_session['deduper']['counter']
-        else:
-            counter = {'yes': 0, 'no': 0, 'unsure': 0}
-        if flask_session['deduper'].get('training_data'):
-            labels = flask_session['deduper']['training_data']
-        else:
-            labels = {'distinct' : [], 'match' : []}
-        deduper = flask_session['deduper']['deduper']
-        if action == 'yes':
-            current_pair = flask_session['deduper']['current_pair']
-            labels['match'].append(current_pair)
-            counter['yes'] += 1
-            resp = {'counter': counter}
-        elif action == 'no':
-            current_pair = flask_session['deduper']['current_pair']
-            labels['distinct'].append(current_pair)
-            counter['no'] += 1
-            resp = {'counter': counter}
-        elif action == 'finish':
-            file_io = flask_session['deduper']['file_io']
-            training_data = flask_session['deduper']['training_data']
-            sess = db_session.query(DedupeSession).get(flask_session['session_key'])
-            sess.training_data = json.dumps(training_data, default=_to_json)
-            db_session.add(sess)
-            db_session.commit()
-            field_defs = flask_session['deduper']['field_defs']
-            sample = deduper.data_sample
-            args = {
-                'field_defs': field_defs,
-                'file_io': file_io,
-                'data_sample': sample,
-                'session_key': flask_session['session_key'],
-                'api_key': flask_session['api_key'],
-            }
-            rv = dedupeit.delay(**args)
-            flask_session['deduper_key'] = rv.key
-            resp = {'finished': True}
-            flask_session['dedupe_start'] = time.time()
-        else:
-            counter['unsure'] += 1
-            flask_session['deduper']['counter'] = counter
-            resp = {'counter': counter}
-        deduper.markPairs(labels)
-        flask_session['deduper']['training_data'] = labels
-        flask_session['deduper']['counter'] = counter
-        if resp.get('finished'):
-            del flask_session['deduper']
+        counter = {'yes': 0, 'no': 0, 'unsure': 0}
+    if flask_session.get('training_data'):
+        labels = flask_session['training_data']
+    else:
+        labels = {'distinct' : [], 'match' : []}
+    deduper = flask_session['deduper']
+    if action == 'yes':
+        current_pair = flask_session['current_pair']
+        labels['match'].append(current_pair)
+        counter['yes'] += 1
+        resp = {'counter': counter}
+    elif action == 'no':
+        current_pair = flask_session['current_pair']
+        labels['distinct'].append(current_pair)
+        counter['no'] += 1
+        resp = {'counter': counter}
+    elif action == 'finish':
+        training_data = flask_session['training_data']
+        sess = db_session.query(DedupeSession).get(flask_session['session_key'])
+        sess.training_data = json.dumps(training_data, default=_to_json)
+        db_session.add(sess)
+        db_session.commit()
+        field_defs = flask_session['field_defs']
+        sample = deduper.data_sample
+        conn_string = current_app.config['DB_CONN']
+        args = {
+            'field_defs': field_defs,
+            'data_sample': sample,
+            'conn_string': conn_string,
+            'session_key': flask_session['session_key'],
+            'api_key': flask_session['api_key'],
+        }
+        rv = dedupeit.delay(**args)
+        flask_session['deduper_key'] = rv.key
+        resp = {'finished': True}
+        flask_session['dedupe_start'] = time.time()
+    else:
+        counter['unsure'] += 1
+        flask_session['counter'] = counter
+        resp = {'counter': counter}
+    deduper.markPairs(labels)
+    flask_session['training_data'] = labels
+    flask_session['counter'] = counter
+    if resp.get('finished'):
+        del flask_session['deduper']
     resp = make_response(json.dumps(resp))
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
 @trainer.route('/dedupe_finished/')
 @login_required
+@check_roles(roles=['admin'])
 def dedupe_finished():
     return render_app_template("dedupe_finished.html")
 
 @trainer.route('/adjust_threshold/')
 @login_required
+@check_roles(roles=['admin'])
 def adjust_threshold():
     filename = flask_session['filename']
-    file_path = flask_session['file_path']
     start = filename.split('_')[0]
     settings_path = None
     for f in os.listdir(UPLOAD_FOLDER):
@@ -249,7 +221,6 @@ def adjust_threshold():
     recall_weight = request.args.get('recall_weight')
     args = {
         'settings_path': settings_path,
-        'file_path': file_path,
         'filename': filename,
         'recall_weight': recall_weight,
     }
@@ -262,11 +233,13 @@ def adjust_threshold():
 
 @trainer.route('/about/')
 @login_required
+@check_roles(roles=['admin'])
 def about():
   return render_app_template("about.html")
 
 @trainer.route('/working/')
 @login_required
+@check_roles(roles=['admin'])
 def working():
     key = flask_session.get('deduper_key')
     if key is None:

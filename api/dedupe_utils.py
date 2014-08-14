@@ -13,16 +13,17 @@ import logging
 from datetime import datetime
 from api.queue import queuefunc
 from api.database import session as db_session, Base
-from api.models import DedupeSession, User, data_table
+from api.models import DedupeSession, User, entity_map
 from operator import itemgetter
-from csvkit import convert
+from csvkit import convert, sql, table
 import xlwt
 from openpyxl import Workbook
 from openpyxl.cell import get_column_letter
 from cPickle import dumps
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Table
+from unidecode import unidecode
 
 try:
     from raven import Client
@@ -48,75 +49,92 @@ class DedupeFileError(Exception):
         Exception.__init__(self, message)
         self.message = message
 
-class DedupeFileIO(object):
-    
-    def __init__(self, 
-                 conn_string=None, 
-                 session_key=None,
-                 filename=None,
-                 file_obj=None):
-        self.conn_string = conn_string
-        self.session_key = session_key
-        file_type = convert.guess_format(filename)
-        converted = convert.convert(file_obj, file_type)
-        self.readData(converted)
-        self.fieldnames = self.data_d[0].keys()
-   
-    def get_engine(self):
-        return create_engine(
-            self.conn_string,
-            convert_unicode=True,
-            poolclass=NullPool)
+def make_raw_table(conn_string=None, 
+              filename=None,
+              session_key=None,
+              file_obj=None):
+    """ 
+    Create a table from incoming tabular data
+    """
+    file_format = convert.guess_format(filename)
+    converted = StringIO(convert.convert(file_obj, file_format))
+    csv_table = table.Table.from_csv(converted, name='raw_%s' % session_key)
+    fieldnames = csv_table.headers()
+    engine = get_engine(conn_string)
+    conn = engine.connect()
+    trans = conn.begin()
+    sql_table = sql.make_table(csv_table, 
+        name='raw_%s' % session_key, 
+        metadata=Base.metadata)
+    sql_table.create(bind=engine, checkfirst=True)
+    conn.execute(sql_table.insert(), [dict(zip(fieldnames, row)) for row in csv_table.to_rows()])
+    trans.commit()
+    conn.close()
 
-    def writeDB(self, clustered_dupes):
-        """ 
-        Write clustered dupes with confidence score to DB table
-        """
-        dt = data_table('%s_data' % self.session_key, Base.metadata)
-        engine = self.get_engine()
-        dt.create(bind=engine, checkfirst=True)
-        rows = []
-        for cluster_id, cluster in enumerate(clustered_dupes):
-            id_set, confidence_score = cluster
-            cluster_list = [{'row_id': c, 'row': self.data_d[c]} for c in id_set]
-            for member in cluster_list:
-                m = {
-                    'group_id': cluster_id,
-                    'confidence': float(confidence_score),
-                    'blob': dumps(member['row']),
-                    'id': member['row_id']
-                }
-                rows.append(m)
-        conn = engine.contextual_connect()
-        conn.execute(dt.insert(), rows)
-    
-    def preProcess(self, column):
-        column = AsciiDammit.asciiDammit(column)
-        column = re.sub('  +', ' ', column)
-        column = re.sub('\n', ' ', column)
-        column = column.strip().strip('"').strip("'").lower().strip()
-        return column
- 
-    def readData(self, converted):
-        self.data_d = {}
-        f = StringIO(converted)
-        reader = csv.DictReader(f)
-        for i, row in enumerate(reader):
-            clean_row = [(k, self.preProcess(v)) for (k,v) in row.items()]
-            row_id = i
-            self.data_d[row_id] = dedupe.core.frozendict(clean_row)
+def preProcess(column):
+    column = unidecode(column)
+    column = re.sub('  +', ' ', column)
+    column = re.sub('\n', ' ', column)
+    column = column.strip().strip('"').strip("'").lower().strip()
+    return column
 
+def make_data_d(conn_string, session_key, primary_key=None):
+    session = create_session(conn_string)
+    engine = get_engine(conn_string)
+    table = Table('raw_%s' % session_key, Base.metadata, 
+        autoload=True, autoload_with=engine)
+    fields = [str(s) for s in table.columns.keys()]
+    rows = []
+    for row in session.query(table).all():
+        rows.append({k: unicode(v) for k,v in zip(fields, row)})
+    data_d = {}
+    for i, row in enumerate(rows):
+        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
+        data_d[i] = dedupe.core.frozendict(clean_row)
+    return data_d, fields
+
+def get_engine(conn_string):
+    return create_engine(
+        conn_string,
+        convert_unicode=True,
+        poolclass=NullPool)
+
+def writeEntityMap(clustered_dupes, session_key, conn_string, data_d):
+    """ 
+    Write entity map table
+    """
+    dt = entity_map('data_%s' % session_key, Base.metadata)
+    engine = get_engine(conn_string)
+    dt.create(bind=engine, checkfirst=True)
+    rows = []
+    for cluster_id, cluster in enumerate(clustered_dupes):
+        id_set, confidence_score = cluster
+        cluster_list = [{'row_id': c, 'row': data_d[c]} for c in id_set]
+        for member in cluster_list:
+            m = {
+                'group_id': cluster_id,
+                'confidence': float(confidence_score),
+                'record_id': member['row_id'],
+                'clustered': False,
+            }
+            rows.append(m)
+    conn = engine.contextual_connect()
+    conn.execute(dt.insert(), rows)
+    
 class WebDeduper(object):
     
     def __init__(self, deduper,
-            file_io=None, 
+            conn_string=None,
+            data_d=None, 
             recall_weight=2,
             session_key=None,
             api_key=None):
-        self.file_io = file_io
         self.deduper = deduper
+        self.data_d = data_d
         self.recall_weight = float(recall_weight)
-        self.db_session = create_session(file_io.conn_string)
+        self.conn_string = conn_string
+        self.session_key = session_key
+        self.db_session = create_session(conn_string)
         self.dd_session = self.db_session.query(DedupeSession).get(session_key)
         self.training_data = StringIO(self.dd_session.training_data)
         self.api_key = api_key
@@ -131,9 +149,9 @@ class WebDeduper(object):
         self.db_session.commit()
 
     def dedupe(self):
-        threshold = self.deduper.threshold(self.file_io.data_d, recall_weight=self.recall_weight)
-        clustered_dupes = self.deduper.match(self.file_io.data_d, threshold)
-        self.file_io.writeDB(clustered_dupes)
+        threshold = self.deduper.threshold(self.data_d, recall_weight=self.recall_weight)
+        clustered_dupes = self.deduper.match(self.data_d, threshold)
+        writeEntityMap(clustered_dupes, self.session_key, self.conn_string, self.data_d)
         return 'ok'
 
 @queuefunc
@@ -150,9 +168,11 @@ def retrain(session_key, conn_string):
 
 @queuefunc
 def dedupeit(**kwargs):
+    data_d, _ = make_data_d(kwargs['conn_string'], kwargs['session_key'])
     d = dedupe.Dedupe(kwargs['field_defs'], kwargs['data_sample'])
     deduper = WebDeduper(d, 
-        file_io=kwargs['file_io'],
+        data_d=data_d,
+        conn_string=kwargs['conn_string'],
         session_key=kwargs['session_key'],
         api_key=kwargs['api_key'])
     files = deduper.dedupe()
