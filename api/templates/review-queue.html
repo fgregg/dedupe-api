@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %} | Review Queue {% endblock %}
+{% block content %}
+    <div class="row">
+      <div class="col-md-12">
+      {% for group_id, cluster in grouped.items() %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Group ID</th>
+                    {% for name in cluster[0].keys() %}
+                        {% if name not in ['group_id', 'record_id'] %}
+                            <th>{{name}}</th>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for member in cluster %}
+                <tr>
+                    <td>{{ group_id }}</td>
+                    {% for k,v in member.items() %}
+                        {% if k not in ['group_id', 'record_id'] %}
+                            <td>{{v}}</td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <h4>Does the cluster above refer to the same entity?</h4>
+        <button class="btn btn-success mark-entity" id="yes_{{ group_id }}">
+            <i class='icon-ok'></i>
+            Yes
+        </button>
+        <button class="btn btn-danger mark-entity" id="no_{{ group_id }}">
+            <i class='icon-remove'></i>
+            No
+        </button>
+        <hr />
+      {% endfor %}
+      </div>
+    </div>
+{% endblock %}
+{% block extra_javascript %}
+<script type="text/javascript">
+    $(document).ready(function(){
+        $('.mark-entity').on('click', function(e){
+            e.preventDefault();
+            var group_id = $(this).attr('id').split('_')[1];
+            var action = $(this).attr('id').split('_')[0];
+            $.getJSON('/mark-cluster/{{session_id}}/', data={'group_id': group_id, 'action': action}, function(resp){
+                console.log(resp);
+            })
+        })
+    })
+</script>
+{% endblock %}

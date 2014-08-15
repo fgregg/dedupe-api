@@ -68,7 +68,7 @@ def index():
         if not request.form.get('conn_string'):
             conn_string = current_app.config['DB_CONN']
             table_name = 'raw_%s' % flask_session['session_key']
-            primary_key = None
+            primary_key = 'record_id'
             make_raw_table(conn_string=conn_string,
                 session_key=flask_session['session_key'],
                 filename=f.filename,
@@ -115,7 +115,7 @@ def select_fields():
             training = True
             field_defs = []
             for field in field_list:
-              field_defs.append({'field': field, 'type': 'String'})
+                field_defs.append({'field': field, 'type': 'String'})
             flask_session['field_defs'] = copy.deepcopy(field_defs)
             start = time.time()
             sess = db_session.query(DedupeSession).get(flask_session['session_key'])
@@ -275,11 +275,6 @@ def working():
         start = flask_session['adjust_start']
         end = time.time()
     return jsonify(ready=True, result=rv.return_value)
-
-@trainer.route('/upload_data/<path:filename>/')
-@login_required
-def upload_data(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
 
 # UTILITY
 def render_app_template(template, **kwargs):

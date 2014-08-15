@@ -22,7 +22,7 @@ from openpyxl.cell import get_column_letter
 from cPickle import dumps
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
-from sqlalchemy import create_engine, Table
+from sqlalchemy import create_engine, Table, Column, Integer
 from unidecode import unidecode
 
 try:
@@ -66,6 +66,7 @@ def make_raw_table(conn_string=None,
     sql_table = sql.make_table(csv_table, 
         name='raw_%s' % session_key, 
         metadata=Base.metadata)
+    sql_table.append_column(Column('record_id', Integer, primary_key=True))
     sql_table.create(bind=engine, checkfirst=True)
     conn.execute(sql_table.insert(), [dict(zip(fieldnames, row)) for row in csv_table.to_rows()])
     trans.commit()
@@ -78,7 +79,7 @@ def preProcess(column):
     column = column.strip().strip('"').strip("'").lower().strip()
     return column
 
-def make_data_d(conn_string, session_key, primary_key=None, table_name=None):
+def make_data_d(conn_string, session_key, primary_key='record_id', table_name=None):
     session = create_session(conn_string)
     engine = get_engine(conn_string)
     if not table_name:
@@ -90,14 +91,9 @@ def make_data_d(conn_string, session_key, primary_key=None, table_name=None):
     for row in session.query(table).all():
         rows.append({k: unicode(v) for k,v in zip(fields, row)})
     data_d = {}
-    if primary_key:
-        for row in rows:
-            clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
-            data_d[row[primary_key]] = dedupe.core.frozendict(clean_row)
-    else:
-        for i, row in enumerate(rows):
-            clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
-            data_d[i] = dedupe.core.frozendict(clean_row)
+    for row in rows:
+        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
+        data_d[row[primary_key]] = dedupe.core.frozendict(clean_row)
     return data_d, fields
 
 def get_engine(conn_string):
@@ -110,7 +106,7 @@ def writeEntityMap(clustered_dupes, session_key, conn_string, data_d):
     """ 
     Write entity map table
     """
-    dt = entity_map('data_%s' % session_key, Base.metadata)
+    dt = entity_map('entity_%s' % session_key, Base.metadata)
     engine = get_engine(conn_string)
     dt.create(bind=engine, checkfirst=True)
     rows = []
@@ -133,7 +129,10 @@ def writeBlockingMap(conn_string, session_key, block_data):
     engine = get_engine(conn_string)
     bkm.create(bind=engine, checkfirst=True)
     conn = engine.contextual_connect()
-    conn.execute(bkm.insert(), block_data)
+    insert_data = []
+    for key, record_id in block_data:
+        insert_data.append({'block_key': key, 'record_id': record_id})
+    conn.execute(bkm.insert(), insert_data)
 
 class WebDeduper(object):
     
@@ -164,7 +163,8 @@ class WebDeduper(object):
         threshold = self.deduper.threshold(self.data_d, recall_weight=self.recall_weight)
         clustered_dupes = self.deduper.match(self.data_d, threshold)
         writeEntityMap(clustered_dupes, self.session_key, self.conn_string, self.data_d)
-        block_data = self.deduper.blocker(self.data_d)
+        data_d = ((k,v) for k,v in self.data_d.items())
+        block_data = self.deduper.blocker(data_d)
         writeBlockingMap(self.conn_string, self.session_key, block_data)
         return 'ok'
 

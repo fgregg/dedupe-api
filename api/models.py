@@ -25,9 +25,12 @@ def block_map_table(name, metadata, pk_type=Integer):
     )
     return table
 
+def get_uuid():
+    return unicode(uuid4())
+
 class DedupeSession(Base):
     __tablename__ = 'dedupe_session'
-    id = Column(String, default=unicode(uuid4()), primary_key=True)
+    id = Column(String, default=get_uuid, primary_key=True)
     name = Column(String, nullable=False)
     user_id = Column(String(36), ForeignKey('user.id'))
     user = relationship('User', backref=backref('sessions'))

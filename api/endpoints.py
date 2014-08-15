@@ -147,12 +147,15 @@ def delete_session(session_id):
     db_session.delete(data)
     db_session.commit()
     try:
-        data_table = Table('data_%s' % session_id, 
+        data_table = Table('entity_%s' % session_id, 
             Base.metadata, autoload=True, autoload_with=engine)
         data_table.drop(engine)
         raw_table = Table('raw_%s' % session_id, 
             Base.metadata, autoload=True, autoload_with=engine)
         raw_table.drop(engine)
+        block_table = Table('block_%s' % session_id, 
+            Base.metadata, autoload=True, autoload_with=engine)
+        block_table.drop(engine)
     except NoSuchTableError:
         pass
     resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
