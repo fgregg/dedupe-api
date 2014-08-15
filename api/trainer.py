@@ -40,45 +40,64 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@trainer.route('/training/', methods=['GET', 'POST'])
+@trainer.route('/', methods=['GET', 'POST'])
 @login_required
-@check_roles(roles=['admin'])
 def index():
+    user = db_session.query(User).get(flask_session['user_id'])
     status_code = 200
     error = None
-    api_key = request.args.get('api_key')
-    if api_key is not None:
-        flask_session['api_key'] = api_key
-        flask_session['session_key'] = unicode(uuid4())
+    flask_session['session_key'] = unicode(uuid4())
+    session_values = [
+        'dedupe_start',
+        'data_d',
+        'fieldnames',
+        'filename',
+        'last_interaction',
+        'training_data',
+        'current_pair',
+        'field_defs',
+        'counter',
+    ]
+    for k in session_values:
+        try:
+            del flask_session[k]
+        except KeyError:
+            pass
     if request.method == 'POST':
         f = request.files['input_file']
-        if f and allowed_file(f.filename):
+        if not request.form.get('conn_string'):
             conn_string = current_app.config['DB_CONN']
+            table_name = 'raw_%s' % flask_session['session_key']
+            primary_key = None
             make_raw_table(conn_string=conn_string,
                 session_key=flask_session['session_key'],
                 filename=f.filename,
                 file_obj=f)
-            flask_session['last_interaction'] = datetime.now()
-            data_d, fields = make_data_d(conn_string=conn_string, 
-                session_key=flask_session['session_key'])
-            flask_session['data_d'] = data_d
-            flask_session['fieldnames'] = fields
-            old = datetime.now() - timedelta(seconds=60 * 30)
-            if flask_session['last_interaction'] < old:
-                del flask_session['deduper']
-            flask_session['filename'] = f.filename
-            api_user = db_session.query(User).get(flask_session['api_key'])
-            sess = DedupeSession(
-                id=flask_session['session_key'], 
-                name=f.filename, 
-                user=api_user)
-            db_session.add(sess)
-            db_session.commit()
-            return redirect(url_for('trainer.select_fields'))
         else:
-            error = 'Error uploading file. Did you forget to select one?'
-            status_code = 500
-    return make_response(render_app_template('training.html', error=error), status_code)
+            # Leaving this in here for now so we can hook into users
+            # databases later on if we want to
+            conn_string = request.form['conn_string']
+            table_name = request.form['table_name']
+            primary_key = request.form.get('primary_key')
+        flask_session['last_interaction'] = datetime.now()
+        data_d, fields = make_data_d(conn_string, 
+                                         flask_session['session_key'], 
+                                         table_name=table_name,
+                                         primary_key=primary_key)
+        flask_session['data_d'] = data_d
+        flask_session['fieldnames'] = fields
+        old = datetime.now() - timedelta(seconds=60 * 30)
+        if flask_session['last_interaction'] < old:
+            del flask_session['deduper']
+        flask_session['filename'] = f.filename
+        sess = DedupeSession(
+            id=flask_session['session_key'], 
+            name=f.filename, 
+            user=user)
+        db_session.add(sess)
+        db_session.commit()
+        return redirect(url_for('trainer.select_fields'))
+    return make_response(render_app_template('index.html', error=error, user=user), status_code)
 
 @trainer.route('/select_fields/', methods=['GET', 'POST'])
 @login_required
@@ -104,7 +123,7 @@ def select_fields():
             db_session.add(sess)
             db_session.commit()
             deduper = dedupe.Dedupe(field_defs)
-            deduper.sample(data_d, 150000)
+            deduper.sample(data_d, 500000)
             flask_session['deduper'] = deduper
             end = time.time()
             return redirect(url_for('trainer.training_run'))
@@ -183,7 +202,7 @@ def mark_pair():
             'data_sample': sample,
             'conn_string': conn_string,
             'session_key': flask_session['session_key'],
-            'api_key': flask_session['api_key'],
+            'data_d': flask_session['data_d'],
         }
         rv = dedupeit.delay(**args)
         flask_session['deduper_key'] = rv.key

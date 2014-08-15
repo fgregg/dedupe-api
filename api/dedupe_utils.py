@@ -13,7 +13,7 @@ import logging
 from datetime import datetime
 from api.queue import queuefunc
 from api.database import session as db_session, Base
-from api.models import DedupeSession, User, entity_map
+from api.models import DedupeSession, User, entity_map, block_map_table
 from operator import itemgetter
 from csvkit import convert, sql, table
 import xlwt
@@ -78,19 +78,26 @@ def preProcess(column):
     column = column.strip().strip('"').strip("'").lower().strip()
     return column
 
-def make_data_d(conn_string, session_key, primary_key=None):
+def make_data_d(conn_string, session_key, primary_key=None, table_name=None):
     session = create_session(conn_string)
     engine = get_engine(conn_string)
-    table = Table('raw_%s' % session_key, Base.metadata, 
+    if not table_name:
+        table_name = 'raw_%s' % session_key
+    table = Table(table_name, Base.metadata, 
         autoload=True, autoload_with=engine)
     fields = [str(s) for s in table.columns.keys()]
     rows = []
     for row in session.query(table).all():
         rows.append({k: unicode(v) for k,v in zip(fields, row)})
     data_d = {}
-    for i, row in enumerate(rows):
-        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
-        data_d[i] = dedupe.core.frozendict(clean_row)
+    if primary_key:
+        for row in rows:
+            clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
+            data_d[row[primary_key]] = dedupe.core.frozendict(clean_row)
+    else:
+        for i, row in enumerate(rows):
+            clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
+            data_d[i] = dedupe.core.frozendict(clean_row)
     return data_d, fields
 
 def get_engine(conn_string):
@@ -120,15 +127,21 @@ def writeEntityMap(clustered_dupes, session_key, conn_string, data_d):
             rows.append(m)
     conn = engine.contextual_connect()
     conn.execute(dt.insert(), rows)
-    
+
+def writeBlockingMap(conn_string, session_key, block_data):
+    bkm = block_map_table('block_%s' % session_key, Base.metadata)
+    engine = get_engine(conn_string)
+    bkm.create(bind=engine, checkfirst=True)
+    conn = engine.contextual_connect()
+    conn.execute(bkm.insert(), block_data)
+
 class WebDeduper(object):
     
     def __init__(self, deduper,
             conn_string=None,
             data_d=None, 
             recall_weight=2,
-            session_key=None,
-            api_key=None):
+            session_key=None):
         self.deduper = deduper
         self.data_d = data_d
         self.recall_weight = float(recall_weight)
@@ -137,7 +150,6 @@ class WebDeduper(object):
         self.db_session = create_session(conn_string)
         self.dd_session = self.db_session.query(DedupeSession).get(session_key)
         self.training_data = StringIO(self.dd_session.training_data)
-        self.api_key = api_key
         self.field_defs = json.loads(self.dd_session.field_defs)
         # Will need to figure out static dedupe, maybe
         self.deduper.readTraining(self.training_data)
@@ -152,6 +164,8 @@ class WebDeduper(object):
         threshold = self.deduper.threshold(self.data_d, recall_weight=self.recall_weight)
         clustered_dupes = self.deduper.match(self.data_d, threshold)
         writeEntityMap(clustered_dupes, self.session_key, self.conn_string, self.data_d)
+        block_data = self.deduper.blocker(self.data_d)
+        writeBlockingMap(self.conn_string, self.session_key, block_data)
         return 'ok'
 
 @queuefunc
@@ -168,13 +182,11 @@ def retrain(session_key, conn_string):
 
 @queuefunc
 def dedupeit(**kwargs):
-    data_d, _ = make_data_d(kwargs['conn_string'], kwargs['session_key'])
     d = dedupe.Dedupe(kwargs['field_defs'], kwargs['data_sample'])
     deduper = WebDeduper(d, 
-        data_d=data_d,
+        data_d=kwargs['data_d'],
         conn_string=kwargs['conn_string'],
-        session_key=kwargs['session_key'],
-        api_key=kwargs['api_key'])
+        session_key=kwargs['session_key'])
     files = deduper.dedupe()
     del d
     return files

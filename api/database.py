@@ -2,6 +2,16 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
+DEFAULT_ROLES = [
+    {
+        'name': 'admin', 
+        'description': 'Administrator',
+    },
+    {
+        'name': 'reviewer',
+        'description': 'Reviewer'
+    }
+]
 
 conn_string = os.environ['DEDUPE_CONN']
 
@@ -17,16 +27,6 @@ Base.query = session.query_property()
 def init_db():
     import api.models
     Base.metadata.create_all(bind=engine)
-    default_roles = [
-        {
-            'name': 'admin', 
-            'description': 'Administrator',
-        },
-        {
-            'name': 'reviewer',
-            'description': 'Reviewer'
-        }
-    ]
-    for role in default_roles:
+    for role in DEFAULT_ROLES:
         session.add(api.models.Role(**role))
     session.commit()

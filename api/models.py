@@ -17,7 +17,7 @@ def entity_map(name, metadata, pk_type=Integer):
     )
     return table
 
-def block_key_table(name, metadata, pk_type=Integer):
+def block_map_table(name, metadata, pk_type=Integer):
     table = Table(name, metadata,
         Column('block_key', String(200)),
         Column('record_id', pk_type),
@@ -34,6 +34,8 @@ class DedupeSession(Base):
     training_data = Column(LargeBinary)
     settings_file = Column(LargeBinary)
     field_defs = Column(LargeBinary)
+    conn_string = Column(String)
+    table_name = Column(String)
 
     def __repr__(self):
         return '<DedupeSession %r (%r)>' % (self.user.name, self.name)

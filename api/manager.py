@@ -1,6 +1,6 @@
 from flask import Blueprint, request, session as flask_session, \
     render_template
-from api.database import session as db_session
+from api.database import session as db_session, DEFAULT_ROLES
 from api.models import User, Role
 from api.auth import login_required, check_roles
 from flask_wtf import Form
@@ -9,7 +9,7 @@ from wtforms.validators import DataRequired, Email
 
 manager = Blueprint('manager', __name__)
 
-ROLE_CHOICES = [(r.name, r.description,) for r in db_session.query(Role).all()]
+ROLE_CHOICES = [(r['name'], r['description'],) for r in DEFAULT_ROLES]
 
 class AddUserForm(Form):
     name = TextField('name', validators=[DataRequired()])
@@ -41,10 +41,6 @@ class AddUserForm(Form):
         
         return True
 
-@manager.route('/')
-def index():
-    return render_template('index.html')
-
 @manager.route('/add-user/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
@@ -70,17 +66,13 @@ def add_user():
 
 @manager.route('/user-list/')
 @login_required
+@check_roles(roles=['admin'])
 def user_list():
     users = db_session.query(User).all()
     return render_template('user_list.html', users=users)
 
-@manager.route('/sessions/<api_key>/')
-def user_sessions(api_key):
-    user = db_session.query(User).get(api_key)
-    return render_template('user_sessions.html', user=user)
-
-@manager.route('/manager/')
+@manager.route('/')
 @login_required
-def manage():
+def index():
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('manager.html', user=user)
+    return render_template('index.html', user=user)
