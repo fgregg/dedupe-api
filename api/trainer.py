@@ -130,14 +130,16 @@ def select_fields():
         else:
             error = 'You must select at least one field to compare on.'
             status_code = 500
-    return render_app_template('select_fields.html', error=error, fields=fields, filename=filename)
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_app_template('select_fields.html', error=error, fields=fields, filename=filename, user=user)
 
 @trainer.route('/training_run/')
 @login_required
 @check_roles(roles=['admin'])
 def training_run():
     filename = flask_session['filename']
-    return render_app_template('training_run.html', filename=filename)
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_app_template('training_run.html', filename=filename, user=user)
 
 @trainer.route('/get-pair/')
 @login_required
@@ -225,7 +227,8 @@ def mark_pair():
 @login_required
 @check_roles(roles=['admin'])
 def dedupe_finished():
-    return render_app_template("dedupe_finished.html")
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_app_template("dedupe_finished.html", user=user)
 
 @trainer.route('/adjust_threshold/')
 @login_required
@@ -251,10 +254,8 @@ def adjust_threshold():
     return resp
 
 @trainer.route('/about/')
-@login_required
-@check_roles(roles=['admin'])
 def about():
-  return render_app_template("about.html")
+    return render_app_template("about.html")
 
 @trainer.route('/working/')
 @login_required

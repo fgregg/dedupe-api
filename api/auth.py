@@ -81,5 +81,5 @@ def login():
 @auth.route('/logout/')
 def logout():
     logout_user()
-    return redirect(url_for('manager.api_user_list'))
+    return redirect(url_for('auth.login'))
 

@@ -32,8 +32,6 @@ class DedupeSession(Base):
     __tablename__ = 'dedupe_session'
     id = Column(String, default=get_uuid, primary_key=True)
     name = Column(String, nullable=False)
-    user_id = Column(String(36), ForeignKey('user.id'))
-    user = relationship('User', backref=backref('sessions'))
     training_data = Column(LargeBinary)
     settings_file = Column(LargeBinary)
     field_defs = Column(LargeBinary)
@@ -41,7 +39,7 @@ class DedupeSession(Base):
     table_name = Column(String)
 
     def __repr__(self):
-        return '<DedupeSession %r (%r)>' % (self.user.name, self.name)
+        return '<DedupeSession %r >' % (self.name)
 
 roles_users = Table('role_users', Base.metadata,
     Column('user_id', String(36), ForeignKey('user.id')),
@@ -79,10 +77,11 @@ class User(Base):
     password = property(_get_password, _set_password)
     password = synonym('_password', descriptor=password)
 
-    def __init__(self, name, password, email):
+    def __init__(self, name, password, email, roles):
         self.name = name
         self.password = password
         self.email = email
+        self.roles = roles
 
     @classmethod
     def get_by_username(cls, name):

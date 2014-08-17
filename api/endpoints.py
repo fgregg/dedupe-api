@@ -141,6 +141,16 @@ def settings_file(session_id):
     return resp
 
 @csrf.exempt
+@endpoints.route('/field-definitions/<session_id>/')
+def field_definitions(session_id):
+    data = db_session.query(DedupeSession).get(session_id)
+    field_defs = data.field_defs
+    resp = make_response(field_defs, 200)
+    resp.headers['Content-Type'] = 'text/plain'
+    resp.headers['Content-Disposition'] = 'attachment; filename=%s_field_defs.json' % data.uuid
+    return resp
+
+@csrf.exempt
 @endpoints.route('/delete-session/<session_id>/')
 def delete_session(session_id):
     data = db_session.query(DedupeSession).get(session_id)
@@ -162,12 +172,3 @@ def delete_session(session_id):
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@csrf.exempt
-@endpoints.route('/field-definitions/<session_id>/')
-def field_definitions(session_id):
-    data = db_session.query(DedupeSession).get(session_id)
-    field_defs = data.field_defs
-    resp = make_response(field_defs, 200)
-    resp.headers['Content-Type'] = 'text/plain'
-    resp.headers['Content-Disposition'] = 'attachment; filename=%s_field_defs.json' % data.uuid
-    return resp

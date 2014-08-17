@@ -50,8 +50,8 @@
             {% endif %}
                 <label for="id_roles">Roles</label>
                 <select multiple class="form-control" id="id_roles" name="roles">
-                    {% for role in roles %}
-                        <option value="{{ role.name }}">{{ role.description }}</option>
+                    {% for id, role, chosen in form.roles.iter_choices() %}
+                        <option value="{{ id }}">{{ role.description }}</option>
                     {% endfor %}
                 </select>
                 {% if form.roles.errors %}

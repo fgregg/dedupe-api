@@ -8,8 +8,6 @@
                         <th>Name</th>
                         <th>Email</th>
                         <th>API Key</th>
-                        <th>Dedupe Sessions</th>
-                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -23,12 +21,6 @@
                             </td>
                             <td>
                                 {{user.id}}
-                            </td>
-                            <td>
-                                <a href="{{ url_for('manager.user_sessions', api_key=user.id) }}">{{user.sessions|length}}</a>
-                            </td>
-                            <td>
-                              <a href="{{ url_for('trainer.index', api_key=user.id ) }}">Add Training</a>
                             </td>
                         </tr>
                     {% endfor %}

@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h4>Dedupe sessions ready for review</h4>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Session ID</th>
+                    <th></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sess in sessions %}
+                    <tr>
+                        <td>
+                            {{sess.name}}
+                        </td>
+                        <td>
+                            {{sess.id}}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('manager.review_queue', session_id=sess.id) }}">Review Queue</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('endpoints.delete_session', session_id=sess.id ) }}">Delete</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+

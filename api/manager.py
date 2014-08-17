@@ -1,10 +1,11 @@
 from flask import Blueprint, request, session as flask_session, \
-    render_template, make_response
-from api.database import session as db_session, DEFAULT_ROLES
+    render_template, make_response, flash, redirect
+from api.database import session as db_session
 from api.models import User, Role
 from api.auth import login_required, check_roles
 from flask_wtf import Form
-from wtforms import TextField, PasswordField, SelectMultipleField
+from wtforms import TextField, PasswordField
+from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
 from wtforms.validators import DataRequired, Email
 from sqlalchemy import Table
 from api.database import session as db_session, engine, Base
@@ -16,18 +17,18 @@ from cPickle import loads
 
 manager = Blueprint('manager', __name__)
 
-ROLE_CHOICES = [(r['name'], r['description'],) for r in DEFAULT_ROLES]
+def role_choices():
+    return Role.query.all()
 
 class AddUserForm(Form):
     name = TextField('name', validators=[DataRequired()])
     email = TextField('email', validators=[DataRequired(), Email()])
-    roles = SelectMultipleField('roles', choices=ROLE_CHOICES, 
+    roles = QuerySelectMultipleField('roles', query_factory=role_choices, 
                                 validators=[DataRequired()])
     password = PasswordField('password', validators=[DataRequired()])
 
     def __init__(self, *args, **kwargs):
         Form.__init__(self, *args, **kwargs)
-        self.user = None
 
     def validate(self):
         rv = Form.validate(self)
@@ -53,38 +54,42 @@ class AddUserForm(Form):
 @check_roles(roles=['admin'])
 def add_user():
     form = AddUserForm()
+    user = db_session.query(User).get(flask_session['user_id'])
     if form.validate_on_submit():
-        roles = []
-        for role in roles:
-            r = db_session.query(Role).filter(Role.name == role).first()
-            roles.append(r)
         user_info = {
             'name': form.name.data,
             'email': form.email.data,
-            'roles': roles,
+            'password': form.password.data,
+            'roles': form.roles.data,
         }
         user = User(**user_info)
         db_session.add(user)
         db_session.commit()
         flash('User %s added' % user.name)
-        return redirect(url_for('auth.user_list'))
-    roles = db_session.query(Role).all()
-    return render_template('add_user.html', form=form, roles=roles)
+        return redirect(url_for('manager.user_list'))
+    return render_template('add_user.html', form=form, user=user)
 
 @manager.route('/user-list/')
 @login_required
 @check_roles(roles=['admin'])
 def user_list():
     users = db_session.query(User).all()
-    return render_template('user_list.html', users=users)
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_template('user_list.html', users=users, user=user)
+
+@manager.route('/review/')
+@login_required
+@check_roles(roles=['admin', 'reviewer'])
+def review():
+    sessions = db_session.query(DedupeSession).all()
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_template('review.html', sessions=sessions, user=user)
 
 @manager.route('/review-queue/<session_id>/')
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
 def review_queue(session_id):
     user = db_session.query(User).get(flask_session['user_id'])
-    if session_id not in [s.id for s in user.sessions]:
-        return abort(401)
     sess = db_session.query(DedupeSession).get(session_id)
     field_defs = [f['field'] for f in json.loads(sess.field_defs)]
     raw_table = Table('raw_%s' % session_id, Base.metadata, 
@@ -120,21 +125,16 @@ def review_queue(session_id):
 @check_roles(roles=['admin', 'reviewer'])
 def mark_cluster(session_id):
     user = db_session.query(User).get(flask_session['user_id'])
-    if session_id not in [s.id for s in user.sessions]:
-        return abort(401)
     entity_table = Table('entity_%s' % session_id, Base.metadata,
         autoload=True, autoload_with=engine)
     conn = engine.contextual_connect()
     group_id = request.args.get('group_id')
-    update = {}
     if request.args.get('action') == 'yes':
-        update['clustered'] = True
         upd = entity_table.update()\
             .where(entity_table.c.group_id == group_id)\
             .values(clustered=True)
         conn.execute(upd)
-    elif request.args.get('actions') == 'no':
-        rows = group.all()
+    elif request.args.get('action') == 'no':
         dels = entity_table.delete()\
             .where(entity_table.c.group_id == group_id)
         conn.execute(dels)
