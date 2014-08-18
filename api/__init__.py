@@ -13,22 +13,15 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'upload_data')
 
 def create_app():
     app = Flask(__name__)
-   #app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-   #app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
-   #app.config['SECRET_KEY'] = os.environ['FLASK_KEY']
-   #app.config['REDIS_QUEUE_KEY'] = 'deduper'
-   #app.config['DB_CONN'] = DB_CONN
     app.config.from_object('api.app_config')
     redis = Redis()
     app.session_interface = RedisSessionInterface(redis=redis)
-    try:
-        from raven.contrib.flask import Sentry
-        app.config['SENTRY_DSN'] = os.environ['DEDUPE_WEB_SENTRY_URL']
-        sentry = Sentry(app)
-    except ImportError:
-        pass
-    except KeyError:
-        pass
+    if app.config.get('SENTRY_DSN'):
+        try:
+            from raven.contrib.flask import Sentry
+            sentry = Sentry(app)
+        except ImportError:
+            pass
     csrf.init_app(app)
     bcrypt.init_app(app)
     login_manager.init_app(app)
