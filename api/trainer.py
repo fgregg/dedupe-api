@@ -91,8 +91,7 @@ def index():
         flask_session['filename'] = f.filename
         sess = DedupeSession(
             id=flask_session['session_key'], 
-            name=f.filename, 
-            user=user)
+            name=f.filename)
         db_session.add(sess)
         db_session.commit()
         return redirect(url_for('trainer.select_fields'))
