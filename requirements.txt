@@ -4,8 +4,6 @@ redis
 dedupe
 csvkit
 xlwt
-psycopg2
-mysql-python
 Flask-WTF
 Flask-Login
 flask-bcrypt
