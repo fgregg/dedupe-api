@@ -1,19 +1,20 @@
 from flask import Blueprint, request, session as flask_session, \
     render_template, make_response, flash, redirect, url_for
-from api.database import session as db_session
-from api.models import User, Role
+from api.database import session as db_session, engine, Base
+from api.models import User, Role, DedupeSession
 from api.auth import login_required, check_roles
+from api.dedupe_utils import get_or_create_master_table, preProcess
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
 from wtforms.validators import DataRequired, Email
-from sqlalchemy import Table
-from api.database import session as db_session, engine, Base
-from api.models import DedupeSession
+from sqlalchemy import Table, and_
+from sqlalchemy.sql import select
 from itertools import groupby
 from operator import itemgetter
 import json
 from cPickle import loads
+from dedupe.convenience import canonicalize
 
 manager = Blueprint('manager', __name__)
 
@@ -119,26 +120,4 @@ def review_queue(session_id):
         'session_id': session_id
     }
     return render_template('review-queue.html', **context)
-
-@manager.route('/mark-cluster/<session_id>/')
-@login_required
-@check_roles(roles=['admin', 'reviewer'])
-def mark_cluster(session_id):
-    user = db_session.query(User).get(flask_session['user_id'])
-    entity_table = Table('entity_%s' % session_id, Base.metadata,
-        autoload=True, autoload_with=engine)
-    conn = engine.contextual_connect()
-    group_id = request.args.get('group_id')
-    if request.args.get('action') == 'yes':
-        upd = entity_table.update()\
-            .where(entity_table.c.group_id == group_id)\
-            .values(clustered=True)
-        conn.execute(upd)
-    elif request.args.get('action') == 'no':
-        dels = entity_table.delete()\
-            .where(entity_table.c.group_id == group_id)
-        conn.execute(dels)
-    resp = make_response(json.dumps({}))
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
 

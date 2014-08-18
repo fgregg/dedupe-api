@@ -16,14 +16,17 @@ from api.database import session as db_session, Base
 from api.models import DedupeSession, User, entity_map, block_map_table
 from operator import itemgetter
 from csvkit import convert, sql, table
+from csvkit.unicsv import UnicodeCSVDictReader
 import xlwt
 from openpyxl import Workbook
 from openpyxl.cell import get_column_letter
 from cPickle import dumps
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
-from sqlalchemy import create_engine, Table, Column, Integer
+from sqlalchemy import create_engine, Table, Column, Integer, Float, Boolean, \
+    String
 from unidecode import unidecode
+from sqlalchemy.exc import NoSuchTableError
 
 try:
     from raven import Client
@@ -58,19 +61,46 @@ def make_raw_table(conn_string=None,
     """
     file_format = convert.guess_format(filename)
     converted = StringIO(convert.convert(file_obj, file_format))
-    csv_table = table.Table.from_csv(converted, name='raw_%s' % session_key)
-    fieldnames = csv_table.headers()
+    fieldnames = converted.next().strip('\r\n').split(',')
+    converted.seek(0)
+    cols = []
+    for field in fieldnames:
+        cols.append(Column(field, String))
     engine = get_engine(conn_string)
     conn = engine.connect()
     trans = conn.begin()
-    sql_table = sql.make_table(csv_table, 
-        name='raw_%s' % session_key, 
-        metadata=Base.metadata)
+    sql_table = Table('raw_%s' % session_key, Base.metadata, *cols)
     sql_table.append_column(Column('record_id', Integer, primary_key=True))
     sql_table.create(bind=engine, checkfirst=True)
-    conn.execute(sql_table.insert(), [dict(zip(fieldnames, row)) for row in csv_table.to_rows()])
+    reader = UnicodeCSVDictReader(converted)
+    for row in reader:
+        conn.execute(sql_table.insert(), **row)
     trans.commit()
     conn.close()
+
+def get_or_create_master_table(conn_string, session_id):
+    cols = []
+    engine = get_engine(conn_string)
+    try:
+        master_table = Table('master_%s' % session_id, Base.metadata,
+            autoload=True, autoload_with=engine)
+    except NoSuchTableError:
+        raw_table = Table('raw_%s' % session_id, Base.metadata,
+            autoload=True, autoload_with=engine)
+        for col in raw_table.columns:
+            kwargs = {}
+            if col.type == Integer:
+                kwargs['default'] = 0
+            if col.type == Float:
+                kwargs['default'] = 0.0
+            if col.type == Boolean:
+                kwargs['default'] = None
+            cols.append(Column(col.name, col.type, **kwargs))
+        master_table = Table('master_%s' % session_id, Base.metadata,
+            *cols, extend_existing=True)
+        master_table.append_column(Column('master_record_id', Integer, primary_key=True))
+        master_table.create(bind=engine)
+    return master_table
 
 def preProcess(column):
     column = unidecode(column)
