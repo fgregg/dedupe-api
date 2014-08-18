@@ -2,6 +2,8 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
+from api.app_config import DB_CONN
+
 DEFAULT_ROLES = [
     {
         'name': 'admin', 
@@ -13,9 +15,7 @@ DEFAULT_ROLES = [
     }
 ]
 
-conn_string = os.environ['DEDUPE_CONN']
-
-engine = create_engine(conn_string, convert_unicode=True)
+engine = create_engine(DB_CONN, convert_unicode=True)
 
 session = scoped_session(sessionmaker(bind=engine, 
                                       autocommit=False, 

@@ -1,0 +1,4 @@
+DB_CONN='database://connection:@string/thingy'
+MAX_CONTENT_LENGTH = 5 * 1024 * 1024
+SECRET_KEY = 'super secret key'
+REDIS_QUEUE_KEY = 'any_string'
