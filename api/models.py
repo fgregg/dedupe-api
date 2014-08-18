@@ -57,7 +57,7 @@ class Role(Base):
 
 class User(Base):
     __tablename__ = 'user'
-    id = Column(String(36), default=unicode(uuid4()), primary_key=True)
+    id = Column(String(36), default=get_uuid, primary_key=True)
     name = Column(String, nullable=False, unique=True)
     email = Column(String, nullable=False, unique=True)
     active = Column(Boolean())
