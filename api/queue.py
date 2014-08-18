@@ -3,8 +3,7 @@ from redis import Redis
 from uuid import uuid4
 import sys
 import os
-
-REDIS_Q_KEY = 'deduper'
+from api.app_config import REDIS_QUEUE_KEY
 
 try:
     from raven import Client
@@ -31,17 +30,17 @@ class DelayedResult(object):
     
 def queuefunc(f):
     def delay(*args, **kwargs):
-        qkey = REDIS_Q_KEY
+        qkey = REDIS_QUEUE_KEY
         key = '%s:result:%s' % (qkey, str(uuid4()))
         s = dumps((f, key, args, kwargs))
-        redis.rpush(REDIS_Q_KEY, s)
+        redis.rpush(REDIS_QUEUE_KEY, s)
         return DelayedResult(key)
     f.delay = delay
     return f
 
 def queue_daemon(rv_ttl=500):
     while 1:
-        msg = redis.blpop(REDIS_Q_KEY)
+        msg = redis.blpop(REDIS_QUEUE_KEY)
         func, key, args, kwargs = loads(msg[1])
         try:
             rv = func(*args, **kwargs)
