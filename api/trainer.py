@@ -7,7 +7,6 @@ from werkzeug import secure_filename
 import time
 from datetime import datetime, timedelta
 import json
-import requests
 import re
 import os
 import copy
