@@ -4,6 +4,7 @@
     <div class="row">
       <div class="col-md-12">
       {% for group_id, cluster in grouped.items() %}
+        <div id="group_{{ group_id }}">
         <table class="table">
             <thead>
                 <tr>
@@ -38,6 +39,7 @@
             No
         </button>
         <hr />
+        </div>
       {% endfor %}
       </div>
     </div>
@@ -50,7 +52,7 @@
             var group_id = $(this).attr('id').split('_')[1];
             var action = $(this).attr('id').split('_')[0];
             $.getJSON('/mark-cluster/{{session_id}}/', data={'group_id': group_id, 'action': action}, function(resp){
-                console.log(resp);
+                $('#group_' + group_id).remove();
             })
         })
     })
