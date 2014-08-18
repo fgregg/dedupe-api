@@ -7,3 +7,4 @@ xlwt
 Flask-WTF
 Flask-Login
 flask-bcrypt
+unidecode
