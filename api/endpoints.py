@@ -1,7 +1,8 @@
 import os
 import json
-from flask import Flask, make_response, request, Blueprint
-from api.models import DedupeSession, User
+from flask import Flask, make_response, request, Blueprint, \
+    session as flask_session
+from api.models import DedupeSession, User, Group
 from api.database import session as db_session, engine, Base
 from api.auth import csrf
 from api.dedupe_utils import get_or_create_master_table
@@ -13,6 +14,9 @@ from cStringIO import StringIO
 from api.dedupe_utils import retrain
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy import Table, select, and_
+from itertools import groupby
+from operator import itemgetter
+from datetime import datetime, timedelta
 
 endpoints = Blueprint('endpoints', __name__)
 
@@ -206,6 +210,160 @@ def master(session_id):
     resp = make_response(json.dumps(master_rows))
     resp.headers['Content-Type'] = 'application/json'
     return resp
+
+@endpoints.route('/session-list/')
+def review():
+    api_key = None
+    resp = {
+        'status': 'ok',
+        'message': ''
+    }
+    status_code = 200
+    if flask_session.get('user_id'):
+        api_key = flask_session['user_id']
+    else:
+        api_key = request.args.get('api_key')
+    if not api_key:
+        resp['status'] = 'error'
+        resp['message'] = "'api_key' is a required parameter"
+        status_code = 401
+    else:
+        user = db_session.query(User).get(api_key)
+        sessions = db_session.query(DedupeSession)\
+            .filter(DedupeSession.group.has(Group.id.in_([i.id for i in user.groups]))).all()
+        all_sessions = [s.as_dict() for s in sessions]
+        resp['objects'] = all_sessions
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+@endpoints.route('/review-queue/<session_id>/')
+def review_queue(session_id):
+    api_key = None
+    resp = {
+        'status': 'ok',
+        'message': ''
+    }
+    status_code = 200
+    if flask_session.get('user_id'):
+        api_key = flask_session['user_id']
+    else:
+        api_key = request.args.get('api_key')
+    if not api_key:
+        resp['status'] = 'error'
+        resp['message'] = "'api_key' is a required parameter"
+        status_code = 401
+    else:
+        user = db_session.query(User).get(api_key)
+        sess = db_session.query(DedupeSession)\
+            .filter(DedupeSession.group.has(
+                Group.id.in_([i.id for i in user.groups])))\
+            .filter(DedupeSession.id == session_id)\
+            .first()
+        if not sess:
+            resp['status'] = 'error'
+            resp['message'] = "You don't have access to session '%s'" % session_id
+            status_code = 401
+        else:
+            field_defs = [f['field'] for f in json.loads(sess.field_defs)]
+            raw_table = Table('raw_%s' % session_id, Base.metadata, 
+                autoload=True, autoload_with=engine)
+            entity_table = Table('entity_%s' % session_id, Base.metadata,
+                autoload=True, autoload_with=engine)
+            cols = [getattr(raw_table.c, f) for f in field_defs]
+            cols.append(raw_table.c.record_id)
+            q = db_session.query(entity_table, *cols)
+            fields = [f['name'] for f in q.column_descriptions]
+            clusters = q.filter(raw_table.c.record_id == entity_table.c.record_id)\
+                .filter(entity_table.c.clustered == False)\
+                .order_by(entity_table.c.group_id)\
+                .all()
+            clusters_d = []
+            for cluster in clusters:
+                d = {}
+                for k,v in zip(fields, cluster):
+                    d[k] = v
+                clusters_d.append(d)
+            grouped = {}
+            for k,g in groupby(clusters_d, key=itemgetter('group_id')):
+                grouped[k] = list(g)
+            resp['objects'] = grouped,
+            resp['session_id'] = session_id
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+def checkin_sessions():
+    now = datetime.now()
+    all_sessions = [i.id for i in db_session.query(DedupeSession.id).all()]
+    conn = engine.contextual_connect()
+    for sess_id in all_sessions:
+        table = Table('entity_%s' % sess_id, Base.metadata, 
+            autoload=True, autoload_with=engine)
+        upd = table.update().where(table.c.checkout_expire <= now)\
+            .values(checked_out = False)
+        conn.execute(upd)
+    return None
+
+@endpoints.route('/get-review-cluster/<session_id>/')
+def get_cluster(session_id):
+    api_key = None
+    resp = {
+        'status': 'ok',
+        'message': ''
+    }
+    status_code = 200
+    checkin_sessions()
+    if flask_session.get('user_id'):
+        api_key = flask_session['user_id']
+    else:
+        api_key = request.args.get('api_key')
+    if not api_key:
+        resp['status'] = 'error'
+        resp['message'] = "'api_key' is a required parameter"
+        status_code = 401
+    else:
+        user = db_session.query(User).get(api_key)
+        sess = db_session.query(DedupeSession)\
+            .filter(DedupeSession.group.has(
+                Group.id.in_([i.id for i in user.groups])))\
+            .filter(DedupeSession.id == session_id)\
+            .first()
+        if not sess:
+            resp['status'] = 'error'
+            resp['message'] = "You don't have access to session '%s'" % session_id
+            status_code = 401
+        else:
+            field_defs = [f['field'] for f in json.loads(sess.field_defs)]
+            raw_table = Table('raw_%s' % session_id, Base.metadata, 
+                autoload=True, autoload_with=engine)
+            entity_table = Table('entity_%s' % session_id, Base.metadata,
+                autoload=True, autoload_with=engine)
+            cols = [getattr(raw_table.c, f) for f in field_defs]
+            cols.append(raw_table.c.record_id)
+            q = db_session.query(entity_table, *cols)
+            fields = [f['name'] for f in q.column_descriptions]
+            subq = db_session.query(entity_table.c.group_id)\
+                .filter(entity_table.c.checked_out == False)\
+                .order_by(entity_table.c.confidence.desc()).limit(1).subquery()
+            cluster = q.filter(raw_table.c.record_id == entity_table.c.record_id)\
+                .filter(entity_table.c.group_id.in_(subq))\
+                .all()
+            upd = entity_table.update()\
+                .where(entity_table.c.group_id.in_(subq))\
+                .values(checked_out=True, checkout_expire=datetime.now() + timedelta(minutes=10))
+            conn = engine.contextual_connect()
+            conn.execute(upd)
+            cluster_list = []
+            for thing in cluster:
+                d = {}
+                for k,v in zip(fields, thing):
+                    d[k] = v
+                cluster_list.append(d)
+            resp['objects'] = cluster_list
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
 
 @endpoints.route('/mark-cluster/<session_id>/')
 def mark_cluster(session_id):

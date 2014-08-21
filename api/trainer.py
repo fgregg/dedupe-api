@@ -89,9 +89,13 @@ def index():
         if flask_session['last_interaction'] < old:
             del flask_session['deduper']
         flask_session['filename'] = f.filename
+        # Add this session to the user's first group
+        # Will need to revisit this when there are more groups
+        group = user.groups[0]
         sess = DedupeSession(
             id=flask_session['session_key'], 
-            name=f.filename)
+            name=f.filename,
+            group=group)
         db_session.add(sess)
         db_session.commit()
         return redirect(url_for('trainer.select_fields'))

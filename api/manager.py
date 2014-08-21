@@ -78,46 +78,14 @@ def user_list():
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('user_list.html', users=users, user=user)
 
-@manager.route('/review/')
+@manager.route('/review-list/')
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
 def review():
-    sessions = db_session.query(DedupeSession).all()
-    user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('review.html', sessions=sessions, user=user)
+    return render_template('review-list.html')
 
-@manager.route('/review-queue/<session_id>/')
+@manager.route('/session-review/<session_id>/')
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
-def review_queue(session_id):
-    user = db_session.query(User).get(flask_session['user_id'])
-    sess = db_session.query(DedupeSession).get(session_id)
-    field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-    raw_table = Table('raw_%s' % session_id, Base.metadata, 
-        autoload=True, autoload_with=engine)
-    entity_table = Table('entity_%s' % session_id, Base.metadata,
-        autoload=True, autoload_with=engine)
-    cols = [getattr(raw_table.c, f) for f in field_defs]
-    cols.append(raw_table.c.record_id)
-    q = db_session.query(entity_table, *cols)
-    fields = [f['name'] for f in q.column_descriptions]
-    clusters = q.filter(raw_table.c.record_id == entity_table.c.record_id)\
-        .filter(entity_table.c.clustered == False)\
-        .order_by(entity_table.c.group_id)\
-        .all()
-    clusters_d = []
-    for cluster in clusters:
-        d = {}
-        for k,v in zip(fields, cluster):
-            d[k] = v
-        clusters_d.append(d)
-    grouped = {}
-    for k,g in groupby(clusters_d, key=itemgetter('group_id')):
-        grouped[k] = list(g)
-    context = {
-        'user': user, 
-        'grouped': grouped,
-        'session_id': session_id
-    }
-    return render_template('review-queue.html', **context)
-
+def session_review(session_id):
+    return render_template('session-review.html', session_id=session_id)
