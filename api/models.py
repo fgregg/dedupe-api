@@ -42,7 +42,6 @@ class DedupeSession(Base):
     settings_file = Column(LargeBinary)
     field_defs = Column(LargeBinary)
     conn_string = Column(String)
-    table_name = Column(String)
     group_id = Column(String(36), ForeignKey('group.id'))
     group = relationship('Group', backref=backref('sessions'))
 

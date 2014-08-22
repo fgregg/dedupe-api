@@ -231,7 +231,13 @@ def review():
         user = db_session.query(User).get(api_key)
         sessions = db_session.query(DedupeSession)\
             .filter(DedupeSession.group.has(Group.id.in_([i.id for i in user.groups]))).all()
-        all_sessions = [s.as_dict() for s in sessions]
+        all_sessions = []
+        for sess in sessions:
+            d = {
+                'name': sess.name,
+                'id': sess.id
+            }
+            all_sessions.append(d)
         resp['objects'] = all_sessions
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
@@ -418,6 +424,7 @@ def mark_cluster(session_id):
         'group_id': group_id, 
         'status': 'ok', 
         'action': action,
+        'message': ''
     }
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
