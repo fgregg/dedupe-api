@@ -61,9 +61,11 @@ def add_user():
             'name': form.name.data,
             'email': form.email.data,
             'password': form.password.data,
-            'roles': form.roles.data,
         }
         user = User(**user_info)
+        db_session.add(user)
+        db_session.commit()
+        user.roles = form.roles.data
         db_session.add(user)
         db_session.commit()
         flash('User %s added' % user.name)
