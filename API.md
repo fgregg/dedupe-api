@@ -28,6 +28,83 @@ Sample Response:
 }
 ```
 
+**``/review-queue/<session_id>/``**
+
+Required params: ``api_key``
+
+Return the entire review queue grouped by group ID.
+
+Sample response:
+
+
+``` javascript 
+{
+
+    "status": "ok",
+    "message": "",
+    "objects": [
+        {
+            "0": [
+                {
+                    "confidence": 0.855357050895691,
+                    "Zip": "60647",
+                    "Phone": "5344160",
+                    "checked_out": false,
+                    "Site name": "Mozart",
+                    "clustered": false,
+                    "Address": "2200 N. Hamlin",
+                    "record_id": 2672,
+                    "group_id": 0,
+                    "checkout_expire": null
+                },
+                {
+                    "confidence": 0.855357050895691,
+                    "Zip": "",
+                    "Phone": "5344160",
+                    "checked_out": false,
+                    "Site name": "Mozart",
+                    "clustered": false,
+                    "Address": "2200 N. Hamlin",
+                    "record_id": 974,
+                    "group_id": 0,
+                    "checkout_expire": null
+                }
+            ],
+            "5": [
+                {
+                    "confidence": 0.852158069610596,
+                    "Zip": "60647",
+                    "Phone": "3427777",
+                    "checked_out": false,
+                    "Site name": "Chicago Commons\nAssociation Diversey Day Care",
+                    "clustered": false,
+                    "Address": "3007 W Diversey, Chicago",
+                    "record_id": 1946,
+                    "group_id": 5,
+                    "checkout_expire": null
+                },
+                {
+                    "confidence": 0.852158069610596,
+                    "Zip": "60647",
+                    "Phone": "3427777",
+                    "checked_out": false,
+                    "Site name": "CHICAGO COMMONS ASSOCIATION DIVERSEY DAY CARE",
+                    "clustered": false,
+                    "Address": "3007 W DIVERSEY",
+                    "record_id": 1452,
+                    "group_id": 5,
+                    "checkout_expire": null
+                }
+            ],
+          ... rest of the clusters ...
+        }
+    ],
+    "session_id": "5906d8ff-e417-48c4-b097-c4728aaf67c5"
+}
+
+```
+
+
 **``/get-review-cluster/<session_id>/``** 
 
 Required params: ``api_key``
@@ -91,6 +168,8 @@ Sample response
 
 ```
 
+### Session Management
 
+**``/
 
 

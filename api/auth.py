@@ -64,6 +64,31 @@ def check_roles(roles=[]):
         return decorated
     return decorator
 
+def check_api_key():
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            api_key = None
+            resp = {
+                'status': 'ok',
+                'message': ''
+            }
+            status_code = 200
+            if flask_session.get('user_id'):
+                api_key = flask_session['user_id']
+            else:
+                api_key = request.args.get('api_key')
+            if not api_key:
+                resp['status'] = 'error'
+                resp['message'] = "'api_key' is a required parameter"
+                status_code = 401
+                response = make_response(json.dumps(resp), status_code)
+                response.headers['Content-Type'] = 'application/json'
+                return response
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
 @login_manager.user_loader
 def load_user(userid):
     return db_session.query(User).get(userid)
