@@ -3,58 +3,63 @@
 {% block content %}
     <div class="row">
       <div class="col-md-12">
-      {% for group_id, cluster in grouped.items() %}
-        <div id="group_{{ group_id }}">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Group ID</th>
-                    {% for name in cluster[0].keys() %}
-                        {% if name not in ['group_id', 'record_id'] %}
-                            <th>{{name}}</th>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for member in cluster %}
-                <tr>
-                    <td>{{ group_id }}</td>
-                    {% for k,v in member.items() %}
-                        {% if k not in ['group_id', 'record_id'] %}
-                            <td>{{v}}</td>
-                        {% endif %}
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <h4>Does the cluster above refer to the same entity?</h4>
-        <button class="btn btn-success mark-entity" id="yes_{{ group_id }}">
-            <i class='icon-ok'></i>
-            Yes
-        </button>
-        <button class="btn btn-danger mark-entity" id="no_{{ group_id }}">
-            <i class='icon-remove'></i>
-            No
-        </button>
-        <hr />
-        </div>
-      {% endfor %}
+          <div id="counter"></div>
+          <table class="table" id="group-display">
+              <thead></thead>
+              <tbody></tbody>
+          </table>
+          <h4>Does the cluster above refer to the same entity?</h4>
+          <button class="btn btn-success mark-entity" id="yes">
+              <i class='icon-ok'></i>
+              Yes
+          </button>
+          <button class="btn btn-danger mark-entity" id="no">
+              <i class='icon-remove'></i>
+              No
+          </button>
       </div>
     </div>
 {% endblock %}
 {% block extra_javascript %}
 <script type="text/javascript">
     $(document).ready(function(){
+        get_cluster();
         $('.mark-entity').on('click', function(e){
             e.preventDefault();
-            var group_id = $(this).attr('id').split('_')[1];
+            var group_id = $('#group-display').data('group');
             var action = $(this).attr('id').split('_')[0];
-            $.getJSON('/mark-cluster/{{session_id}}/', data={'group_id': group_id, 'action': action}, function(resp){
-                $('#group_' + group_id).remove();
+            $.getJSON('/mark-cluster/{{session_id}}/', {'group_id': group_id, 'action': action}, function(resp){
+                get_cluster();
             })
         })
-    })
+    });
+    function get_cluster(){
+        $.getJSON('/get-review-cluster/{{session_id}}/', {}, function(resp){
+            $('#counter').html('<p>' + resp.review_remainder + ' out of ' + resp.total_clusters + ' left to review</p>')
+            var head = '';
+            var body = '';
+            $('#group-display').data('group', resp.objects[0].group_id);
+            $.each(resp.objects, function(i, item){
+                if (i == 0){
+                    head += '<tr>';
+                    $.each(item, function(k,v){
+                        if (k != 'group_id' && k != 'record_id'){
+                            head += '<th>' + k + '</th>';
+                        }
+                    });
+                    head += '</tr>';
+                }
+                body += '<tr>';
+                $.each(item, function(k,v){
+                    if (k != 'group_id' && k != 'record_id'){
+                        body += '<td>' + v + '</td>';
+                    }
+                });
+                body += '</tr>';
+            });
+            $('#group-display thead').html(head);
+            $('#group-display tbody').html(body);
+        })
+    }
 </script>
 {% endblock %}

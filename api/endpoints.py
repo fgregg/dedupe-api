@@ -348,6 +348,7 @@ def get_cluster(session_id):
             fields = [f['name'] for f in q.column_descriptions]
             subq = db_session.query(entity_table.c.group_id)\
                 .filter(entity_table.c.checked_out == False)\
+                .filter(entity_table.c.clustered == False)\
                 .order_by(entity_table.c.confidence.desc()).limit(1).subquery()
             cluster = q.filter(raw_table.c.record_id == entity_table.c.record_id)\
                 .filter(entity_table.c.group_id.in_(subq))\
@@ -364,7 +365,13 @@ def get_cluster(session_id):
                 for k,v in zip(fields, thing):
                     d[k] = v
                 cluster_list.append(d)
+
+            clusters_q = db_session.query(entity_table.c.group_id.distinct())
+            total_clusters = clusters_q.count()
+            review_remainder = clusters_q.filter(entity_table.c.clustered == False).count()
             resp['objects'] = cluster_list
+            resp['total_clusters'] = total_clusters
+            resp['review_remainder'] = review_remainder
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
@@ -379,7 +386,7 @@ def mark_cluster(session_id):
     if action == 'yes':
         upd = entity_table.update()\
             .where(entity_table.c.group_id == group_id)\
-            .values(clustered=True)
+            .values(clustered=True, checked_out=False, checkout_expire=None)
         conn.execute(upd)
         raw_table = Table('raw_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
