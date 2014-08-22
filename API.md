@@ -28,7 +28,7 @@ Sample Response:
 }
 ```
 
-**/get-review-cluster/<session_id>/** 
+**``/get-review-cluster/<session_id>/``** 
 
 Required params: ``api_key``
 
@@ -67,7 +67,7 @@ Sample response
 }
 ```
 
-**/mark-cluster/<session_id>/** 
+**``/mark-cluster/<session_id>/``** 
 
 Required params: 
 
