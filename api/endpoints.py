@@ -301,7 +301,8 @@ def checkin_sessions():
         table = Table('entity_%s' % sess_id, Base.metadata, 
             autoload=True, autoload_with=engine)
         upd = table.update().where(table.c.checkout_expire <= now)\
-            .values(checked_out = False)
+            .where(table.c.clustered == False)\
+            .values(checked_out = False, checkout_expire = None)
         conn.execute(upd)
     return None
 
@@ -341,7 +342,9 @@ def get_cluster(session_id):
                 autoload=True, autoload_with=engine)
             cols = [getattr(raw_table.c, f) for f in field_defs]
             cols.append(raw_table.c.record_id)
-            q = db_session.query(entity_table, *cols)
+            cols.extend([getattr(entity_table.c, f) \
+                for f in ['confidence', 'record_id', 'group_id']])
+            q = db_session.query(*cols)
             fields = [f['name'] for f in q.column_descriptions]
             subq = db_session.query(entity_table.c.group_id)\
                 .filter(entity_table.c.checked_out == False)\
@@ -349,9 +352,10 @@ def get_cluster(session_id):
             cluster = q.filter(raw_table.c.record_id == entity_table.c.record_id)\
                 .filter(entity_table.c.group_id.in_(subq))\
                 .all()
+            ten_minutes = datetime.now() + timedelta(minutes=10)
             upd = entity_table.update()\
                 .where(entity_table.c.group_id.in_(subq))\
-                .values(checked_out=True, checkout_expire=datetime.now() + timedelta(minutes=10))
+                .values(checked_out=True, checkout_expire=ten_minutes)
             conn = engine.contextual_connect()
             conn.execute(upd)
             cluster_list = []
