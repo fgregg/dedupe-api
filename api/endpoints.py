@@ -355,7 +355,7 @@ def get_cluster(session_id):
             subq = db_session.query(entity_table.c.group_id)\
                 .filter(entity_table.c.checked_out == False)\
                 .filter(entity_table.c.clustered == False)\
-                .order_by(entity_table.c.confidence.desc()).limit(1).subquery()
+                .order_by(entity_table.c.confidence).limit(1).subquery()
             cluster = q.filter(raw_table.c.record_id == entity_table.c.record_id)\
                 .filter(entity_table.c.group_id.in_(subq))\
                 .all()
