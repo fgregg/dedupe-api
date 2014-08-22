@@ -285,7 +285,7 @@ def review_queue(session_id):
         grouped = {}
         for k,g in groupby(clusters_d, key=itemgetter('group_id')):
             grouped[k] = list(g)
-        resp['objects'] = grouped,
+        resp['objects'] = grouped
         resp['session_id'] = session_id
     response = make_response(json.dumps(resp, default=dthandler), status_code)
     response.headers['Content-Type'] = 'application/json'

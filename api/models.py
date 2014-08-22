@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
-    Column, Table, Float
+    Column, Table, Float, DateTime
 from sqlalchemy.orm import relationship, backref, synonym
 from api.database import Base, engine, session
 from flask_bcrypt import Bcrypt
@@ -8,17 +8,14 @@ from datetime import datetime, timedelta
 
 bcrypt = Bcrypt()
 
-def get_checkout_expiration():
-    return datetime.now() + timedelta(minutes=10)
-
 def entity_map(name, metadata, pk_type=Integer):
     table = Table(name, metadata, 
         Column('record_id', pk_type, primary_key=True),
         Column('group_id', Integer), 
         Column('confidence', Float(precision=50)),
-        Column('clustered', Boolean),
-        Column('checked_out', Boolean),
-        Column('checkout_expire', Datetime, default=get_checkout_expiration),
+        Column('clustered', Boolean, default=False),
+        Column('checked_out', Boolean, default=False),
+        Column('checkout_expire', DateTime),
         extend_existing=True
     )
     return table
