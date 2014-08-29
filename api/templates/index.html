@@ -14,22 +14,24 @@
 
       <form role="form" action="{{ url_for('trainer.index') }}" method="POST" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-          <!-- <div class="form-group">
-              <label for="input_file">Give us a database connection string ...</label>
-              <input type="text" class="form-control" name="conn_string" placeholder="Connection string" />
+          <div class="form-group">
+              <label for="id_conn_string">Give us a database connection string ...</label>
+              <input type="text" class="form-control" id="id_conn_string" name="conn_string" placeholder="Connection string" />
               <p class="help-block">
                   Under the hood, we are using <a href="http://www.sqlalchemy.org/">SQLAlchemy</a>
                   to connect to your database. Check <a href="http://docs.sqlalchemy.org/en/rel_0_9/core/engines.html#database-urls">here</a>
                   to see how the connection string should be formatted.
               </p>
+              <button type="button" id="fetch-tables" class="btn btn-primary btn-xs">Fetch table names</button>
+          </div>
+          <div class="form-group" style="display:none">
+              <label for="id_table_name">... and choose a table ...</label>
+              <select  class="form-control" name="table_name" id="id_table_name"></select>
+              <p class="help-block">We also need to know which table to deduplicate</p>
           </div>
           <div class="form-group">
-              <input type="text" class="form-control" name="table_name" placeholder="Table name" />
-              <p class="help-block">We also need to know which table to deduplicate</p>
-          </div> -->
-          <div class="form-group">
-              <label for="input_file">Upload a spreadsheet to get started.</label>
-              <input type="file" id="input_file" name="input_file">
+              <label for="input_file">... or upload a spreadsheet to get started.</label>
+              <input type="file" id="id_input_file" name="input_file">
               <p class="help-block">
                   Only <strong>.csv, .xls or .xlsx</strong> files.
               </p>
@@ -40,63 +42,24 @@
     </div>
   </div>
 </div>
-{% if user.sessions %}
-<div class="row">
-    <div class="col-md-12">
-        <h4>Your trained sessions</h4>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Session ID</th>
-                    <th>Training Data</th>
-                    <th>Settings File</th>
-                    <th>Field Definitions</th>
-                    <th>Delete</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for sess in user.sessions %}
-                    <tr>
-                        <td>
-                            {{sess.name}}
-                        </td>
-                        <td>
-                            {{sess.id}}
-                        </td>
-                        <td>
-                            <a href="{{ url_for('endpoints.training_data', session_id=sess.id) }}">Download</a>
-                        </td>
-                        <td>
-                            <a href="{{ url_for('endpoints.settings_file', session_id=sess.id) }}">Download</a>
-                        </td>
-                        <td>
-                            <a href="{{ url_for('endpoints.field_definitions', session_id=sess.id) }}">Download</a>
-                        </td>
-                        <td>
-                            <a href="{{ url_for('endpoints.delete_session', session_id=sess.id ) }}">Delete</a>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block extra_javascript %}
-<script type="text/javascript" src="/static/js/jquery.cookie.js"></script>
 <script type="text/javascript">
-
-  if ($.cookie("show-welcome") != "read") {
-    $('#accordionAbout').collapse('show');
-    $.cookie("show-welcome", "read", { expires: 7 });
-  }
-
-  $('#closeAbout').click(function(){
-    $('#accordionAbout').collapse('hide');
-  });
-
+    $(document).ready(function(){
+        $('#fetch-tables').on('click', function(e){
+            e.preventDefault();
+            var conn_string = $('#id_conn_string').val();
+            $.post('{{ url_for("trainer.fetch_tables") }}', {'conn_string': conn_string}, function(resp){
+                var names = ''
+                $.each(resp, function(i, name){
+                    names += '<option val="' + name + '">' + name + '</option>';
+                });
+                $('#id_table_name').append(names);
+                $('#id_table_name').parent().show()
+                $('#id_input_file').parent().hide()
+            })
+        })
+    })
 </script>
 {% endblock %}

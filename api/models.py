@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
-    Column, Table, Float, DateTime
+    Column, Table, Float, DateTime, Text
 from sqlalchemy.orm import relationship, backref, synonym
 from api.database import Base, engine, session
 from flask_bcrypt import Bcrypt
@@ -22,7 +22,7 @@ def entity_map(name, metadata, pk_type=Integer):
 
 def block_map_table(name, metadata, pk_type=Integer):
     table = Table(name, metadata,
-        Column('block_key', String(200)),
+        Column('block_key', Text),
         Column('record_id', pk_type),
         extend_existing=True
     )
@@ -39,7 +39,8 @@ class DedupeSession(Base):
     settings_file = Column(LargeBinary)
     field_defs = Column(LargeBinary)
     conn_string = Column(String)
-    group_id = Column(String(36), ForeignKey('group.id'))
+    table_name = Column(String)
+    group_id = Column(String(36), ForeignKey('dedupe_group.id'))
     group = relationship('Group', backref=backref('sessions'))
 
     def __repr__(self):
@@ -49,17 +50,17 @@ class DedupeSession(Base):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 roles_users = Table('role_users', Base.metadata,
-    Column('user_id', String(36), ForeignKey('user.id')),
-    Column('role_id', Integer, ForeignKey('role.id'))
+    Column('user_id', String(36), ForeignKey('dedupe_user.id')),
+    Column('role_id', Integer, ForeignKey('dedupe_role.id'))
 )
 
 groups_users = Table('group_users', Base.metadata,
-    Column('user_id', String(36), ForeignKey('user.id')),
-    Column('group_id', String(36), ForeignKey('group.id'))
+    Column('user_id', String(36), ForeignKey('dedupe_user.id')),
+    Column('group_id', String(36), ForeignKey('dedupe_group.id'))
 )
 
 class Role(Base):
-    __tablename__ = 'role'
+    __tablename__ = 'dedupe_role'
     id = Column(Integer, primary_key=True)
     name = Column(String(80), unique=True)
     description = Column(String(255))
@@ -68,7 +69,7 @@ class Role(Base):
         return '<Role %r>' % self.name
 
 class Group(Base):
-    __tablename__ = 'group'
+    __tablename__ = 'dedupe_group'
     id = Column(String(36), default=get_uuid, primary_key=True)
     name = Column(String(10))
     description = Column(String(255))
@@ -77,7 +78,7 @@ class Group(Base):
         return '<Group %r>' % self.name
 
 class User(Base):
-    __tablename__ = 'user'
+    __tablename__ = 'dedupe_user'
     id = Column(String(36), default=get_uuid, primary_key=True)
     name = Column(String, nullable=False, unique=True)
     email = Column(String, nullable=False, unique=True)

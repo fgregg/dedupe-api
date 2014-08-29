@@ -5,7 +5,7 @@ from flask import Flask, make_response, request, Blueprint, \
 from api.models import DedupeSession, User, Group
 from api.database import session as db_session, engine, Base
 from api.auth import csrf, check_api_key
-from api.dedupe_utils import get_or_create_master_table
+from api.dedupe_utils import get_or_create_master_table, get_engine
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -14,6 +14,7 @@ from cStringIO import StringIO
 from api.dedupe_utils import retrain
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy import Table, select, and_
+from sqlalchemy.ext.declarative import declarative_base
 from itertools import groupby
 from operator import itemgetter
 from datetime import datetime, timedelta
@@ -264,15 +265,17 @@ def review_queue(session_id):
         status_code = 401
     else:
         field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-        raw_table = Table('raw_%s' % session_id, Base.metadata, 
-            autoload=True, autoload_with=engine)
+        RemoteBase = declarative_base()
+        remote_engine = get_engine(sess.conn_string)
+        raw_table = Table(sess.table_name, RemoteBase.metadata, 
+            autoload=True, autoload_with=remote_engine)
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
         cols = [getattr(raw_table.c, f) for f in field_defs]
         cols.append(raw_table.c.record_id)
         q = db_session.query(entity_table, *cols)
         fields = [f['name'] for f in q.column_descriptions]
-        clusters = q.filter(raw_table.c.record_id == entity_table.c.record_id)\
+        clusters = q.filter(entity_table.c.record_id.in_())\
             .filter(entity_table.c.clustered == False)\
             .order_by(entity_table.c.group_id)\
             .all()

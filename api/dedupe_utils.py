@@ -4,7 +4,6 @@ import os
 import json
 import time
 from itertools import groupby
-from dedupe import AsciiDammit
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from cStringIO import StringIO
@@ -14,6 +13,7 @@ from datetime import datetime
 from api.queue import queuefunc
 from api.database import session as db_session, Base
 from api.models import DedupeSession, User, entity_map, block_map_table
+from api.app_config import DB_CONN
 from operator import itemgetter
 from csvkit import convert, sql, table
 from csvkit.unicsv import UnicodeCSVDictReader
@@ -21,12 +21,18 @@ import xlwt
 from openpyxl import Workbook
 from openpyxl.cell import get_column_letter
 from cPickle import dumps
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
 from sqlalchemy import create_engine, Table, Column, Integer, Float, Boolean, \
-    String
+    String, func
 from unidecode import unidecode
 from sqlalchemy.exc import NoSuchTableError
+
+try:
+    import MySQLdb.cursors as mysql_cursors
+except ImportError:
+    mysql_cursors = None
 
 try:
     from raven import Client
@@ -39,10 +45,15 @@ except KeyError:
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'upload_data')
 
 def create_session(conn_string):
+    if conn_string.startswith('mysql'):
+        conn_args = {'connect_args': {'cursorclass': mysql_cursors.SSCursor}}
+    elif conn_string.startswith('postgresql'):
+        conn_args = {'server_side_cursors': True}
     engine = create_engine(
         conn_string,
         convert_unicode=True,
-        poolclass=NullPool)
+        poolclass=NullPool,
+        **conn_args)
     return scoped_session(sessionmaker(bind=engine,
                                        autocommit=False, 
                                        autoflush=False))
@@ -109,28 +120,16 @@ def preProcess(column):
     column = column.strip().strip('"').strip("'").lower().strip()
     return column
 
-def make_data_d(conn_string, session_key, primary_key='record_id', table_name=None):
-    session = create_session(conn_string)
-    engine = get_engine(conn_string)
-    if not table_name:
-        table_name = 'raw_%s' % session_key
-    table = Table(table_name, Base.metadata, 
-        autoload=True, autoload_with=engine)
-    fields = [str(s) for s in table.columns.keys()]
-    rows = []
-    for row in session.query(table).all():
-        rows.append({k: unicode(v) for k,v in zip(fields, row)})
-    data_d = {}
-    for row in rows:
-        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
-        data_d[row[primary_key]] = dedupe.core.frozendict(clean_row)
-    return data_d, fields
-
 def get_engine(conn_string):
+    if conn_string.startswith('mysql'):
+        conn_args = {'connect_args': {'cursorclass': mysql_cursors.SSCursor}}
+    elif conn_string.startswith('postgresql'):
+        conn_args = {'server_side_cursors': True}
     return create_engine(
         conn_string,
         convert_unicode=True,
-        poolclass=NullPool)
+        poolclass=NullPool,
+        **conn_args)
 
 def writeEntityMap(clustered_dupes, session_key, conn_string, data_d):
     """ 
@@ -168,11 +167,9 @@ class WebDeduper(object):
     
     def __init__(self, deduper,
             conn_string=None,
-            data_d=None, 
             recall_weight=2,
             session_key=None):
         self.deduper = deduper
-        self.data_d = data_d
         self.recall_weight = float(recall_weight)
         self.conn_string = conn_string
         self.session_key = session_key
@@ -190,11 +187,13 @@ class WebDeduper(object):
         self.db_session.commit()
 
     def dedupe(self):
-        threshold = self.deduper.threshold(self.data_d, recall_weight=self.recall_weight)
-        clustered_dupes = self.deduper.match(self.data_d, threshold)
-        writeEntityMap(clustered_dupes, self.session_key, self.conn_string, self.data_d)
-        data_d = ((k,v) for k,v in self.data_d.items())
-        block_data = self.deduper.blocker(data_d)
+        data_d = make_data_d(self.dd_session.conn_string, 
+            self.dd_session.id, table_name=self.dd_session.table_name)
+        threshold = self.deduper.threshold(data_d, recall_weight=self.recall_weight)
+        clustered_dupes = self.deduper.match(data_d, threshold)
+        writeEntityMap(clustered_dupes, self.session_key, self.conn_string, data_d)
+        dd_tuples = ((k,v) for k,v in data_d.items())
+        block_data = self.deduper.blocker(dd_tuples)
         writeBlockingMap(self.conn_string, self.session_key, block_data)
         return 'ok'
 
@@ -213,10 +212,11 @@ def retrain(session_key, conn_string):
 @queuefunc
 def dedupeit(**kwargs):
     d = dedupe.Dedupe(kwargs['field_defs'], kwargs['data_sample'])
+    app_session = create_session(DB_CONN)
+    dd_session = app_session.query(DedupeSession).get(kwargs['session_key'])
     deduper = WebDeduper(d, 
-        data_d=kwargs['data_d'],
-        conn_string=kwargs['conn_string'],
-        session_key=kwargs['session_key'])
+        conn_string=DB_CONN,
+        session_key=dd_session.id)
     files = deduper.dedupe()
     del d
     return files
@@ -231,3 +231,58 @@ def static_dedupeit(**kwargs):
     files = deduper.dedupe()
     del d
     return files
+
+def make_data_d(conn_string, session_key, primary_key=None, table_name=None):
+    session = create_session(conn_string)
+    engine = session.bind
+    if not table_name:
+        table_name = 'raw_%s' % session_key
+    table = Table(table_name, Base.metadata, 
+        autoload=True, autoload_with=engine)
+    fields = [str(s) for s in table.columns.keys()]
+    if not primary_key:
+        try:
+            primary_key = [p.name for p in table.primary_key][0]
+        except IndexError:
+            # need to figure out what to do in this case
+            print 'no primary key'
+    rows = []
+    for row in session.query(table).all():
+        rows.append({k: unicode(v) for k,v in zip(fields, row)})
+    data_d = {}
+    for row in rows:
+        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
+        data_d[row[primary_key]] = dedupe.core.frozendict(clean_row)
+    return data_d
+
+@queuefunc
+def get_sample(conn_string,
+                session_key, 
+                primary_key=None, 
+                table_name=None,
+                sample_size=None):
+    session = create_session(conn_string)
+    engine = session.bind
+    if not table_name:
+        table_name = 'raw_%s' % session_key
+    table = Table(table_name, Base.metadata, 
+        autoload=True, autoload_with=engine)
+    if not primary_key:
+        try:
+            primary_key = [p.name for p in table.primary_key][0]
+        except IndexError:
+            # need to figure out what to do in this case
+            print 'no primary key'
+    fields = [str(s) for s in table.columns.keys()]
+    temp_d = {}
+    row_count = session.query(table).count()
+    random_pairs = dedupe.randomPairs(row_count, 500000)
+    data_rows = session.query(table).all()
+    for i, row in enumerate(data_rows):
+        d_row = {k: unicode(v) for (k,v) in zip(fields, row)}
+        clean_row = [(k, preProcess(v)) for (k,v) in d_row.items()]
+        temp_d[i] = dedupe.core.frozendict(clean_row)
+    pair_sample = [(temp_d[k1], temp_d[k2])
+                    for k1, k2 in random_pairs]
+    return pair_sample, fields
+

@@ -39,6 +39,7 @@ def queuefunc(f):
     return f
 
 def queue_daemon(rv_ttl=500):
+    print 'Listening for messages...'
     while 1:
         msg = redis.blpop(REDIS_QUEUE_KEY)
         func, key, args, kwargs = loads(msg[1])

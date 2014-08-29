@@ -2,3 +2,19 @@ DB_CONN='database://connection:@string/thingy'
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024
 SECRET_KEY = 'super secret key'
 REDIS_QUEUE_KEY = 'any_string'
+
+DEFAULT_USER = {}
+# This is a dict that gives the app a way to setup
+# a default user, and group and then attach that user
+# to the admin role. Looks like:
+#   {
+#      'user': {
+#          'name': 'eric',
+#          'email': 'eric@eric.com',
+#          'password': 'really-secret',
+#      },
+#      'group': {
+#          'name': 'only_one',
+#          'description': 'This is the only group'
+#      },
+#   }
