@@ -275,9 +275,8 @@ def get_sample(conn_string,
             print 'no primary key'
     fields = [str(s) for s in table.columns.keys()]
     temp_d = {}
-    row_count = session.query(table).count()
-    random_pairs = dedupe.randomPairs(row_count, 500000)
-    data_rows = session.query(table).all()
+    random_pairs = dedupe.randomPairs(100000, 500000)
+    data_rows = session.query(table).limit(100000).all()
     for i, row in enumerate(data_rows):
         d_row = {k: unicode(v) for (k,v) in zip(fields, row)}
         clean_row = [(k, preProcess(v)) for (k,v) in d_row.items()]
