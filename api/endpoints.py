@@ -338,42 +338,39 @@ def get_cluster(session_id):
         cluster_list = []
         if review_remainder > 0:
             field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-            # Need to make a seperate connection to raw table so the records
-            # can be fetched after figuring out the primary keys from the 
-            # entity map.
             raw_session = create_session(sess.conn_string)
             raw_engine = raw_session.bind
             raw_base = declarative_base()
             raw_table = Table(sess.table_name, raw_base.metadata, 
                 autoload=True, autoload_with=raw_engine)
-            entity_cols = [getattr(entity_table.c, f) \
-                for f in ['record_id', 'group_id', 'confidence']]
+            entity_fields = ['record_id', 'group_id', 'confidence']
+            entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
             subq = db_session.query(entity_table.c.group_id)\
                 .filter(entity_table.c.checked_out == False)\
                 .filter(entity_table.c.clustered == False)\
                 .order_by(entity_table.c.confidence).limit(1).subquery()
             cluster = db_session.query(*entity_cols)\
                 .filter(entity_table.c.group_id.in_(subq)).all()
-            print cluster
             raw_ids = [c[0] for c in cluster]
             raw_cols = [getattr(raw_table.c, f) for f in field_defs]
             primary_key = [p.name for p in raw_table.primary_key][0]
             pk_col = getattr(raw_table.c, primary_key)
             records = raw_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
-            fields = [f['name'] for f in records.column_descriptions]
+            raw_fields = [f['name'] for f in records.column_descriptions]
             records = records.all()
-            print records
-           #ten_minutes = datetime.now() + timedelta(minutes=10)
-           #upd = entity_table.update()\
-           #    .where(entity_table.c.group_id.in_(subq))\
-           #    .values(checked_out=True, checkout_expire=ten_minutes)
-           #conn = engine.contextual_connect()
-           #conn.execute(upd)
-           #for thing in cluster:
-           #    d = {}
-           #    for k,v in zip(fields, thing):
-           #        d[k] = v
-           #    cluster_list.append(d)
+            ten_minutes = datetime.now() + timedelta(minutes=10)
+            upd = entity_table.update()\
+                .where(entity_table.c.group_id.in_(subq))\
+                .values(checked_out=True, checkout_expire=ten_minutes)
+            conn = engine.contextual_connect()
+            conn.execute(upd)
+            resp['confidence'] = cluster[0][2]
+            resp['group_id'] = cluster[0][1]
+            for thing in records:
+                d = {}
+                for k,v in zip(raw_fields, thing):
+                    d[k] = v
+                cluster_list.append(d)
         else:
             make_canonical_table.delay(session_id)
         resp['objects'] = cluster_list
