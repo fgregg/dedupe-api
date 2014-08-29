@@ -21,13 +21,13 @@ import xlwt
 from openpyxl import Workbook
 from openpyxl.cell import get_column_letter
 from cPickle import dumps
-from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool
 from sqlalchemy import create_engine, Table, Column, Integer, Float, Boolean, \
     String, func
 from unidecode import unidecode
-from sqlalchemy.exc import NoSuchTableError
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError
+from sqlalchemy.ext.declarative import declarative_base
 
 try:
     import MySQLdb.cursors as mysql_cursors
@@ -88,30 +88,6 @@ def make_raw_table(conn_string=None,
         conn.execute(sql_table.insert(), **row)
     trans.commit()
     conn.close()
-
-def get_or_create_master_table(conn_string, session_id):
-    cols = []
-    engine = get_engine(conn_string)
-    try:
-        master_table = Table('master_%s' % session_id, Base.metadata,
-            autoload=True, autoload_with=engine)
-    except NoSuchTableError:
-        raw_table = Table('raw_%s' % session_id, Base.metadata,
-            autoload=True, autoload_with=engine)
-        for col in raw_table.columns:
-            kwargs = {}
-            if col.type == Integer:
-                kwargs['default'] = 0
-            if col.type == Float:
-                kwargs['default'] = 0.0
-            if col.type == Boolean:
-                kwargs['default'] = None
-            cols.append(Column(col.name, col.type, **kwargs))
-        master_table = Table('master_%s' % session_id, Base.metadata,
-            *cols, extend_existing=True)
-        master_table.append_column(Column('master_record_id', Integer, primary_key=True))
-        master_table.create(bind=engine)
-    return master_table
 
 def preProcess(column):
     column = unidecode(column)
@@ -285,3 +261,34 @@ def get_sample(conn_string,
                     for k1, k2 in random_pairs]
     return pair_sample, fields
 
+def get_or_create_canon_table(session_id):
+    cols = []
+    app_session = create_session(DB_CONN)
+    app_engine = app_session.bind
+    try:
+        canon_table = Table('canon_%s' % session_id, Base.metadata,
+            autoload=True, autoload_with=app_engine, extend_existing=True)
+    except NoSuchTableError:
+        dd_sess = app_session.query(DedupeSession).get(session_id)
+        raw_engine = get_engine(dd_sess.conn_string)
+        raw_base = declarative_base()
+        raw_table = Table('raw_%s' % session_id, raw_base.metadata,
+            autoload=True, autoload_with=raw_engine)
+        for col in raw_table.columns:
+            kwargs = {}
+            if col.type == Integer:
+                kwargs['default'] = 0
+            if col.type == Float:
+                kwargs['default'] = 0.0
+            if col.type == Boolean:
+                kwargs['default'] = None
+            cols.append(Column(col.name, col.type, **kwargs))
+        canon_table = Table('canon_%s' % session_id, Base.metadata,
+            *cols, extend_existing=True)
+        canon_table.append_column(Column('canon_record_id', Integer, primary_key=True))
+        canon_table.create(bind=app_engine)
+    return canon_table
+
+@queuefunc
+def make_canonical_table(session_id):
+    return 'yay'
