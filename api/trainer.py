@@ -11,7 +11,6 @@ import re
 import os
 import copy
 import time
-from dedupe import AsciiDammit
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
 from api.dedupe_utils import dedupeit, static_dedupeit, get_sample, \
@@ -158,7 +157,6 @@ def select_fields():
             field_defs = []
             for field in field_list:
                 field_defs.append({'field': field, 'type': 'String'})
-            flask_session['field_defs'] = copy.deepcopy(field_defs)
             start = time.time()
             sess = db_session.query(DedupeSession).get(flask_session['session_key'])
             sess.field_defs = json.dumps(field_defs)
@@ -235,10 +233,8 @@ def mark_pair():
         sess.training_data = json.dumps(training_data, default=_to_json)
         db_session.add(sess)
         db_session.commit()
-        field_defs = flask_session['field_defs']
         sample = deduper.data_sample
         args = {
-            'field_defs': field_defs,
             'data_sample': sample,
             'session_key': flask_session['session_key'],
         }

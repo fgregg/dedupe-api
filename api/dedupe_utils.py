@@ -152,7 +152,6 @@ class WebDeduper(object):
         self.db_session = create_session(conn_string)
         self.dd_session = self.db_session.query(DedupeSession).get(session_key)
         self.training_data = StringIO(self.dd_session.training_data)
-        self.field_defs = json.loads(self.dd_session.field_defs)
         # Will need to figure out static dedupe, maybe
         self.deduper.readTraining(self.training_data)
         self.deduper.train()
@@ -187,9 +186,10 @@ def retrain(session_key, conn_string):
 
 @queuefunc
 def dedupeit(**kwargs):
-    d = dedupe.Dedupe(kwargs['field_defs'], kwargs['data_sample'])
     app_session = create_session(DB_CONN)
     dd_session = app_session.query(DedupeSession).get(kwargs['session_key'])
+    d = dedupe.Gazetteer(json.loads(dd_session.field_defs), 
+        data_sample=kwargs['data_sample'])
     deduper = WebDeduper(d, 
         conn_string=DB_CONN,
         session_key=dd_session.id)
@@ -236,7 +236,7 @@ def get_sample(conn_string,
                 session_key, 
                 primary_key=None, 
                 table_name=None,
-                sample_size=None):
+                sample_size=100000):
     session = create_session(conn_string)
     engine = session.bind
     if not table_name:
@@ -251,8 +251,11 @@ def get_sample(conn_string,
             print 'no primary key'
     fields = [str(s) for s in table.columns.keys()]
     temp_d = {}
-    random_pairs = dedupe.randomPairs(100000, 500000)
-    data_rows = session.query(table).limit(100000).all()
+    row_count = session.query(table).count()
+    if row_count < sample_size:
+        sample_size = row_count
+    random_pairs = dedupe.randomPairs(sample_size, 500000)
+    data_rows = session.query(table).limit(sample_size).all()
     for i, row in enumerate(data_rows):
         d_row = {k: unicode(v) for (k,v) in zip(fields, row)}
         clean_row = [(k, preProcess(v)) for (k,v) in d_row.items()]
@@ -292,7 +295,10 @@ def make_canonical_table(session_id):
     entity_table = Table('entity_%s' % session_id, Base.metadata,
         autoload=True, autoload_with=app_engine, extend_existing=True)
     clusters = app_session.query(entity_table.c.group_id, 
-        entity_table.c.record_id).order_by(entity_table.c.group_id).all()
+            entity_table.c.record_id)\
+            .filter(entity_table.c.clustered == True)\
+            .order_by(entity_table.c.group_id)\
+            .all()
     groups = {}
     for k,g in groupby(clusters, key=itemgetter(0)):
         groups[k] = [i[1] for i in list(g)]

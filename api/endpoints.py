@@ -74,24 +74,30 @@ def match():
         for row in all_data:
             d = {}
             for k,v in zip(fields, row):
+                if not v:
+                    v = ''
                 d[k] = v
-            data_d[row['canon_record_id']] = d
-        deduper = dedupe.StaticGazetteer(StringIO(sess.settings_file))
+            data_d[int(d['canon_record_id'])] = d
+        deduper = dedupe.Gazetteer(json.loads(sess.field_defs))
+        deduper.readTraining(StringIO(sess.training_data))
+        deduper.train()
+        deduper.index(data_d)
         o = {'blob': obj}
-        linked = deduper.match(o, data_d, threshold=0, n_matches=post.get('num_results', 5))
+        linked = deduper.match(o)
+        print linked
         # from here down needs to be checked
         match_list = []
-        if linked:
-            ids = []
-            confs = {}
-            for l in linked[0]:
-                id_set, confidence = l
-                ids.extend([i for i in id_set if i not in ids])
-                confs[id_set[1]] = confidence
-            for match in matches:
-                m = dict(loads(match.blob))
-                # m['match_confidence'] = float(confs[str(match.id)])
-                match_list.append(m)
+       #if linked:
+       #    ids = []
+       #    confs = {}
+       #    for l in linked[0]:
+       #        id_set, confidence = l
+       #        ids.extend([i for i in id_set if i not in ids])
+       #        confs[id_set[1]] = confidence
+       #    for match in matches:
+       #        m = dict(loads(match.blob))
+       #        # m['match_confidence'] = float(confs[str(match.id)])
+       #        match_list.append(m)
         r['matches'] = match_list
 
     resp = make_response(json.dumps(r, default=_to_json), status_code)
@@ -161,8 +167,7 @@ def field_definitions(session_id):
     data = db_session.query(DedupeSession).get(session_id)
     field_defs = data.field_defs
     resp = make_response(field_defs, 200)
-    resp.headers['Content-Type'] = 'text/plain'
-    resp.headers['Content-Disposition'] = 'attachment; filename=%s_field_defs.json' % data.uuid
+    resp.headers['Content-Type'] = 'application/json'
     return resp
 
 @endpoints.route('/delete-session/<session_id>/')
@@ -199,28 +204,6 @@ def delete_session(session_id):
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@endpoints.route('/master/<session_id>/')
-@check_api_key()
-def master(session_id):
-    master_table = Table('master_%s' % session_id, Base.metadata,
-        autoload=True, autoload_with=engine)
-    limit = request.args.get('limit')
-    offset = request.args.get('offset')
-    count = db_session.query(master_table).count()
-    base_query = db_session.query(master_table)
-    if limit and offset:
-        base_query = base_query.limit(int(limit)).offset(int(offset))
-    rows = [r for r in base_query.all()]
-    master_rows = []
-    for row in rows:
-        d = {}
-        for k,v in zip(master_table.columns.keys(), row):
-            d[k] = v
-        master_rows.append(d)
-    resp = make_response(json.dumps(master_rows))
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
-
 @endpoints.route('/session-list/')
 @check_api_key()
 def review():
@@ -244,59 +227,6 @@ def review():
         all_sessions.append(d)
     resp['objects'] = all_sessions
     response = make_response(json.dumps(resp), status_code)
-    response.headers['Content-Type'] = 'application/json'
-    return response
-
-@endpoints.route('/review-queue/<session_id>/')
-@check_api_key()
-def review_queue(session_id):
-    resp = {
-        'status': 'ok',
-        'message': ''
-    }
-    status_code = 200
-    api_key = request.args.get('api_key')
-    if not api_key:
-        api_key = flask_session['user_id']
-    print api_key
-    user = db_session.query(User).get(api_key)
-    sess = db_session.query(DedupeSession)\
-        .filter(DedupeSession.group.has(
-            Group.id.in_([i.id for i in user.groups])))\
-        .filter(DedupeSession.id == session_id)\
-        .first()
-    if not sess:
-        resp['status'] = 'error'
-        resp['message'] = "You don't have access to session '%s'" % session_id
-        status_code = 401
-    else:
-        field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-        RemoteBase = declarative_base()
-        remote_engine = get_engine(sess.conn_string)
-        raw_table = Table(sess.table_name, RemoteBase.metadata, 
-            autoload=True, autoload_with=remote_engine)
-        entity_table = Table('entity_%s' % session_id, Base.metadata,
-            autoload=True, autoload_with=engine)
-        cols = [getattr(raw_table.c, f) for f in field_defs]
-        cols.append(raw_table.c.record_id)
-        q = db_session.query(entity_table, *cols)
-        fields = [f['name'] for f in q.column_descriptions]
-        clusters = q.filter(entity_table.c.record_id.in_())\
-            .filter(entity_table.c.clustered == False)\
-            .order_by(entity_table.c.group_id)\
-            .all()
-        clusters_d = []
-        for cluster in clusters:
-            d = {}
-            for k,v in zip(fields, cluster):
-                d[k] = v
-            clusters_d.append(d)
-        grouped = {}
-        for k,g in groupby(clusters_d, key=itemgetter('group_id')):
-            grouped[k] = list(g)
-        resp['objects'] = grouped
-        resp['session_id'] = session_id
-    response = make_response(json.dumps(resp, default=dthandler), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
 

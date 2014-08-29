@@ -35,27 +35,31 @@
     });
     function get_cluster(){
         $.getJSON('/get-review-cluster/{{session_id}}/', {}, function(resp){
-            $('#counter').html('<p>' + resp.review_remainder + ' out of ' + resp.total_clusters + ' left to review</p>')
-            var head = '';
-            var body = '';
-            $('#group-display').data('group', resp.group_id);
-            $.each(resp.objects, function(i, item){
-                if (i == 0){
-                    head += '<tr>';
+            if (resp.objects.length > 0){
+                $('#counter').html('<p>' + resp.review_remainder + ' out of ' + resp.total_clusters + ' left to review</p>')
+                var head = '';
+                var body = '';
+                $('#group-display').data('group', resp.group_id);
+                $.each(resp.objects, function(i, item){
+                    if (i == 0){
+                        head += '<tr>';
+                        $.each(item, function(k,v){
+                            head += '<th>' + k + '</th>';
+                        });
+                        head += '</tr>';
+                    }
+                    body += '<tr>';
                     $.each(item, function(k,v){
-                        head += '<th>' + k + '</th>';
+                        body += '<td>' + v + '</td>';
                     });
-                    head += '</tr>';
-                }
-                body += '<tr>';
-                $.each(item, function(k,v){
-                    body += '<td>' + v + '</td>';
+                    body += '</tr>';
                 });
-                body += '</tr>';
-            });
-            $('#confidence').html('(confidence of ' + resp.confidence + ')');
-            $('#group-display thead').html(head);
-            $('#group-display tbody').html(body);
+                $('#confidence').html('(confidence of ' + resp.confidence + ')');
+                $('#group-display thead').html(head);
+                $('#group-display tbody').html(body);
+            } else {
+                $('#group-display').html("<h3>You're done!</h3><p>Now creating the canonical table</p>")
+            }
         })
     }
 </script>

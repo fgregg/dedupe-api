@@ -90,4 +90,5 @@ def review():
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
 def session_review(session_id):
-    return render_template('session-review.html', session_id=session_id)
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_template('session-review.html', session_id=session_id, user=user)
