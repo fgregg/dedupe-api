@@ -30,6 +30,7 @@ def validate_post(post):
     obj = post.get('object')
     r = {'status': 'ok', 'message': '', 'object': obj}
     status_code = 200
+    # should probably validate if the user has access to the session
     sess = db_session.query(DedupeSession).get(session_key)
     user = db_session.query(User).get(api_key)
     if not api_key:
@@ -65,15 +66,20 @@ def match():
         obj = post['object']
         for k,v in obj.items():
             obj[k]
-        data_table = db_Table('%s_data' % session_key, 
-            Base.metadata, autoload=True, autoload_with=db_engine)
-        all_data = db_session.query(data_table).all()
+        canon_table = Table('canon_%s' % session_key, 
+            Base.metadata, autoload=True, autoload_with=engine)
+        fields = [f for f in canon_table.columns.keys()]
+        all_data = db_session.query(canon_table).all()
         data_d = {}
-        for d in all_data:
-            data_d[d.id] = loads(d.blob)
+        for row in all_data:
+            d = {}
+            for k,v in zip(fields, row):
+                d[k] = v
+            data_d[row['canon_record_id']] = d
         deduper = dedupe.StaticGazetteer(StringIO(sess.settings_file))
         o = {'blob': obj}
         linked = deduper.match(o, data_d, threshold=0, n_matches=post.get('num_results', 5))
+        # from here down needs to be checked
         match_list = []
         if linked:
             ids = []
@@ -82,7 +88,6 @@ def match():
                 id_set, confidence = l
                 ids.extend([i for i in id_set if i not in ids])
                 confs[id_set[1]] = confidence
-            matches = db_session.query(data_table).filter(data_table.c.id.in_(ids)).all()
             for match in matches:
                 m = dict(loads(match.blob))
                 # m['match_confidence'] = float(confs[str(match.id)])
