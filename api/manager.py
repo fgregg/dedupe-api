@@ -3,8 +3,7 @@ from flask import Blueprint, request, session as flask_session, \
 from api.database import session as db_session, engine, Base
 from api.models import User, Role, DedupeSession
 from api.auth import login_required, check_roles
-from api.dedupe_utils import get_or_create_canon_table, preProcess,\
-    get_engine
+from api.dedupe_utils import preProcess, get_engine
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField

@@ -261,34 +261,63 @@ def get_sample(conn_string,
                     for k1, k2 in random_pairs]
     return pair_sample, fields
 
-def get_or_create_canon_table(session_id):
+def create_canon_table(session_id):
     cols = []
     app_session = create_session(DB_CONN)
     app_engine = app_session.bind
-    try:
-        canon_table = Table('canon_%s' % session_id, Base.metadata,
-            autoload=True, autoload_with=app_engine, extend_existing=True)
-    except NoSuchTableError:
-        dd_sess = app_session.query(DedupeSession).get(session_id)
-        raw_engine = get_engine(dd_sess.conn_string)
-        raw_base = declarative_base()
-        raw_table = Table('raw_%s' % session_id, raw_base.metadata,
-            autoload=True, autoload_with=raw_engine)
-        for col in raw_table.columns:
-            kwargs = {}
-            if col.type == Integer:
-                kwargs['default'] = 0
-            if col.type == Float:
-                kwargs['default'] = 0.0
-            if col.type == Boolean:
-                kwargs['default'] = None
-            cols.append(Column(col.name, col.type, **kwargs))
-        canon_table = Table('canon_%s' % session_id, Base.metadata,
-            *cols, extend_existing=True)
-        canon_table.append_column(Column('canon_record_id', Integer, primary_key=True))
-        canon_table.create(bind=app_engine)
-    return canon_table
+    dd_sess = app_session.query(DedupeSession).get(session_id)
+    raw_engine = get_engine(dd_sess.conn_string)
+    raw_base = declarative_base()
+    raw_table = Table(dd_sess.table_name, raw_base.metadata,
+        autoload=True, autoload_with=raw_engine)
+    for col in raw_table.columns:
+        kwargs = {}
+        if col.type == Integer:
+            kwargs['default'] = 0
+        if col.type == Float:
+            kwargs['default'] = 0.0
+        if col.type == Boolean:
+            kwargs['default'] = None
+        cols.append(Column(col.name, col.type, **kwargs))
+    canon_table = Table('canon_%s' % session_id, Base.metadata,
+        *cols, extend_existing=True)
+    canon_table.append_column(Column('canon_record_id', Integer, primary_key=True))
+    canon_table.create(bind=app_engine)
+    app_session.close()
 
 @queuefunc
 def make_canonical_table(session_id):
-    return 'yay'
+    app_session = create_session(DB_CONN)
+    app_engine = app_session.bind
+    entity_table = Table('entity_%s' % session_id, Base.metadata,
+        autoload=True, autoload_with=app_engine, extend_existing=True)
+    clusters = app_session.query(entity_table.c.group_id, 
+        entity_table.c.record_id).order_by(entity_table.c.group_id).all()
+    groups = {}
+    for k,g in groupby(clusters, key=itemgetter(0)):
+        groups[k] = [i[1] for i in list(g)]
+    dd_sess = app_session.query(DedupeSession).get(session_id)
+    raw_session = create_session(dd_sess.conn_string)
+    raw_engine = raw_session.bind
+    raw_base = declarative_base()
+    raw_table = Table(dd_sess.table_name, raw_base.metadata,
+        autoload=True, autoload_with=raw_engine, extend_existing=True)
+    raw_fields = [c for c in raw_table.columns.keys()]
+    primary_key = [p.name for p in raw_table.primary_key][0]
+    canonical_rows = []
+    for k,v in groups.items():
+        cluster_rows = raw_session.query(raw_table)\
+            .filter(getattr(raw_table.c, primary_key).in_(v)).all()
+        rows_d = []
+        for row in cluster_rows:
+            d = {}
+            for k,v in zip(raw_fields, row):
+                if k != 'record_id':
+                    d[k] = unidecode(unicode(v))
+            rows_d.append(d)
+        canonical_rows.append(dedupe.canonicalize(rows_d))
+    create_canon_table(session_id)
+    canon_table = Table('canon_%s' % session_id, Base.metadata,
+        autoload=True, autoload_with=app_engine, extend_existing=True)
+    conn = app_engine.contextual_connect()
+    conn.execute(canon_table.insert(), canonical_rows)

@@ -412,25 +412,6 @@ def mark_cluster(session_id):
                 .where(entity_table.c.group_id == group_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
             conn.execute(upd)
-           #raw_table = Table('raw_%s' % session_id, Base.metadata,
-           #    autoload=True, autoload_with=engine)
-           #sel = select([raw_table]).where(and_(
-           #              raw_table.c.record_id == entity_table.c.record_id,
-           #              entity_table.c.group_id == group_id))
-           #rows = conn.execute(sel)
-           #cluster = []
-           #nulls = []
-           #for row in rows:
-           #    d = {}
-           #    for name, value in zip(rows.keys(), row):
-           #        if name == 'record_id':
-           #            continue
-           #        d[name] = value
-           #    cluster.append(d)
-           #canonical = canonicalize(cluster)
-           #master_table = get_or_create_master_table(engine.url, session_id)
-           #ins = master_table.insert().values(**canonical)
-           #conn.execute(ins)
             conn.close()
         elif action == 'no':
             dels = entity_table.delete()\
