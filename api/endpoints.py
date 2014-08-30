@@ -64,19 +64,21 @@ def match():
         api_key = post['api_key']
         session_key = post['session_key']
         obj = post['object']
-        for k,v in obj.items():
-            obj[k]
+        field_defs = json.loads(sess.field_defs)
+        model_fields = [f['field'] for f in field_defs]
         canon_table = Table('canon_%s' % session_key, 
             Base.metadata, autoload=True, autoload_with=engine)
-        fields = [f for f in canon_table.columns.keys()]
-        all_data = db_session.query(canon_table).all()
+        fields = [f for f in canon_table.columns.keys() if f in model_fields]
+        fields.append('canon_record_id')
+        cols = [getattr(canon_table.c, f) for f in fields]
+        all_data = db_session.query(*cols).all()
         data_d = {}
         for row in all_data:
             d = {}
             for k,v in zip(fields, row):
                 d[k] = preProcess(unicode(v))
             data_d[int(d['canon_record_id'])] = d
-        deduper = dedupe.Gazetteer(json.loads(sess.field_defs))
+        deduper = dedupe.Gazetteer(field_defs)
         deduper.readTraining(StringIO(sess.training_data))
         deduper.train()
         deduper.index(data_d)
@@ -93,7 +95,7 @@ def match():
                 ids.extend([i for i in id_set if i != 'blob'])
                 confs[id_set[1]] = confidence
             ids = list(set(ids))
-            matches = db_session.query(canon_table)\
+            matches = db_session.query(*cols)\
                 .filter(canon_table.c.canon_record_id.in_(ids))\
                 .all()
             for match in matches:
@@ -128,17 +130,22 @@ def train():
                 positive.append(match)
             else:
                 negative.append(match)
+            for k,v in match.items():
+                match[k] = preProcess(unicode(v))
+            del match['canon_record_id']
+            del match['match_confidence']
+            del match['match']
         if len(positive) > 1:
             r['status'] = 'error'
             r['message'] = 'A maximum of 1 matching record can be sent. \
                 More indicates a non-canonical dataset'
             status_code = 400
         else:
-            training_data = json.loads(sess.training_data, cls=dedupe_decoder)
+            training_data = json.loads(sess.training_data)
             training_data['match'].append([positive[0],obj])
             for n in negative:
                 training_data['distinct'].append([n,obj])
-            sess.training_data = json.dumps(training_data, default=_to_json)
+            sess.training_data = json.dumps(training_data)
             db_session.add(sess)
             db_session.commit()
             retrain.delay(session_key)
