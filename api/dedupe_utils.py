@@ -319,7 +319,7 @@ def make_canonical_table(session_id):
             d = {}
             for k,v in zip(raw_fields, row):
                 if k != 'record_id':
-                    d[k] = unidecode(unicode(v))
+                    d[k] = preProcess(unicode(v))
             rows_d.append(d)
         canonical_rows.append(dedupe.canonicalize(rows_d))
     create_canon_table(session_id)

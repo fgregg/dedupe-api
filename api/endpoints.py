@@ -6,7 +6,7 @@ from api.models import DedupeSession, User, Group
 from api.database import session as db_session, engine, Base
 from api.auth import csrf, check_api_key
 from api.dedupe_utils import get_engine, make_canonical_table, \
-    create_session
+    create_session, preProcess
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -74,30 +74,34 @@ def match():
         for row in all_data:
             d = {}
             for k,v in zip(fields, row):
-                if not v:
-                    v = ''
-                d[k] = v
+                d[k] = preProcess(unicode(v))
             data_d[int(d['canon_record_id'])] = d
         deduper = dedupe.Gazetteer(json.loads(sess.field_defs))
         deduper.readTraining(StringIO(sess.training_data))
         deduper.train()
         deduper.index(data_d)
+        for k,v in obj.items():
+            obj[k] = preProcess(unicode(v))
         o = {'blob': obj}
-        linked = deduper.match(o)
-        print linked
-        # from here down needs to be checked
+        linked = deduper.match(o, threshold=0)
         match_list = []
-       #if linked:
-       #    ids = []
-       #    confs = {}
-       #    for l in linked[0]:
-       #        id_set, confidence = l
-       #        ids.extend([i for i in id_set if i not in ids])
-       #        confs[id_set[1]] = confidence
-       #    for match in matches:
-       #        m = dict(loads(match.blob))
-       #        # m['match_confidence'] = float(confs[str(match.id)])
-       #        match_list.append(m)
+        if linked:
+            ids = []
+            confs = {}
+            for l in linked[0]:
+                id_set, confidence = l
+                ids.extend([i for i in id_set if i != 'blob'])
+                confs[id_set[1]] = confidence
+            ids = list(set(ids))
+            matches = db_session.query(canon_table)\
+                .filter(canon_table.c.canon_record_id.in_(ids))\
+                .all()
+            for match in matches:
+                m = {}
+                for k,v in zip(fields, match):
+                    m[k] = v
+                m['match_confidence'] = float(confs[str(m['canon_record_id'])])
+                match_list.append(m)
         r['matches'] = match_list
 
     resp = make_response(json.dumps(r, default=_to_json), status_code)
