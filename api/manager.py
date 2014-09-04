@@ -1,7 +1,7 @@
 from flask import Blueprint, request, session as flask_session, \
     render_template, make_response, flash, redirect, url_for
 from api.database import session as db_session, engine, Base
-from api.models import User, Role, DedupeSession
+from api.models import User, Role, DedupeSession, Group
 from api.auth import login_required, check_roles
 from api.dedupe_utils import preProcess, get_engine
 from flask_wtf import Form
@@ -21,10 +21,15 @@ manager = Blueprint('manager', __name__)
 def role_choices():
     return Role.query.all()
 
+def group_choices():
+    return Group.query.all()
+
 class AddUserForm(Form):
     name = TextField('name', validators=[DataRequired()])
     email = TextField('email', validators=[DataRequired(), Email()])
     roles = QuerySelectMultipleField('roles', query_factory=role_choices, 
+                                validators=[DataRequired()])
+    groups = QuerySelectMultipleField('groups', query_factory=group_choices, 
                                 validators=[DataRequired()])
     password = PasswordField('password', validators=[DataRequired()])
 
@@ -66,6 +71,7 @@ def add_user():
         db_session.add(user)
         db_session.commit()
         user.roles = form.roles.data
+        user.groups = form.groups.data
         db_session.add(user)
         db_session.commit()
         flash('User %s added' % user.name)
@@ -84,7 +90,8 @@ def user_list():
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
 def review():
-    return render_template('review-list.html')
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_template('review-list.html', user=user)
 
 @manager.route('/session-review/<session_id>/')
 @login_required
