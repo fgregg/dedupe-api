@@ -13,6 +13,8 @@ def entity_map(name, metadata, pk_type=Integer):
         Column('record_id', pk_type, primary_key=True),
         Column('group_id', Integer), 
         Column('confidence', Float(precision=50)),
+        Column('source_hash', String(32)),
+        Column('source', pk_type, default=None),
         Column('clustered', Boolean, default=False),
         Column('checked_out', Boolean, default=False),
         Column('checkout_expire', DateTime),

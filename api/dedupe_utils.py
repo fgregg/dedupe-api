@@ -28,6 +28,7 @@ from sqlalchemy import create_engine, Table, Column, Integer, Float, Boolean, \
 from unidecode import unidecode
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from sqlalchemy.ext.declarative import declarative_base
+from hashlib import md5
 
 try:
     import MySQLdb.cursors as mysql_cursors
@@ -115,15 +116,32 @@ def writeEntityMap(clustered_dupes, session_key, conn_string, data_d):
     engine = get_engine(conn_string)
     dt.create(bind=engine, checkfirst=True)
     rows = []
+    sess = db_session.query(DedupeSession).get(session_key)
+    field_defs = json.loads(sess.field_defs)
+    model_fields = [f['field'] for f in field_defs]
+    raw_session = create_session(sess.conn_string)
+    raw_engine = raw_session.bind
+    raw_base = declarative_base()
+    raw_table = Table(sess.table_name, raw_base.metadata, 
+        autoload=True, autoload_with=raw_engine)
+    raw_cols = [getattr(raw_table.c, f) for f in model_fields]
+    pk_col = [p for p in raw_table.primary_key][0]
     for cluster_id, cluster in enumerate(clustered_dupes):
         id_set, confidence_score = cluster
         cluster_list = [{'row_id': c, 'row': data_d[c]} for c in id_set]
         for member in cluster_list:
+            obj = raw_session.query(*raw_cols)\
+                .filter(pk_col == member['row_id'])\
+                .first()
+            hash_me = ';'.join([preProcess(unicode([i][0])) for i in obj])
+            print hash_me
+            md5_hash = md5(hash_me).hexdigest()
             m = {
                 'group_id': cluster_id,
                 'confidence': float(confidence_score),
                 'record_id': member['row_id'],
                 'clustered': False,
+                'source_hash': md5_hash,
             }
             rows.append(m)
     conn = engine.contextual_connect()
@@ -188,7 +206,7 @@ def retrain(session_key, conn_string):
 def dedupeit(**kwargs):
     app_session = create_session(DB_CONN)
     dd_session = app_session.query(DedupeSession).get(kwargs['session_key'])
-    d = dedupe.Gazetteer(json.loads(dd_session.field_defs), 
+    d = dedupe.Dedupe(json.loads(dd_session.field_defs), 
         data_sample=kwargs['data_sample'])
     deduper = WebDeduper(d, 
         conn_string=DB_CONN,

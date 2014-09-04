@@ -14,11 +14,12 @@ from cPickle import loads
 from cStringIO import StringIO
 from api.dedupe_utils import retrain
 from sqlalchemy.exc import NoSuchTableError
-from sqlalchemy import Table, select, and_
+from sqlalchemy import Table, select, and_, func
 from sqlalchemy.ext.declarative import declarative_base
 from itertools import groupby
 from operator import itemgetter
 from datetime import datetime, timedelta
+from hashlib import md5
 
 endpoints = Blueprint('endpoints', __name__)
 
@@ -63,47 +64,63 @@ def match():
     if r['status'] != 'error':
         api_key = post['api_key']
         session_key = post['session_key']
+        n_matches = post.get('num_matches', 5)
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
         model_fields = [f['field'] for f in field_defs]
-        canon_table = Table('canon_%s' % session_key, 
+        entity_table = Table('entity_%s' % session_key, 
             Base.metadata, autoload=True, autoload_with=engine)
-        fields = [f for f in canon_table.columns.keys() if f in model_fields]
-        fields.append('canon_record_id')
-        cols = [getattr(canon_table.c, f) for f in fields]
-        all_data = db_session.query(*cols).all()
-        data_d = {}
-        for row in all_data:
-            d = {}
-            for k,v in zip(fields, row):
-                d[k] = preProcess(unicode(v))
-            data_d[int(d['canon_record_id'])] = d
-        deduper = dedupe.Gazetteer(field_defs)
-        deduper.readTraining(StringIO(sess.training_data))
-        deduper.train()
-        deduper.index(data_d)
-        for k,v in obj.items():
-            obj[k] = preProcess(unicode(v))
-        o = {'blob': obj}
-        linked = deduper.match(o, threshold=0)
+        raw_session = create_session(sess.conn_string)
+        raw_engine = raw_session.bind
+        raw_base = declarative_base()
+        raw_table = Table(sess.table_name, raw_base.metadata, 
+            autoload=True, autoload_with=raw_engine)
+        raw_cols = [getattr(raw_table.c, f) for f in model_fields]
+        pk_col = [p for p in raw_table.primary_key][0]
+        hash_me = ';'.join([preProcess(unicode(obj[i])) for i in model_fields])
+        md5_hash = md5(hash_me).hexdigest()
+        exact_match = db_session.query(entity_table)\
+            .filter(entity_table.c.source_hash == md5_hash).first()
         match_list = []
-        if linked:
-            ids = []
-            confs = {}
-            for l in linked[0]:
-                id_set, confidence = l
-                ids.extend([i for i in id_set if i != 'blob'])
-                confs[id_set[1]] = confidence
-            ids = list(set(ids))
-            matches = db_session.query(*cols)\
-                .filter(canon_table.c.canon_record_id.in_(ids))\
+        if exact_match:
+            cluster = db_session.query(entity_table.c.record_id)\
+                .filter(entity_table.c.group_id == exact_match.group_id)\
                 .all()
-            for match in matches:
-                m = {}
-                for k,v in zip(fields, match):
-                    m[k] = v
-                m['match_confidence'] = float(confs[str(m['canon_record_id'])])
-                match_list.append(m)
+            raw_ids = [c[0] for c in cluster]
+            raw_record = raw_session.query(*raw_cols)\
+                .filter(pk_col.in_(raw_ids)).first()
+            d = { f: getattr(raw_record, f) for f in model_fields }
+            d['entity_id'] = exact_match.record_id
+            d['match_confidence'] = '1.0'
+            match_list.append(d)
+        else:
+            deduper = dedupe.StaticGazetteer(StringIO(sess.settings_file))
+            for k,v in obj.items():
+                obj[k] = preProcess(unicode(v))
+            o = {'blob': obj}
+            raw_cols.append(pk_col)
+            raw_data = raw_session.query(*raw_cols).all()
+            data_d = {}
+            for row in raw_data:
+                d = {f: getattr(row, f) for f in model_fields}
+                data_d[int(getattr(row, pk_col.name))] = d
+            deduper.index(data_d)
+            linked = deduper.match(o, threshold=0, n_matches=n_matches)
+            if linked:
+                ids = []
+                confs = {}
+                for l in linked[0]:
+                    id_set, confidence = l
+                    ids.extend([i for i in id_set if i != 'blob'])
+                    confs[id_set[1]] = confidence
+                ids = list(set(ids))
+                matches = db_session.query(*raw_cols)\
+                    .filter(pk_col.in_(ids)).all()
+                for match in matches:
+                    m = {f: getattr(match, f) for f in model_fields}
+                    m['entity_id'] = getattr(match, pk_col.name)
+                    m['match_confidence'] = float(confs[str(m['entity_id'])])
+                    match_list.append(m)
         r['matches'] = match_list
 
     resp = make_response(json.dumps(r, default=_to_json), status_code)
