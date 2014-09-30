@@ -1,6 +1,6 @@
 <ul class='nav nav-wizard'>
-  <li class='{% if "/training/" in request.path %} active {% endif %}'>1 - Upload</li>
-  <li class='{% if "/select_fields/" in request.path %} active {% endif %}'>2 - Fields to compare</li>
-  <li class='{% if "/training_run/" in request.path %} active {% endif %}'>3 - Training</li>
-  <li class='{% if "/dedupe_finished/" in request.path %} active {% endif %}'>4 - Dedupe it!</li>
+  <li class='{% if request.path == "/" %} active {% endif %}'>1 - Upload</li>
+  <li class='{% if request.path == "/select_fields/" %} active {% endif %}'>2 - Fields to compare</li>
+  <li class='{% if request.path == "/training_run/" %} active {% endif %}'>3 - Training</li>
+  <li class='{% if request.path == "/dedupe_finished/" %} active {% endif %}'>4 - Dedupe it!</li>
 </ul>

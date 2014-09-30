@@ -99,3 +99,11 @@ def review():
 def session_review(session_id):
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('session-review.html', session_id=session_id, user=user)
+
+@manager.route('/match-demo/<session_id>/')
+@login_required
+@check_roles(roles=['admin', 'reviewer'])
+def match_demo(session_id):
+    user = db_session.query(User).get(flask_session['user_id'])
+    sess = db_session.query(DedupeSession).get(session_id)
+    return render_template('match-demo.html', sess=sess, user=user)

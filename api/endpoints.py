@@ -58,7 +58,10 @@ def validate_post(post):
 @csrf.exempt
 @endpoints.route('/match/', methods=['POST'])
 def match():
-    post = json.loads(request.data)
+    try:
+        post = json.loads(request.data)
+    except ValueError:
+        post = json.loads(request.form.keys()[0])
     r, status_code, user, sess = validate_post(post)
     if r['status'] != 'error':
         api_key = post['api_key']

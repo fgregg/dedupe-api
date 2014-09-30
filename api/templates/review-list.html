@@ -10,6 +10,7 @@
                     <th>Session ID</th>
                     <th></th>
                     <th></th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="session-list"></tbody>
@@ -26,6 +27,7 @@
                 $.each(resp.objects, function(i, object){
                     rows += '<tr><td>' + object.name + '</td>';
                     rows += '<td>' + object.id + '</td>';
+                    rows += '<td><a href="/match-demo/' + object.id + '/">Match Demo</a></td>';
                     rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
                     rows += '<td><a href="/delete-session/' + object.id + '/">Delete</a></td>';
                     rows += '</tr>';

@@ -3,7 +3,7 @@
 <div class="row">
   <div class="col-md-12">
   {% include "dedupe_steps.html" %}
-  <h3>1. Upload a spreadsheet</h3>
+  <h3>1. Upload a spreadsheet or connect to a database</h3>
   {% include "error.html" %}
   </div>
 </div>
@@ -23,6 +23,9 @@
                   to see how the connection string should be formatted.
               </p>
               <button type="button" id="fetch-tables" class="btn btn-primary btn-xs">Fetch table names</button>
+              <p class="help-block" id="table-help" style="display:none;">
+                  You forgot to provide a connection string
+              </p>
           </div>
           <div class="form-group" style="display:none">
               <label for="id_table_name">... and choose a table ...</label>
@@ -49,16 +52,21 @@
     $(document).ready(function(){
         $('#fetch-tables').on('click', function(e){
             e.preventDefault();
+            $('#table-help').hide();
             var conn_string = $('#id_conn_string').val();
-            $.post('{{ url_for("trainer.fetch_tables") }}', {'conn_string': conn_string}, function(resp){
-                var names = ''
-                $.each(resp, function(i, name){
-                    names += '<option val="' + name + '">' + name + '</option>';
-                });
-                $('#id_table_name').append(names);
-                $('#id_table_name').parent().show()
-                $('#id_input_file').parent().hide()
-            })
+            if(!conn_string){
+                $('#table-help').show();
+            } else {
+                $.post('{{ url_for("trainer.fetch_tables") }}', {'conn_string': conn_string}, function(resp){
+                    var names = ''
+                    $.each(resp, function(i, name){
+                        names += '<option val="' + name + '">' + name + '</option>';
+                    });
+                    $('#id_table_name').append(names);
+                    $('#id_table_name').parent().show()
+                    $('#id_input_file').parent().hide()
+                })
+            }
         })
     })
 </script>
