@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from flask import session as flask_session, redirect, url_for, request, Blueprint, \
-    render_template, abort, flash
+    render_template, abort, flash, make_response
 from functools import wraps
 from flask_login import login_required, login_user, logout_user, LoginManager
 from flask_wtf import Form

@@ -39,6 +39,7 @@ class DedupeSession(Base):
     name = Column(String, nullable=False)
     training_data = Column(LargeBinary)
     settings_file = Column(LargeBinary)
+    gaz_settings_file = Column(LargeBinary)
     field_defs = Column(LargeBinary)
     conn_string = Column(String)
     table_name = Column(String)

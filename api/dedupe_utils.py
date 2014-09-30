@@ -191,15 +191,18 @@ class WebDeduper(object):
         return 'ok'
 
 @queuefunc
-def retrain(session_key, conn_string):
-    db_session = create_session(conn_string)
+def retrain(session_key):
+    db_session = create_session(DB_CONN)
     sess = db_session.query(DedupeSession).get(session_key)
-    field_defs = json.loads(sess.field_defs)
-    training = json.loads(sess.training_data)
-    d = dedupe.Dedupe(field_defs)
-    d.sample()
-    d.readTraining(training)
-    d.train()
+    gaz = dedupe.Gazetteer(json.loads(sess.field_defs))
+    gaz.readTraining(StringIO(sess.training_data))
+    gaz.train()
+    gaz_set = StringIO()
+    gaz.writeSettings(gaz_set)
+    s = gaz_set.getvalue()
+    sess.gaz_settings_file = s
+    db_session.add(sess)
+    db_session.commit()
     return None
 
 @queuefunc
@@ -321,6 +324,14 @@ def make_canonical_table(session_id):
     for k,g in groupby(clusters, key=itemgetter(0)):
         groups[k] = [i[1] for i in list(g)]
     dd_sess = app_session.query(DedupeSession).get(session_id)
+    gaz = dedupe.Gazetteer(json.loads(dd_sess.field_defs))
+    gaz.readTraining(StringIO(dd_sess.training_data))
+    gaz.train()
+    gaz_set = StringIO()
+    gaz.writeTraining(gaz_set)
+    dd_sess.gaz_settings_file = gaz_set.getvalue()
+    app_session.add(dd_sess)
+    app_session.commit()
     raw_session = create_session(dd_sess.conn_string)
     raw_engine = raw_session.bind
     raw_base = declarative_base()

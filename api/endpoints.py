@@ -1,18 +1,17 @@
 import os
 import json
 from flask import Flask, make_response, request, Blueprint, \
-    session as flask_session
+    session as flask_session, make_response
 from api.models import DedupeSession, User, Group
 from api.database import session as db_session, engine, Base
 from api.auth import csrf, check_api_key
 from api.dedupe_utils import get_engine, make_canonical_table, \
-    create_session, preProcess
+    create_session, preProcess, retrain
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
 from cPickle import loads
 from cStringIO import StringIO
-from api.dedupe_utils import retrain
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy import Table, select, and_, func
 from sqlalchemy.ext.declarative import declarative_base
@@ -94,7 +93,7 @@ def match():
             d['match_confidence'] = '1.0'
             match_list.append(d)
         else:
-            deduper = dedupe.StaticGazetteer(StringIO(sess.settings_file))
+            deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
             for k,v in obj.items():
                 obj[k] = preProcess(unicode(v))
             o = {'blob': obj}
@@ -102,7 +101,7 @@ def match():
             raw_data = raw_session.query(*raw_cols).all()
             data_d = {}
             for row in raw_data:
-                d = {f: getattr(row, f) for f in model_fields}
+                d = {f: preProcess(unicode(getattr(row, f))) for f in model_fields}
                 data_d[int(getattr(row, pk_col.name))] = d
             deduper.index(data_d)
             linked = deduper.match(o, threshold=0, n_matches=n_matches)
@@ -114,7 +113,7 @@ def match():
                     ids.extend([i for i in id_set if i != 'blob'])
                     confs[id_set[1]] = confidence
                 ids = list(set(ids))
-                matches = db_session.query(*raw_cols)\
+                matches = raw_session.query(*raw_cols)\
                     .filter(pk_col.in_(ids)).all()
                 for match in matches:
                     m = {f: getattr(match, f) for f in model_fields}
@@ -149,7 +148,6 @@ def train():
                 negative.append(match)
             for k,v in match.items():
                 match[k] = preProcess(unicode(v))
-            del match['canon_record_id']
             del match['match_confidence']
             del match['match']
         if len(positive) > 1:
