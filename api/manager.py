@@ -55,6 +55,14 @@ class AddUserForm(Form):
         
         return True
 
+@manager.route('/')
+@login_required
+@check_roles(roles=['admin', 'reviewer'])
+def index():
+    user = db_session.query(User).get(flask_session['user_id'])
+    roles = [r.name for r in user.roles]
+    return render_template('index.html', user=user, roles=roles)
+
 @manager.route('/add-user/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
@@ -85,13 +93,6 @@ def user_list():
     users = db_session.query(User).all()
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('user_list.html', users=users, user=user)
-
-@manager.route('/review-list/')
-@login_required
-@check_roles(roles=['admin', 'reviewer'])
-def review():
-    user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('review-list.html', user=user)
 
 @manager.route('/session-review/<session_id>/')
 @login_required

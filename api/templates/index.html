@@ -1,73 +1,52 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="row">
-  <div class="col-md-12">
-  {% include "dedupe_steps.html" %}
-  <h3>1. Upload a spreadsheet or connect to a database</h3>
-  {% include "error.html" %}
-  </div>
-</div>
-<div class="row">
-  <div class="col-md-8">
-
-    <div class='well'>
-
-      <form role="form" action="{{ url_for('trainer.index') }}" method="POST" enctype="multipart/form-data">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-          <div class="form-group">
-              <label for="id_conn_string">Give us a database connection string ...</label>
-              <input type="text" class="form-control" id="id_conn_string" name="conn_string" placeholder="Connection string" />
-              <p class="help-block">
-                  Under the hood, we are using <a href="http://www.sqlalchemy.org/">SQLAlchemy</a>
-                  to connect to your database. Check <a href="http://docs.sqlalchemy.org/en/rel_0_9/core/engines.html#database-urls">here</a>
-                  to see how the connection string should be formatted.
-              </p>
-              <button type="button" id="fetch-tables" class="btn btn-primary btn-xs">Fetch table names</button>
-              <p class="help-block" id="table-help" style="display:none;">
-                  You forgot to provide a connection string
-              </p>
-          </div>
-          <div class="form-group" style="display:none">
-              <label for="id_table_name">... and choose a table ...</label>
-              <select  class="form-control" name="table_name" id="id_table_name"></select>
-              <p class="help-block">We also need to know which table to deduplicate</p>
-          </div>
-          <div class="form-group">
-              <label for="input_file">... or upload a spreadsheet to get started.</label>
-              <input type="file" id="id_input_file" name="input_file">
-              <p class="help-block">
-                  Only <strong>.csv, .xls or .xlsx</strong> files.
-              </p>
-          </div>
-          <hr />
-          <button type="submit" id="submit-upload" class="btn btn-primary">Next &raquo;</button>
-      </form>
+    {% if 'admin' in roles %}
+        <div class="col-md-8">
+    {% else %}
+        <div class="col-md-12">
+    {% endif %}
+        <h2>Dedupe sessions ready for review</h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    {% if 'admin' in roles %}
+                        <th></th>
+                    {% endif %}
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="session-list"></tbody>
+        </table>
     </div>
-  </div>
+    {% if 'admin' in roles %}
+    <div class="col-md-4">
+        <div class="panel">
+            <h4>Add a new dataset</h4>
+            <a role="button" href="{{url_for('trainer.index')}}" class="btn btn-default">Start &gt; </a>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
-
 {% block extra_javascript %}
-<script type="text/javascript">
+<script type='text/javascript'>
     $(document).ready(function(){
-        $('#fetch-tables').on('click', function(e){
-            e.preventDefault();
-            $('#table-help').hide();
-            var conn_string = $('#id_conn_string').val();
-            if(!conn_string){
-                $('#table-help').show();
-            } else {
-                $.post('{{ url_for("trainer.fetch_tables") }}', {'conn_string': conn_string}, function(resp){
-                    var names = ''
-                    $.each(resp, function(i, name){
-                        names += '<option val="' + name + '">' + name + '</option>';
-                    });
-                    $('#id_table_name').append(names);
-                    $('#id_table_name').parent().show()
-                    $('#id_input_file').parent().hide()
-                })
+        $.when($.getJSON('/session-list/')).then(
+          function(resp){
+                var rows = ''
+                $.each(resp.objects, function(i, object){
+                    rows += '<tr><td>' + object.name + '</td>';
+                    rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
+                    {% if 'admin' in roles %}
+                    rows += '<td><a href="/delete-session/' + object.id + '/">Delete</a></td>';
+                    {% endif %}
+                    rows += '</tr>';
+                });
+                $('#session-list').html(rows);
             }
-        })
+        )
     })
 </script>
 {% endblock %}

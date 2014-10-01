@@ -16,6 +16,7 @@ import dedupe
 from api.dedupe_utils import dedupeit, static_dedupeit, get_sample, \
     make_raw_table, DedupeFileError, get_engine
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import OperationalError
 from cStringIO import StringIO
 import csv
 from redis import Redis
@@ -38,7 +39,7 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@trainer.route('/', methods=['GET', 'POST'])
+@trainer.route('/train/', methods=['GET', 'POST'])
 @login_required
 def index():
     user = db_session.query(User).get(flask_session['user_id'])
@@ -74,9 +75,14 @@ def index():
                 file_obj=f)
             session_name = f.filename
         else:
-            # Leaving this in here for now so we can hook into users
-            # databases later on if we want to
-            conn_string = request.form['conn_string']
+            dbtype = request.form['dbtype']
+            username = request.form['username']
+            password = request.form['password']
+            hostname = request.form['hostname']
+            port = request.form['port']
+            database = request.form['database']
+            conn_string = '%s://%s:%s@%s:%s/%s' % \
+                (dbtype, username, password, hostname, port, database)
             table_name = request.form['table_name']
             session_name = table_name
             primary_key = None
@@ -102,7 +108,7 @@ def index():
         db_session.add(sess)
         db_session.commit()
         return redirect(url_for('trainer.select_fields'))
-    return make_response(render_app_template('index.html', error=error, user=user), status_code)
+    return make_response(render_app_template('upload.html', error=error, user=user), status_code)
 
 @csrf.exempt
 @trainer.route('/fetch-tables/', methods=['POST'])
@@ -112,9 +118,18 @@ def fetch_tables():
     conn_string = request.form['conn_string']
     engine = get_engine(conn_string)
     Rebase = declarative_base()
-    Rebase.metadata.reflect(engine)
-    table_names = Rebase.metadata.tables.keys()
-    resp = make_response(json.dumps(table_names))
+    resp = {
+        'status': 'ok',
+        'table_names': [],
+    }
+    try:
+        Rebase.metadata.reflect(engine)
+        resp['table_names'] = Rebase.metadata.tables.keys()
+    except OperationalError, e:
+        print e.message
+        resp['status'] = 'error'
+        resp['message'] = e.message
+    resp = make_response(json.dumps(resp))
     resp.headers['Content-Type'] = 'application/json'
     return resp
 

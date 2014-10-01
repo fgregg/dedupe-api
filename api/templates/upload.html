@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+  <div class="col-md-12">
+  {% include "dedupe_steps.html" %}
+  <h3>1. Upload a spreadsheet or connect to a database</h3>
+  {% include "error.html" %}
+  </div>
+</div>
+<div class="row">
+  <div class="col-md-12">
+
+    <div class='well'>
+        <div class="radio">
+            <label>
+                <input type="radio" name="data-type" id="upload" value="upload" checked>
+                Upload a Spreadsheet
+            </label>
+        </div>
+        <div class="radio">
+            <label>
+                <input type="radio" name="data-type" id="connect" value="connect">
+                Connect to a SQL database
+            </label>
+        </div>
+      <form role="form" action="{{ url_for('trainer.index') }}" method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="connect" style="display:none">
+              <div class="row">
+                  <div class="col-md-4">
+                      <div class="form-group">
+                          <label for="id_dbtype">Database type:</label>
+                          <select id="id_dbtype" class="form-control" name="dbtype">
+                              <option value="">-----</option>
+                              <option value="mysql">MySQL</option>
+                              <option value="postgresql">PostgreSQL</option>
+                          </select>
+                          <p class="help-block" id="dbtype-help" style="display:none;">
+                              You forgot to provide a database type
+                          </p>
+                      </div>
+                  </div>
+                  <div class="col-md-4">
+                      <div class="form-group">
+                          <label for="id_username">Username: </label>
+                          <input type="text" class="form-control" id="id_username" name="username" />
+                          <p class="help-block" id="password-help" style="display:none;">
+                              You forgot to provide a username
+                          </p>
+                      </div>
+                  </div>
+                  <div class="col-md-4">
+                      <div class="form-group">
+                          <label for="id_password">Password: </label>
+                          <input type="text" class="form-control" id="id_password" name="password" />
+                          <p class="help-block" id="password-help" style="display:none;">
+                              You forgot to provide a username
+                          </p>
+                      </div>
+                  </div>
+              </div>
+              <div class="row">
+                  <div class="col-md-6">
+                      <div class="form-group">
+                          <label for="id_hostname">Hostname: </label>
+                          <input type="text" class="form-control" id="id_hostname" name="hostname" />
+                          <p class="help-block" id="hostname-help" style="display:none;">
+                              You forgot to provide a hostname
+                          </p>
+                      </div>
+                  </div>
+                  <div class="col-md-3">
+                      <div class="form-group">
+                          <label for="id_port">Port: </label>
+                          <input type="text" class="form-control" id="id_port" name="port" />
+                          <p class="help-block" id="port-help" style="display:none;">
+                              You forgot to provide a port
+                          </p>
+                      </div>
+                  </div>
+                  <div class="col-md-3">
+                      <div class="form-group">
+                          <label for="id_database">Database name: </label>
+                          <input type="text" class="form-control" id="id_database" name="database"  />
+                          <p class="help-block" id="port-help" style="display:none;">
+                              You forgot to provide a database
+                          </p>
+                      </div>
+                  </div>
+              </div>
+              <div class="row">
+                  <div class="col-md-12">
+                      <div class="form-group">
+                          <button type="button" id="fetch-tables" class="btn btn-primary btn-xs">Fetch table names</button>
+                          <div id="spinner"></div>
+                          <p class="help-block" id="table-help"></p>
+                      </div>
+                      <div class="form-group" id="table-list" style="display:none">
+                          <label for="id_table_name">Table</label>
+                          <select  class="form-control" name="table_name" id="id_table_name"></select>
+                          <p class="help-block">We also need to know which table to deduplicate</p>
+                      </div>
+                  </div>
+              </div>
+          </div>
+          <div class="upload">
+              <div class="form-group">
+                  <label for="input_file">Upload a spreadsheet</label>
+                  <input type="file" id="id_input_file" name="input_file">
+                  <p class="help-block">
+                      Only <strong>.csv, .xls or .xlsx</strong> files.
+                  </p>
+              </div>
+          </div>
+          <button type="submit" id="submit-upload" class="btn btn-primary">Next &raquo;</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_javascript %}
+<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
+<script type="text/javascript">
+    $(document).ready(function(){
+        $('input[name="data-type"]').on('change', function(e){
+            $('div.upload').hide();
+            $('div.connect').hide();
+            var cls = $(this).val();
+            $('div.' + cls).show();
+            $('#submit-upload').toggle();
+        })
+        $('#fetch-tables').on('click', function(e){
+            e.preventDefault();
+            $('#spinner').spin('small');
+            $('#table-help').hide();
+            $('#table-list').hide();
+            var valid = true;
+            var dbtype = $('#id_dbtype').val();
+            if(!dbtype){
+                valid = false;
+                $('#dbtype-help').show();
+            }
+            var username = $('#id_username').val();
+            if(!username){
+                valid = false;
+                $('#username-help').show();
+            }
+            var password = $('#id_password').val();
+            var port = $('#id_port').val();
+            if(!port){
+                if (dbtype == 'mysql'){
+                    port = 3306;
+                } else {
+                    port = 5432;
+                }
+            }
+            var hostname = $('#id_hostname').val()
+            if(!hostname){
+                valid = false;
+                $('#hostname-help').show();
+            }
+            var database = $('#id_database').val();
+            if(!database){
+                valid = false;
+                $('#database-help').show();
+            }
+            var conn_string = dbtype + '://';
+            conn_string += username + ':' + password + '@';
+            conn_string += hostname + ':' + port + '/' + database;
+            if(valid){
+                $.post('{{ url_for("trainer.fetch_tables") }}', {'conn_string': conn_string}, function(resp){
+                    $('#spinner').spin(false);
+                    if (resp.status == 'ok'){
+                        var names = ''
+                        $.each(resp.table_names, function(i, name){
+                            names += '<option val="' + name + '">' + name + '</option>';
+                        });
+                        $('#id_table_name').html(names);
+                        $('#id_table_name').parent().show()
+                    } else {
+                        var error = 'Oops! Looks like we had a problem connecting to the database: ';
+                        error += resp.message
+                        $('#table-help').text(error);
+                        $('#table-help').show();
+                    }
+                })
+            }
+        })
+    })
+</script>
+{% endblock %}

@@ -99,7 +99,7 @@ def login():
     if form.validate_on_submit():
         user = form.user
         login_user(user)
-        return redirect(request.args.get('next') or url_for('trainer.index'))
+        return redirect(request.args.get('next') or url_for('manager.index'))
     email = form.email.data
     return render_template('login.html', form=form, email=email)
 

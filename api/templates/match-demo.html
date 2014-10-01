@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="panel">
+            <h4>Find a match in the <strong>{{sess.name}}</strong> dataset</h4>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <form role="form" id="match-form">
+            <button class="btn btn-default match-button">Match!</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block extra_javascript %}
+<script type='text/javascript'>
+    $(document).ready(function(){
+        var sess_id = "{{sess.id}}"
+        var api_key = "{{ user.id }}"
+        $.when($.getJSON('/field-definitions/' + sess_id + '/')).then(
+          function(resp){
+                var form = '';
+                $.each(resp, function(i, object){
+                    form += '<div class="form-group">';
+                    form += '<label for="' + object.field + '">' + object.field + '</label>';
+                    form += '<input type="text" class="form-control" name="' + object.field + '" />';
+                    form += '</div>';
+                });
+                $('#match-form').prepend(form);
+            }
+        )
+        $('.match-button').on('click', function(e){
+            e.preventDefault();
+            var contents = parseParams($('#match-form').serialize());
+            var data  = {
+                'object': contents,
+                'session_key': sess_id,
+                'api_key': api_key,
+            }
+            $.post('/match/', JSON.stringify(data), function(resp){
+                console.log(resp);
+            })
+        })
+    })
+    function parseParams(query){
+        var re = /([^&=]+)=?([^&]*)/g;
+        var decodeRE = /\+/g;  // Regex for replacing addition symbol with a space
+        var decode = function (str) {return decodeURIComponent( str.replace(decodeRE, " ") );};
+        var params = {}, e;
+        while ( e = re.exec(query) ) {
+            var k = decode( e[1] ), v = decode( e[2] );
+            if (k.substring(k.length - 2) === '[]') {
+                k = k.substring(0, k.length - 2);
+                (params[k] || (params[k] = [])).push(v);
+            }
+            else params[k] = v;
+        }
+        return params;
+    }
+</script>
+{% endblock %}
