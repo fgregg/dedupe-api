@@ -39,9 +39,9 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@trainer.route('/train/', methods=['GET', 'POST'])
+@trainer.route('/train-start/', methods=['GET', 'POST'])
 @login_required
-def index():
+def train():
     user = db_session.query(User).get(flask_session['user_id'])
     status_code = 200
     error = None

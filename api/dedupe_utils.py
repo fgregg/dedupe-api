@@ -134,7 +134,6 @@ def writeEntityMap(clustered_dupes, session_key, conn_string, data_d):
                 .filter(pk_col == member['row_id'])\
                 .first()
             hash_me = ';'.join([preProcess(unicode([i][0])) for i in obj])
-            print hash_me
             md5_hash = md5(hash_me).hexdigest()
             m = {
                 'group_id': cluster_id,

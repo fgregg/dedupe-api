@@ -6,7 +6,7 @@
     {% else %}
         <div class="col-md-12">
     {% endif %}
-        <h2>Dedupe sessions ready for review</h2>
+        <h2>Ready for review</h2>
         <table class="table">
             <thead>
                 <tr>
@@ -21,11 +21,10 @@
         </table>
     </div>
     {% if 'admin' in roles %}
-    <div class="col-md-4">
-        <div class="panel">
-            <h4>Add a new dataset</h4>
-            <a role="button" href="{{url_for('trainer.index')}}" class="btn btn-default">Start &gt; </a>
-        </div>
+    <div class="col-md-4 panel">
+        <h4>Add a new dataset</h4>
+        <a role="button" href="{{url_for('trainer.train')}}" class="btn btn-default">Start &gt; </a>
+        <hr />
     </div>
     {% endif %}
 </div>

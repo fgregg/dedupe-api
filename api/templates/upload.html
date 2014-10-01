@@ -23,7 +23,7 @@
                 Connect to a SQL database
             </label>
         </div>
-      <form role="form" action="{{ url_for('trainer.index') }}" method="POST" enctype="multipart/form-data">
+      <form role="form" action="{{ url_for('trainer.train') }}" method="POST" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
           <div class="connect" style="display:none">
               <div class="row">
