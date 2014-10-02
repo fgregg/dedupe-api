@@ -132,7 +132,10 @@ def match():
 @csrf.exempt
 @endpoints.route('/train/', methods=['POST'])
 def train():
-    post = json.loads(request.data)
+    try:
+        post = json.loads(request.data)
+    except ValueError:
+        post = json.loads(request.form.keys()[0])
     r, status_code, user, sess = validate_post(post)
     if not post.get('matches'):
         r['status'] = 'error'
@@ -160,7 +163,8 @@ def train():
             status_code = 400
         else:
             training_data = json.loads(sess.training_data)
-            training_data['match'].append([positive[0],obj])
+            if positive:
+                training_data['match'].append([positive[0],obj])
             for n in negative:
                 training_data['distinct'].append([n,obj])
             sess.training_data = json.dumps(training_data)
