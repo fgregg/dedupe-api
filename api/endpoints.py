@@ -5,7 +5,7 @@ from flask import Flask, make_response, request, Blueprint, \
 from api.models import DedupeSession, User, Group
 from api.database import session as db_session, engine, Base
 from api.auth import csrf, check_api_key
-from api.utils.delayed_tasks import makeCanonicalTable, retrain
+from api.utils.delayed_tasks import makeCanonicalTable, retrain, bulkMatchWorker
 from api.utils.helpers import getEngine, createSession, preProcess
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
@@ -398,3 +398,54 @@ def mark_cluster(session_id):
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
+@csrf.exempt
+@endpoints.route('/bulk-match-api/<session_id>/', methods=['POST'])
+@check_api_key()
+def bulk_match(session_id):
+    """ 
+    field_map looks like:
+        {
+            '<dataset_field_name>': '<uploaded_field_name>',
+            '<dataset_field_name>': '<uploaded_field_name>',
+        }
+    """
+    resp = {
+        'status': 'ok',
+        'message': ''
+    }
+    status_code = 200
+    files = request.files.values()
+    if not files:
+        resp['status'] = 'error'
+        resp['message'] = 'File upload required'
+        status_code = 400
+    field_map = request.form.get('field_map')
+    if not field_map:
+        resp['status'] = 'error'
+        resp['message'] = 'field_map is required'
+        status_code = 400
+    if status_code is 200:
+        sess = db_session.query(DedupeSession).get(session_id)
+        filename = files[0].filename
+        token = bulkMatchWorker.delay(
+            files[0].read(), 
+            field_map, 
+            filename, 
+            sess.gaz_settings_file
+        )
+        resp['token'] = token.key
+    resp = make_response(json.dumps(resp), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+@endpoints.route('/check-bulk-match/<token>/')
+@check_api_key()
+def check_bulk_match(token):
+    rv = DelayedResult(token)
+    if rv.return_value is None:
+        return jsonify(ready=False)
+    redis.delete(token)
+    result = rv.return_value
+    resp = make_response(json.dumps(result), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp

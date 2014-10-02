@@ -108,3 +108,10 @@ def match_demo(session_id):
     user = db_session.query(User).get(flask_session['user_id'])
     sess = db_session.query(DedupeSession).get(session_id)
     return render_template('match-demo.html', sess=sess, user=user)
+
+@manager.route('/bulk-match/<session_id>/')
+@login_required
+def bulk_match(session_id):
+    user = db_session.query(User).get(flask_session['user_id'])
+    sess = db_session.query(DedupeSession).get(session_id)
+    return render_template('match-demo.html', sess=sess, user=user)

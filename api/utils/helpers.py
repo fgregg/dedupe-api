@@ -5,6 +5,7 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
 from unidecode import unidecode
+from itertools import count
 
 try:
     import MySQLdb.cursors as mysql_cursors
@@ -43,6 +44,17 @@ def getEngine(conn_string):
         poolclass=NullPool,
         **conn_args)
 
+def iterDataDict(rows, primary_key=None):
+    data_d = {}
+    c = count(start=1)
+    for row in rows:
+        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
+        if primary_key:
+            data_d[row[primary_key]] = dedupe.core.frozendict(clean_row)
+        else:
+            data_d[c.next()] = dedupe.core.frozendict(clean_row)
+    return data_d
+
 def makeDataDict(conn_string, session_key, primary_key=None, table_name=None):
     session = createSession(conn_string)
     engine = session.bind
@@ -61,9 +73,6 @@ def makeDataDict(conn_string, session_key, primary_key=None, table_name=None):
     rows = []
     for row in session.query(table).all():
         rows.append({k: unicode(v) for k,v in zip(fields, row)})
-    data_d = {}
-    for row in rows:
-        clean_row = [(k, preProcess(v)) for (k,v) in row.items()]
-        data_d[row[primary_key]] = dedupe.core.frozendict(clean_row)
+    data_d = iterDataDict(rows, primary_key=primary_key)
     session.close()
     return data_d

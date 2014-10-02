@@ -13,6 +13,7 @@ class DedupeFileError(Exception):
     def __init__(self, message):
         Exception.__init__(self, message)
         self.message = message
+
 class WebDeduper(object):
     
     def __init__(self, deduper,

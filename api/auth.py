@@ -76,8 +76,10 @@ def check_api_key():
             status_code = 200
             if flask_session.get('user_id'):
                 api_key = flask_session['user_id']
-            else:
-                api_key = request.args.get('api_key')
+            elif request.form.get('api_key'):
+                api_key = request.form['api_key']
+            elif request.args.get('api_key'):
+                api_key = request.args['api_key']
             if not api_key:
                 resp['status'] = 'error'
                 resp['message'] = "'api_key' is a required parameter"

@@ -1,11 +1,40 @@
 import dedupe
+from cStringIO import StringIO
 from api.queue import queuefunc
-from api.utils.helpers import createSession, preProcess
+from api.utils.helpers import createSession, preProcess, iterDataDict
 from api.utils.dedupe import writeCanonTable, WebDeduper
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Table
 from itertools import groupby
 from operator import itemgetter
+from csvkit import convert
+from csvkit.unicsv import UnicodeCSVDictReader
+
+@queuefunc
+def bulkMatchWorker(file_contents, field_map, filename, settings):
+    ftype = convert.guess_format(filename)
+    s = StringIO(file_contents)
+    result = {
+        'status': 'ok',
+        'results': [],
+        'message': ''
+    }
+    try:
+        converted = convert.convert(s, ftype)
+    except UnicodeDecodeError:
+        result['status'] = 'error'
+        result['message'] = 'Problem decoding file'
+        return result
+    del s
+    s = StringIO(converted)
+    reader = UnicodeCSVDictReader(s)
+    rows = []
+    for row in reader:
+        rows.append({k: unicode(v) for k,v in zip(field_map.keys(), row)})
+    data_d = iterDataDict(rows)
+    deduper = dedupe.StaticGazetteer(StringIO(settings))
+    # TODO: Finish this...
+    return result
 
 @queuefunc
 def dedupeit(**kwargs):
