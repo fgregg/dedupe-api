@@ -13,8 +13,9 @@ import copy
 import time
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
-from api.dedupe_utils import dedupeit, static_dedupeit, get_sample, \
-    make_raw_table, DedupeFileError, get_engine
+from api.utils.delayed_tasks import dedupeit, getSample
+from api.utils.dedupe import writeRawTable, DedupeFileError
+from api.utils.helpers import getEngine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import OperationalError
 from cStringIO import StringIO
@@ -69,7 +70,7 @@ def train():
             conn_string = current_app.config['DB_CONN']
             table_name = 'raw_%s' % flask_session['session_key']
             primary_key = 'record_id'
-            make_raw_table(conn_string=conn_string,
+            writeRawTable(conn_string=conn_string,
                 session_key=flask_session['session_key'],
                 filename=f.filename,
                 file_obj=f)

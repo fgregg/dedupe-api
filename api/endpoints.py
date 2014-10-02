@@ -5,8 +5,8 @@ from flask import Flask, make_response, request, Blueprint, \
 from api.models import DedupeSession, User, Group
 from api.database import session as db_session, engine, Base
 from api.auth import csrf, check_api_key
-from api.dedupe_utils import get_engine, make_canonical_table, \
-    create_session, preProcess, retrain
+from api.utils.delayed_tasks import makeCanonicalTable, retrain
+from api.utils.helpers import getEngine, createSession, preProcess
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -72,7 +72,7 @@ def match():
         model_fields = [f['field'] for f in field_defs]
         entity_table = Table('entity_%s' % session_key, 
             Base.metadata, autoload=True, autoload_with=engine)
-        raw_session = create_session(sess.conn_string)
+        raw_session = createSession(sess.conn_string)
         raw_engine = raw_session.bind
         raw_base = declarative_base()
         raw_table = Table(sess.table_name, raw_base.metadata, 
@@ -306,7 +306,7 @@ def get_cluster(session_id):
         cluster_list = []
         if review_remainder > 0:
             field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-            raw_session = create_session(sess.conn_string)
+            raw_session = createSession(sess.conn_string)
             raw_engine = raw_session.bind
             raw_base = declarative_base()
             raw_table = Table(sess.table_name, raw_base.metadata, 
@@ -340,7 +340,7 @@ def get_cluster(session_id):
                     d[k] = v
                 cluster_list.append(d)
         else:
-            make_canonical_table.delay(session_id)
+            makeCanonicalTable.delay(session_id)
         resp['objects'] = cluster_list
         resp['total_clusters'] = total_clusters
         resp['review_remainder'] = review_remainder
