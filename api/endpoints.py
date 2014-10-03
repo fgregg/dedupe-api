@@ -425,13 +425,12 @@ def bulk_match(session_id):
         resp['message'] = 'field_map is required'
         status_code = 400
     if status_code is 200:
-        sess = db_session.query(DedupeSession).get(session_id)
         filename = files[0].filename
         token = bulkMatchWorker.delay(
+            session_id,
             files[0].read(), 
             field_map, 
-            filename, 
-            sess.gaz_settings_file
+            filename
         )
         resp['token'] = token.key
     resp = make_response(json.dumps(resp), status_code)
@@ -446,6 +445,12 @@ def check_bulk_match(token):
         return jsonify(ready=False)
     redis.delete(token)
     result = rv.return_value
+    if result['status'] == 'ok':
+        result['result'] = '/downloads/%s' % result['result']
     resp = make_response(json.dumps(result), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
+
+@app.route('/downloads/<path:filename>/')
+def downloads(filename):
+    return send_from_directory(DOWNLOAD_FOLDER, filename)

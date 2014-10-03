@@ -7,7 +7,6 @@ from sqlalchemy import Table, Column, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from hashlib import md5
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'upload_data')
 
 class DedupeFileError(Exception): 
     def __init__(self, message):

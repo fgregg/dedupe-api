@@ -1,22 +1,29 @@
 import dedupe
+import json
 from cStringIO import StringIO
 from api.queue import queuefunc
-from api.utils.helpers import createSession, preProcess, iterDataDict
-from api.utils.dedupe import writeCanonTable, WebDeduper
+from api.app_config import DB_CONN, DOWNLOAD_FOLDER
+from api.models import DedupeSession
+from api.utils.helpers import createSession, preProcess, iterDataDict, \
+    makeDataDict
+from api.utils.dedupe_functions import writeCanonTable, WebDeduper
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Table
 from itertools import groupby
 from operator import itemgetter
 from csvkit import convert
-from csvkit.unicsv import UnicodeCSVDictReader
+from csvkit.unicsv import UnicodeCSVDictReader, UnicodeCSVReader, \
+    UnicodeCSVWriter
+from os.path import join, dirname, abspath
+from datetime import datetime
 
 @queuefunc
-def bulkMatchWorker(file_contents, field_map, filename, settings):
+def bulkMatchWorker(session_id, file_contents, field_map, filename):
     ftype = convert.guess_format(filename)
     s = StringIO(file_contents)
     result = {
         'status': 'ok',
-        'results': [],
+        'result': '',
         'message': ''
     }
     try:
@@ -25,15 +32,47 @@ def bulkMatchWorker(file_contents, field_map, filename, settings):
         result['status'] = 'error'
         result['message'] = 'Problem decoding file'
         return result
-    del s
+    db_session = createSession(DB_CONN)
+    sess = db_session.query(DedupeSession).get(session_id)
+    model_fields = [f.get('field') for f in json.loads(sess.field_defs)]
     s = StringIO(converted)
     reader = UnicodeCSVDictReader(s)
     rows = []
     for row in reader:
-        rows.append({k: unicode(v) for k,v in zip(field_map.keys(), row)})
-    data_d = iterDataDict(rows)
-    deduper = dedupe.StaticGazetteer(StringIO(settings))
-    # TODO: Finish this...
+        r = {k: row.get(k) for k in field_map.values() if k}
+        e = {k: '' for k in model_fields}
+        for k,v in field_map.items():
+            e[k] = r.get(v)
+        rows.append(e)
+    messy_data_d = iterDataDict(rows)
+    deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+    table_name = None
+    if sess.conn_string != DB_CONN:
+        table_name = sess.name
+    trained_data_d = makeDataDict(sess.conn_string, session_id, table_name=table_name)
+    deduper.index(trained_data_d)
+    linked = deduper.match(messy_data_d, threshold=0, n_matches=5)
+    db_session.close()
+    s.seek(0)
+    reader = UnicodeCSVReader(s)
+    raw_header = reader.next()
+    raw_header.extend([f for f in field_map.keys()])
+    raw_rows = list(reader)
+    fname = '%s_%s' % (datetime.now().isoformat(), filename)
+    fpath = join(DOWNLOAD_FOLDER, fname)
+    with open(fpath, 'wb') as outp:
+        writer = UnicodeCSVWriter(outp)
+        writer.writerow(raw_header)
+        for link in linked:
+            for l in link:
+                id_set, conf = l
+                messy_id, trained_id = id_set
+                messy_row = raw_rows[int(messy_id)]
+                trained_row = trained_data_d[trained_id]
+                for k in field_map.keys():
+                    messy_row.append(trained_row.get(k))
+                writer.writerow(messy_row)
+    result['result'] = fname
     return result
 
 @queuefunc

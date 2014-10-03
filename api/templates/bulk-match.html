@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <form role="form" id="match-form">
+            <button class="btn btn-default match-button">Match!</button>
+        </form>
+    </div>
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-md-12 panel">
+                <h4>Find a match in the <strong>{{sess.name}}</strong> dataset</h4>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div id="matches"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_javascript %}
+<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
+<script type='text/javascript'>
+    $(document).ready(function(){
+        var sess_id = "{{sess.id}}"
+        var api_key = "{{ user.id }}"
+        $.when($.getJSON('/field-definitions/' + sess_id + '/')).then(
+          function(resp){
+                var form = '';
+                $.each(resp, function(i, object){
+                    form += '<div class="form-group">';
+                    form += '<label for="' + object.field + '">' + object.field + '</label>';
+                    form += '<input type="text" class="form-control" name="' + object.field + '" />';
+                    form += '</div>';
+                });
+                $('#match-form').prepend(form);
+            }
+        )
+        $('.match-button').on('click', function(e){
+            e.preventDefault();
+            $('#matches').spin('large')
+            var contents = parseParams($('#match-form').serialize());
+            var data  = {
+                'object': contents,
+                'session_key': sess_id,
+                'api_key': api_key,
+            }
+            $.post('/match/', JSON.stringify(data), function(resp){
+                $('#matches').spin(false);
+                var table_body = ''
+                var matches = {}
+                if(resp.matches.length > 0){
+                    $.each(resp.matches, function(i, match){
+                        matches[match.entity_id] = match;
+                        table_body += '<table role="table" id="' + match.entity_id + '">';
+                        $.each(match, function(name, value){
+                            table_body += '<tr><td><strong>' + name + '</strong></td><td>' + value + '</td></tr>';
+                        });
+                        table_body += '</table>';
+                        table_body += '<h4>Does this entity match your lookup? <span id="confidence"></span></h4>';
+                        table_body += '<button class="btn btn-success mark-entity" id="yes" data-entity_id="' + match.entity_id + '">';
+                        table_body += '<i class="icon-ok"></i>Yes</button>';
+                        table_body += '<button class="btn btn-danger mark-entity" id="no" data-entity_id="' + match.entity_id + '">';
+                        table_body += '<i class="icon-remove"></i>No</button><hr />';
+                    })
+                } else {
+                    table_body += '<p><strong>No matches found</strong></p>';
+                }
+                $('#matches').html(table_body);
+                $('.mark-entity').on('click', function(e){
+                    data['matches'] = [];
+                    var action = $(this).attr('id');
+                    var entity_id = $(this).data('entity_id');
+                    var m = matches[entity_id]
+                    if (action == 'yes'){
+                        m['match'] = 1;
+                    } else {
+                        m['match'] = 0;
+                    }
+                    data['matches'].push(m);
+                    $.post('/train/', JSON.stringify(data), function(resp){
+                        var stuff = '<strong>Training info added!</strong>'
+                        $('#' + entity_id).parent().html(stuff)
+                    })
+                })
+            })
+        })
+    })
+    function parseParams(query){
+        var re = /([^&=]+)=?([^&]*)/g;
+        var decodeRE = /\+/g;  // Regex for replacing addition symbol with a space
+        var decode = function (str) {return decodeURIComponent( str.replace(decodeRE, " ") );};
+        var params = {}, e;
+        while ( e = re.exec(query) ) {
+            var k = decode( e[1] ), v = decode( e[2] );
+            if (k.substring(k.length - 2) === '[]') {
+                k = k.substring(0, k.length - 2);
+                (params[k] || (params[k] = [])).push(v);
+            }
+            else params[k] = v;
+        }
+        return params;
+    }
+</script>
+{% endblock %}

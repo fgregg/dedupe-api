@@ -14,7 +14,7 @@ import time
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
 from api.utils.delayed_tasks import dedupeit, getSample
-from api.utils.dedupe import writeRawTable, DedupeFileError
+from api.utils.dedupe_functions import writeRawTable, DedupeFileError
 from api.utils.helpers import getEngine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import OperationalError

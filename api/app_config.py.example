@@ -3,6 +3,8 @@ MAX_CONTENT_LENGTH = 5 * 1024 * 1024
 SECRET_KEY = 'super secret key'
 REDIS_QUEUE_KEY = 'any_string'
 
+DOWNLOAD_FOLDER = join(abspath(dirname(__file__)), 'download_data')
+
 DEFAULT_USER = {}
 # This is a dict that gives the app a way to setup
 # a default user, and group and then attach that user
