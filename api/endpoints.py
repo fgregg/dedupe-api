@@ -1,8 +1,9 @@
 import os
 import json
 from flask import Flask, make_response, request, Blueprint, \
-    session as flask_session, make_response
+    session as flask_session, make_response, send_from_directory
 from api.models import DedupeSession, User, Group
+from api.app_config import DOWNLOAD_FOLDER
 from api.database import session as db_session, engine, Base
 from api.auth import csrf, check_api_key
 from api.utils.delayed_tasks import makeCanonicalTable, retrain, bulkMatchWorker
@@ -399,7 +400,7 @@ def mark_cluster(session_id):
     return resp
 
 @csrf.exempt
-@endpoints.route('/bulk-match-api/<session_id>/', methods=['POST'])
+@endpoints.route('/bulk-match/<session_id>/', methods=['POST'])
 @check_api_key()
 def bulk_match(session_id):
     """ 
@@ -416,19 +417,26 @@ def bulk_match(session_id):
     status_code = 200
     files = request.files.values()
     if not files:
-        resp['status'] = 'error'
-        resp['message'] = 'File upload required'
-        status_code = 400
+        try:
+            files = flask_session['bulk_match_upload']
+            filename = flask_session['bulk_match_filename']
+        except KeyError:
+            resp['status'] = 'error'
+            resp['message'] = 'File upload required'
+            status_code = 400
+    else:
+        files = files[0].read()
+        filename = files.filename
     field_map = request.form.get('field_map')
     if not field_map:
         resp['status'] = 'error'
         resp['message'] = 'field_map is required'
         status_code = 400
     if status_code is 200:
-        filename = files[0].filename
+        field_map = json.loads(field_map)
         token = bulkMatchWorker.delay(
             session_id,
-            files[0].read(), 
+            files, 
             field_map, 
             filename
         )
@@ -451,6 +459,6 @@ def check_bulk_match(token):
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@app.route('/downloads/<path:filename>/')
+@endpoints.route('/downloads/<path:filename>/')
 def downloads(filename):
     return send_from_directory(DOWNLOAD_FOLDER, filename)

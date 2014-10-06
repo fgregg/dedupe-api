@@ -13,6 +13,7 @@
                     <th>Name</th>
                     {% if 'admin' in roles %}
                         <th></th>
+                        <th></th>
                     {% endif %}
                     <th></th>
                 </tr>
@@ -39,6 +40,7 @@
                     rows += '<tr><td>' + object.name + '</td>';
                     rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
                     {% if 'admin' in roles %}
+                    rows += '<td><a href="/bulk-match-demo/' + object.id + '/">Bulk Match</a></td>';
                     rows += '<td><a href="/delete-session/' + object.id + '/">Delete</a></td>';
                     {% endif %}
                     rows += '</tr>';

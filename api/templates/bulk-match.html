@@ -1,22 +1,51 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="row">
-    <div class="col-md-4">
-        <form role="form" id="match-form">
-            <button class="btn btn-default match-button">Match!</button>
+    <div class="col-md-8 col-md-offset-2">
+        {% if not field_defs %}
+        <form role="form" id="upload-form" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <div class="form-group">
+                <label for="input_file">Upload a spreadsheet</label>
+                <input type="file" id="id_input_file" name="input_file">
+                <p class="help-block">
+                    Only <strong>.csv, .xls or .xlsx</strong> files.
+                </p>
+            </div>
+            <button class="btn btn-default upload-button">Upload!</button>
         </form>
-    </div>
-    <div class="col-md-8">
-        <div class="row">
-            <div class="col-md-12 panel">
-                <h4>Find a match in the <strong>{{sess.name}}</strong> dataset</h4>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-12">
-                <div id="matches"></div>
-            </div>
-        </div>
+        {% else  %}
+            <h3>
+                Tell us which fields in the file you uploaded
+                map to fields in the <strong>{{sess.name}}</strong> model:
+            </h3>
+            <form role="form" id="map-form" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                {% for field in field_defs %}
+                    {% if loop.index is not divisibleby 2 %}
+                        <div class="row">
+                    {% endif %}
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_{{ field }}"><strong>{{ field }}</strong> maps to: </label>
+                            <select id="id_{{ field }}" class="form-control" name="{{ field }}">
+                                <option value="">--------</option>
+                                {% for name in header %}
+                                    <option value="{{ name }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% if loop.index is divisibleby 2 %}
+                        </div>
+                    {% endif %}
+                    {% if loop.last %}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            <button class="btn btn-default match-button">Match!</button>
+            </form>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -25,70 +54,17 @@
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script type='text/javascript'>
     $(document).ready(function(){
-        var sess_id = "{{sess.id}}"
-        var api_key = "{{ user.id }}"
-        $.when($.getJSON('/field-definitions/' + sess_id + '/')).then(
-          function(resp){
-                var form = '';
-                $.each(resp, function(i, object){
-                    form += '<div class="form-group">';
-                    form += '<label for="' + object.field + '">' + object.field + '</label>';
-                    form += '<input type="text" class="form-control" name="' + object.field + '" />';
-                    form += '</div>';
-                });
-                $('#match-form').prepend(form);
-            }
-        )
         $('.match-button').on('click', function(e){
             e.preventDefault();
-            $('#matches').spin('large')
-            var contents = parseParams($('#match-form').serialize());
-            var data  = {
-                'object': contents,
-                'session_key': sess_id,
-                'api_key': api_key,
-            }
-            $.post('/match/', JSON.stringify(data), function(resp){
-                $('#matches').spin(false);
-                var table_body = ''
-                var matches = {}
-                if(resp.matches.length > 0){
-                    $.each(resp.matches, function(i, match){
-                        matches[match.entity_id] = match;
-                        table_body += '<table role="table" id="' + match.entity_id + '">';
-                        $.each(match, function(name, value){
-                            table_body += '<tr><td><strong>' + name + '</strong></td><td>' + value + '</td></tr>';
-                        });
-                        table_body += '</table>';
-                        table_body += '<h4>Does this entity match your lookup? <span id="confidence"></span></h4>';
-                        table_body += '<button class="btn btn-success mark-entity" id="yes" data-entity_id="' + match.entity_id + '">';
-                        table_body += '<i class="icon-ok"></i>Yes</button>';
-                        table_body += '<button class="btn btn-danger mark-entity" id="no" data-entity_id="' + match.entity_id + '">';
-                        table_body += '<i class="icon-remove"></i>No</button><hr />';
-                    })
-                } else {
-                    table_body += '<p><strong>No matches found</strong></p>';
-                }
-                $('#matches').html(table_body);
-                $('.mark-entity').on('click', function(e){
-                    data['matches'] = [];
-                    var action = $(this).attr('id');
-                    var entity_id = $(this).data('entity_id');
-                    var m = matches[entity_id]
-                    if (action == 'yes'){
-                        m['match'] = 1;
-                    } else {
-                        m['match'] = 0;
-                    }
-                    data['matches'].push(m);
-                    $.post('/train/', JSON.stringify(data), function(resp){
-                        var stuff = '<strong>Training info added!</strong>'
-                        $('#' + entity_id).parent().html(stuff)
-                    })
-                })
+            var form = $('#map-form').serialize();
+            var data = parseParams(form)
+            delete data['csrf_token']
+            $.post('/bulk-match/{{sess.id}}/', {'field_map': JSON.stringify(data)}, function(resp){
+                console.log(resp)
             })
         })
     })
+
     function parseParams(query){
         var re = /([^&=]+)=?([^&]*)/g;
         var decodeRE = /\+/g;  // Regex for replacing addition symbol with a space

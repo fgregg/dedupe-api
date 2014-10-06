@@ -15,6 +15,7 @@ from operator import itemgetter
 import json
 from cPickle import loads
 from dedupe.convenience import canonicalize
+from csvkit.unicsv import UnicodeCSVReader
 
 manager = Blueprint('manager', __name__)
 
@@ -109,9 +110,26 @@ def match_demo(session_id):
     sess = db_session.query(DedupeSession).get(session_id)
     return render_template('match-demo.html', sess=sess, user=user)
 
-@manager.route('/bulk-match/<session_id>/')
+@manager.route('/bulk-match-demo/<session_id>/', methods=['GET', 'POST'])
 @login_required
 def bulk_match(session_id):
     user = db_session.query(User).get(flask_session['user_id'])
     sess = db_session.query(DedupeSession).get(session_id)
-    return render_template('match-demo.html', sess=sess, user=user)
+    context = {
+        'user': user,
+        'sess': sess
+    }
+    if request.method == 'POST':
+        try:
+            upload = request.files.values()[0]
+        except IndexError:
+            upload = None
+            flash('File upload is required')
+        if upload:
+            context['field_defs'] = [f['field'] for f in json.loads(sess.field_defs)]
+            reader = UnicodeCSVReader(upload)
+            context['header'] = reader.next()
+            upload.seek(0)
+            flask_session['bulk_match_upload'] = upload.read()
+            flask_session['bulk_match_filename'] = upload.filename
+    return render_template('bulk-match.html', **context)
