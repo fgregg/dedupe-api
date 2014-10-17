@@ -1,7 +1,6 @@
 from flask import request, make_response, render_template, \
     session as flask_session, redirect, url_for, send_from_directory, jsonify,\
     Blueprint, current_app
-from api.auth import login_required
 from flask_login import current_user
 from werkzeug import secure_filename
 import time
@@ -17,8 +16,10 @@ from api.utils.delayed_tasks import dedupeit
 from api.utils.dedupe_functions import DedupeFileError
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import makeDataDict
+from api.models import DedupeSession, User
+from api.database import app_session as db_session
+from api.auth import check_roles, csrf, login_required
 from api.database import app_session
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import OperationalError, NoSuchTableError
 from sqlalchemy import Table
 from cStringIO import StringIO
@@ -27,9 +28,6 @@ from redis import Redis
 from api.queue import DelayedResult
 from uuid import uuid4
 import collections
-from api.models import DedupeSession, User
-from api.database import app_session as db_session
-from api.auth import check_roles, csrf
 
 redis = Redis()
 
@@ -96,28 +94,30 @@ def train():
         return redirect(url_for('trainer.select_fields'))
     return make_response(render_app_template('upload.html', error=error, user=user), status_code)
 
-@csrf.exempt
-@trainer.route('/fetch-tables/', methods=['POST'])
-@login_required
-@check_roles(roles=['admin'])
-def fetch_tables():
-    conn_string = request.form['conn_string']
-    engine = getEngine(conn_string)
-    Rebase = declarative_base()
-    resp = {
-        'status': 'ok',
-        'table_names': [],
-    }
-    try:
-        Rebase.metadata.reflect(engine)
-        resp['table_names'] = Rebase.metadata.tables.keys()
-    except OperationalError, e:
-        print e.message
-        resp['status'] = 'error'
-        resp['message'] = e.message
-    resp = make_response(json.dumps(resp))
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
+# from sqlalchemy.ext.declarative import declarative_base
+
+# @csrf.exempt
+# @trainer.route('/fetch-tables/', methods=['POST'])
+# @login_required
+# @check_roles(roles=['admin'])
+# def fetch_tables():
+#     conn_string = request.form['conn_string']
+#     engine = getEngine(conn_string)
+#     Rebase = declarative_base()
+#     resp = {
+#         'status': 'ok',
+#         'table_names': [],
+#     }
+#     try:
+#         Rebase.metadata.reflect(engine)
+#         resp['table_names'] = Rebase.metadata.tables.keys()
+#     except OperationalError, e:
+#         print e.message
+#         resp['status'] = 'error'
+#         resp['message'] = e.message
+#     resp = make_response(json.dumps(resp))
+#     resp.headers['Content-Type'] = 'application/json'
+#     return resp
 
 @trainer.route('/select_fields/', methods=['GET', 'POST'])
 @login_required
