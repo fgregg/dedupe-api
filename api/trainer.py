@@ -13,11 +13,14 @@ import copy
 import time
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
-from api.utils.delayed_tasks import dedupeit, getSample
-from api.utils.dedupe_functions import writeRawTable, DedupeFileError
-from api.utils.helpers import getEngine
+from api.utils.delayed_tasks import dedupeit
+from api.utils.dedupe_functions import DedupeFileError
+from api.utils.db_functions import writeRawTable
+from api.utils.helpers import makeDataDict
+from api.database import app_session
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, NoSuchTableError
+from sqlalchemy import Table
 from cStringIO import StringIO
 import csv
 from redis import Redis
@@ -25,7 +28,7 @@ from api.queue import DelayedResult
 from uuid import uuid4
 import collections
 from api.models import DedupeSession, User
-from api.database import session as db_session
+from api.database import app_session as db_session
 from api.auth import check_roles, csrf
 
 redis = Redis()
@@ -65,34 +68,16 @@ def train():
         except KeyError:
             pass
     if request.method == 'POST':
-        if request.files.get('input_file'):
-            f = request.files['input_file']
-            conn_string = current_app.config['DB_CONN']
-            table_name = 'raw_%s' % flask_session['session_key']
-            primary_key = 'record_id'
-            writeRawTable(conn_string=conn_string,
-                session_key=flask_session['session_key'],
-                filename=f.filename,
-                file_obj=f)
-            session_name = f.filename
-        else:
-            dbtype = request.form['dbtype']
-            username = request.form['username']
-            password = request.form['password']
-            hostname = request.form['hostname']
-            port = request.form['port']
-            database = request.form['database']
-            conn_string = '%s://%s:%s@%s:%s/%s' % \
-                (dbtype, username, password, hostname, port, database)
-            table_name = request.form['table_name']
-            session_name = table_name
-            primary_key = None
+        f = request.files['input_file']
+        conn_string = current_app.config['DB_CONN']
+        table_name = 'raw_%s' % flask_session['session_key']
+        primary_key = 'record_id'
+        fieldnames = writeRawTable(session_key=flask_session['session_key'],
+            filename=f.filename,
+            file_obj=f)
+        session_name = f.filename
         flask_session['last_interaction'] = datetime.now()
-        sample_key = get_sample.delay(conn_string, 
-                                         flask_session['session_key'], 
-                                         table_name=table_name,
-                                         primary_key=primary_key)
-        flask_session['sample_key'] = sample_key.key
+        flask_session['fieldnames'] = fieldnames
         old = datetime.now() - timedelta(seconds=60 * 30)
         if flask_session['last_interaction'] < old:
             del flask_session['deduper']
@@ -117,7 +102,7 @@ def train():
 @check_roles(roles=['admin'])
 def fetch_tables():
     conn_string = request.form['conn_string']
-    engine = get_engine(conn_string)
+    engine = getEngine(conn_string)
     Rebase = declarative_base()
     resp = {
         'status': 'ok',
@@ -134,28 +119,6 @@ def fetch_tables():
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@trainer.route('/sample-worker/')
-@login_required
-@check_roles(roles=['admin'])
-def sample_worker():
-    key = flask_session.get('sample_key')
-    if key is None:
-        return jsonify(ready=False)
-    rv = DelayedResult(key)
-    if rv.return_value is None:
-        return jsonify(ready=False)
-    redis.delete(key)
-    del flask_session['sample_key']
-    result = rv.return_value
-    try:
-        sample, fields = result
-        flask_session['sample'] = sample
-        flask_session['fieldnames'] = fields
-        return jsonify(ready=True)
-    except ValueError:
-        print result
-        return jsonify(ready=True, result=result)
-
 @trainer.route('/select_fields/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
@@ -165,7 +128,6 @@ def select_fields():
     session_name = flask_session['session_name']
     flask_session['last_interaction'] = datetime.now()
     fields = flask_session.get('fieldnames')
-    sample = flask_session.get('sample')
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         if field_list:
@@ -173,14 +135,14 @@ def select_fields():
             field_defs = []
             for field in field_list:
                 field_defs.append({'field': field, 'type': 'String'})
-            start = time.time()
             sess = db_session.query(DedupeSession).get(flask_session['session_key'])
             sess.field_defs = json.dumps(field_defs)
             db_session.add(sess)
             db_session.commit()
-            deduper = dedupe.Dedupe(field_defs, sample)
+            deduper = dedupe.Dedupe(field_defs)
+            data_d = makeDataDict(sess.id, table_name=sess.table_name)
+            deduper.sample(data_d, sample_size=5000, rand_p=0)
             flask_session['deduper'] = deduper
-            end = time.time()
             return redirect(url_for('trainer.training_run'))
         else:
             error = 'You must select at least one field to compare on.'
@@ -277,6 +239,14 @@ def mark_pair():
 def dedupe_finished():
     user = db_session.query(User).get(flask_session['user_id'])
     return render_app_template("dedupe_finished.html", user=user)
+
+@trainer.route('/dedupe_finished/checkscore.php')
+def pong_score():
+    print request.data
+    resp = {}
+    resp = make_response(json.dumps(resp))
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
 
 @trainer.route('/about/')
 def about():

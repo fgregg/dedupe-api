@@ -60,10 +60,29 @@
             var data = parseParams(form)
             delete data['csrf_token']
             $.post('/bulk-match/{{sess.id}}/', {'field_map': JSON.stringify(data)}, function(resp){
-                console.log(resp)
+                var token = resp.token
+                checkWorker(token)
             })
         })
     })
+
+    function checkWorker(token){
+        $.ajax({
+            url: '/check-bulk-match/' + token + '/',
+            success: function(data){
+                if (data.ready){
+                    displayLinks(data)
+                } else {
+                    setTimeout(function(){checkWorker(token)}, 3000);
+                }
+            },
+            dataType: 'json',
+        })
+    }
+
+    function displayLink(blob){
+        console.log(blob)
+    }
 
     function parseParams(query){
         var re = /([^&=]+)=?([^&]*)/g;

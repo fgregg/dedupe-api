@@ -149,7 +149,7 @@
             }
             var password = $('#id_password').val();
             var port = $('#id_port').val();
-            if(!port){
+            if(port == ''){
                 if (dbtype == 'mysql'){
                     port = 3306;
                 } else {
@@ -172,6 +172,7 @@
             if(valid){
                 $.post('{{ url_for("trainer.fetch_tables") }}', {'conn_string': conn_string}, function(resp){
                     $('#spinner').spin(false);
+                    $('#submit-upload').toggle();
                     if (resp.status == 'ok'){
                         var names = ''
                         $.each(resp.table_names, function(i, name){

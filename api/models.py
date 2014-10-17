@@ -1,7 +1,7 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
     Column, Table, Float, DateTime, Text
 from sqlalchemy.orm import relationship, backref, synonym
-from api.database import Base, engine, session
+from api.database import Base, app_session as session
 from flask_bcrypt import Bcrypt
 from uuid import uuid4
 from datetime import datetime, timedelta

@@ -4,11 +4,11 @@ from cStringIO import StringIO
 from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession
-from api.utils.helpers import createSession, preProcess, iterDataDict, \
-    makeDataDict
-from api.utils.dedupe_functions import writeCanonTable, WebDeduper
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Table
+from api.database import worker_session
+from api.utils.helpers import preProcess, makeDataDict
+from api.utils.dedupe_functions import WebDeduper
+from api.utils.db_functions import writeCanonTable
+from sqlalchemy import Table, MetaData
 from itertools import groupby
 from operator import itemgetter
 from csvkit import convert
@@ -32,27 +32,24 @@ def bulkMatchWorker(session_id, file_contents, field_map, filename):
         result['status'] = 'error'
         result['message'] = 'Problem decoding file'
         return result
-    db_session = createSession(DB_CONN)
-    sess = db_session.query(DedupeSession).get(session_id)
+    sess = worker_session.query(DedupeSession).get(session_id)
     model_fields = [f.get('field') for f in json.loads(sess.field_defs)]
     s = StringIO(converted)
     reader = UnicodeCSVDictReader(s)
     rows = []
     for row in reader:
-        r = {k: row.get(k) for k in field_map.values() if k}
+        r = {k: row.get(k, '') for k in field_map.values() if k}
         e = {k: '' for k in model_fields}
         for k,v in field_map.items():
-            e[k] = r.get(v)
+            e[k] = r.get(v, '')
         rows.append(e)
-    messy_data_d = iterDataDict(rows)
+    # Need a thing that will make a data_d without a DB
+    data_d = iterDataDict(rows)
     deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
     table_name = None
-    if sess.conn_string != DB_CONN:
-        table_name = sess.name
-    trained_data_d = makeDataDict(sess.conn_string, session_id, table_name=table_name)
+    trained_data_d = makeDataDict(session_id, table_name=table_name, worker=True)
     deduper.index(trained_data_d)
     linked = deduper.match(messy_data_d, threshold=0, n_matches=5)
-    db_session.close()
     s.seek(0)
     reader = UnicodeCSVReader(s)
     raw_header = reader.next()
@@ -77,22 +74,17 @@ def bulkMatchWorker(session_id, file_contents, field_map, filename):
 
 @queuefunc
 def dedupeit(**kwargs):
-    app_session = createSession(DB_CONN)
-    dd_session = app_session.query(DedupeSession).get(kwargs['session_key'])
+    dd_session = worker_session.query(DedupeSession).get(kwargs['session_key'])
     d = dedupe.Dedupe(json.loads(dd_session.field_defs), 
         data_sample=kwargs['data_sample'])
-    deduper = WebDeduper(d, 
-        conn_string=DB_CONN,
-        session_key=dd_session.id)
-    app_session.close()
+    deduper = WebDeduper(d, session_key=dd_session.id)
     files = deduper.dedupe()
     del d
     return files
 
 @queuefunc
 def retrain(session_key):
-    db_session = createSession(DB_CONN)
-    sess = db_session.query(DedupeSession).get(session_key)
+    sess = worker_session.query(DedupeSession).get(session_key)
     gaz = dedupe.Gazetteer(json.loads(sess.field_defs))
     gaz.readTraining(StringIO(sess.training_data))
     gaz.train()
@@ -100,54 +92,17 @@ def retrain(session_key):
     gaz.writeSettings(gaz_set)
     s = gaz_set.getvalue()
     sess.gaz_settings_file = s
-    db_session.add(sess)
-    db_session.commit()
-    db_session.close()
+    worker_session.add(sess)
+    worker_session.commit()
     return None
 
 @queuefunc
-def getSample(conn_string,
-                session_key, 
-                primary_key=None, 
-                table_name=None,
-                sample_size=100000):
-    session = createSession(conn_string)
-    engine = session.bind
-    if not table_name:
-        table_name = 'raw_%s' % session_key
-    Base = declarative_base()
-    table = Table(table_name, Base.metadata, 
-        autoload=True, autoload_with=engine)
-    if not primary_key:
-        try:
-            primary_key = [p.name for p in table.primary_key][0]
-        except IndexError:
-            # need to figure out what to do in this case
-            print 'no primary key'
-    fields = [str(s) for s in table.columns.keys()]
-    temp_d = {}
-    row_count = session.query(table).count()
-    if row_count < sample_size:
-        sample_size = row_count
-    random_pairs = dedupe.randomPairs(sample_size, 500000)
-    data_rows = session.query(table).limit(sample_size).all()
-    for i, row in enumerate(data_rows):
-        d_row = {k: unicode(v) for (k,v) in zip(fields, row)}
-        clean_row = [(k, preProcess(v)) for (k,v) in d_row.items()]
-        temp_d[i] = dedupe.core.frozendict(clean_row)
-    pair_sample = [(temp_d[k1], temp_d[k2])
-                    for k1, k2 in random_pairs]
-    session.close()
-    return pair_sample, fields
-
-@queuefunc
 def makeCanonicalTable(session_id):
-    app_session = createSession(DB_CONN)
-    app_engine = app_session.bind
-    Base = declarative_base()
-    entity_table = Table('entity_%s' % session_id, Base.metadata,
-        autoload=True, autoload_with=app_engine, extend_existing=True)
-    clusters = app_session.query(entity_table.c.group_id, 
+    engine = worker_session.bind
+    metadata = MetaData()
+    entity_table = Table('entity_%s' % session_id, metadata,
+        autoload=True, autoload_with=engine, extend_existing=True)
+    clusters = worker_session.query(entity_table.c.group_id, 
             entity_table.c.record_id)\
             .filter(entity_table.c.clustered == True)\
             .order_by(entity_table.c.group_id)\
@@ -155,25 +110,22 @@ def makeCanonicalTable(session_id):
     groups = {}
     for k,g in groupby(clusters, key=itemgetter(0)):
         groups[k] = [i[1] for i in list(g)]
-    dd_sess = app_session.query(DedupeSession).get(session_id)
+    dd_sess = worker_session.query(DedupeSession).get(session_id)
     gaz = dedupe.Gazetteer(json.loads(dd_sess.field_defs))
     gaz.readTraining(StringIO(dd_sess.training_data))
     gaz.train()
     gaz_set = StringIO()
     gaz.writeTraining(gaz_set)
     dd_sess.gaz_settings_file = gaz_set.getvalue()
-    app_session.add(dd_sess)
-    app_session.commit()
-    raw_session = createSession(dd_sess.conn_string)
-    raw_engine = raw_session.bind
-    raw_base = declarative_base()
-    raw_table = Table(dd_sess.table_name, raw_base.metadata,
-        autoload=True, autoload_with=raw_engine, extend_existing=True)
+    worker_session.add(dd_sess)
+    worker_session.commit()
+    raw_table = Table(dd_sess.table_name, metadata,
+        autoload=True, autoload_with=engine, extend_existing=True)
     raw_fields = [c for c in raw_table.columns.keys()]
     primary_key = [p.name for p in raw_table.primary_key][0]
     canonical_rows = []
     for k,v in groups.items():
-        cluster_rows = raw_session.query(raw_table)\
+        cluster_rows = worker_session.query(raw_table)\
             .filter(getattr(raw_table.c, primary_key).in_(v)).all()
         rows_d = []
         for row in cluster_rows:
@@ -184,9 +136,6 @@ def makeCanonicalTable(session_id):
             rows_d.append(d)
         canonical_rows.append(dedupe.canonicalize(rows_d))
     writeCanonTable(session_id)
-    canon_table = Table('canon_%s' % session_id, Base.metadata,
-        autoload=True, autoload_with=app_engine, extend_existing=True)
-    conn = app_engine.contextual_connect()
-    conn.execute(canon_table.insert(), canonical_rows)
-    app_session.close()
-    raw_session.close()
+    canon_table = Table('canon_%s' % session_id, metadata,
+        autoload=True, autoload_with=engine, extend_existing=True)
+    engine.execute(canon_table.insert(), canonical_rows)

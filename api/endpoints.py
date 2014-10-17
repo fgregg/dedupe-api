@@ -1,13 +1,14 @@
 import os
 import json
 from flask import Flask, make_response, request, Blueprint, \
-    session as flask_session, make_response, send_from_directory
+    session as flask_session, make_response, send_from_directory, jsonify
 from api.models import DedupeSession, User, Group
 from api.app_config import DOWNLOAD_FOLDER
-from api.database import session as db_session, engine, Base
+from api.queue import DelayedResult, redis
+from api.database import app_session as db_session, app_engine as engine, Base
 from api.auth import csrf, check_api_key
 from api.utils.delayed_tasks import makeCanonicalTable, retrain, bulkMatchWorker
-from api.utils.helpers import getEngine, createSession, preProcess
+from api.utils.helpers import preProcess
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -71,13 +72,10 @@ def match():
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
         model_fields = [f['field'] for f in field_defs]
-        entity_table = Table('entity_%s' % session_key, 
-            Base.metadata, autoload=True, autoload_with=engine)
-        raw_session = createSession(sess.conn_string)
-        raw_engine = raw_session.bind
-        raw_base = declarative_base()
-        raw_table = Table(sess.table_name, raw_base.metadata, 
-            autoload=True, autoload_with=raw_engine)
+        entity_table = Table('entity_%s' % session_key, Base.metadata, 
+            autoload=True, autoload_with=engine, keep_existing=True)
+        raw_table = Table(sess.table_name, Base.metadata, 
+            autoload=True, autoload_with=engine, keep_existing=True)
         raw_cols = [getattr(raw_table.c, f) for f in model_fields]
         pk_col = [p for p in raw_table.primary_key][0]
         hash_me = ';'.join([preProcess(unicode(obj[i])) for i in model_fields])
@@ -90,7 +88,7 @@ def match():
                 .filter(entity_table.c.group_id == exact_match.group_id)\
                 .all()
             raw_ids = [c[0] for c in cluster]
-            raw_record = raw_session.query(*raw_cols)\
+            raw_record = db_session.query(*raw_cols)\
                 .filter(pk_col.in_(raw_ids)).first()
             d = { f: getattr(raw_record, f) for f in model_fields }
             d['entity_id'] = exact_match.record_id
@@ -102,7 +100,7 @@ def match():
                 obj[k] = preProcess(unicode(v))
             o = {'blob': obj}
             raw_cols.append(pk_col)
-            raw_data = raw_session.query(*raw_cols).all()
+            raw_data = db_session.query(*raw_cols).all()
             data_d = {}
             for row in raw_data:
                 d = {f: preProcess(unicode(getattr(row, f))) for f in model_fields}
@@ -117,7 +115,7 @@ def match():
                     ids.extend([i for i in id_set if i != 'blob'])
                     confs[id_set[1]] = confidence
                 ids = list(set(ids))
-                matches = raw_session.query(*raw_cols)\
+                matches = db_session.query(*raw_cols)\
                     .filter(pk_col.in_(ids)).all()
                 for match in matches:
                     m = {f: getattr(match, f) for f in model_fields}
@@ -267,14 +265,13 @@ def review():
 def checkin_sessions():
     now = datetime.now()
     all_sessions = [i.id for i in db_session.query(DedupeSession.id).all()]
-    conn = engine.contextual_connect()
     for sess_id in all_sessions:
         table = Table('entity_%s' % sess_id, Base.metadata, 
             autoload=True, autoload_with=engine)
         upd = table.update().where(table.c.checkout_expire <= now)\
             .where(table.c.clustered == False)\
             .values(checked_out = False, checkout_expire = None)
-        conn.execute(upd)
+        engine.execute(upd)
     return None
 
 @endpoints.route('/get-review-cluster/<session_id>/')
@@ -307,11 +304,8 @@ def get_cluster(session_id):
         cluster_list = []
         if review_remainder > 0:
             field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-            raw_session = createSession(sess.conn_string)
-            raw_engine = raw_session.bind
-            raw_base = declarative_base()
-            raw_table = Table(sess.table_name, raw_base.metadata, 
-                autoload=True, autoload_with=raw_engine)
+            raw_table = Table(sess.table_name, Base.metadata, 
+                autoload=True, autoload_with=engine, keep_existing=True)
             entity_fields = ['record_id', 'group_id', 'confidence']
             entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
             subq = db_session.query(entity_table.c.group_id)\
@@ -324,15 +318,14 @@ def get_cluster(session_id):
             raw_cols = [getattr(raw_table.c, f) for f in field_defs]
             primary_key = [p.name for p in raw_table.primary_key][0]
             pk_col = getattr(raw_table.c, primary_key)
-            records = raw_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
+            records = db_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
             raw_fields = [f['name'] for f in records.column_descriptions]
             records = records.all()
             ten_minutes = datetime.now() + timedelta(minutes=10)
             upd = entity_table.update()\
                 .where(entity_table.c.group_id.in_(subq))\
                 .values(checked_out=True, checkout_expire=ten_minutes)
-            conn = engine.contextual_connect()
-            conn.execute(upd)
+            engine.execute(upd)
             resp['confidence'] = cluster[0][2]
             resp['group_id'] = cluster[0][1]
             for thing in records:
@@ -373,20 +366,17 @@ def mark_cluster(session_id):
     else:
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
-        conn = engine.contextual_connect()
         group_id = request.args.get('group_id')
         action = request.args.get('action')
         if action == 'yes':
             upd = entity_table.update()\
                 .where(entity_table.c.group_id == group_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
-            conn.execute(upd)
-            conn.close()
+            engine.execute(upd)
         elif action == 'no':
             dels = entity_table.delete()\
                 .where(entity_table.c.group_id == group_id)
-            conn.execute(dels)
-            conn.close()
+            engine.execute(dels)
         r = {
             'session_id': session_id, 
             'group_id': group_id, 
@@ -455,7 +445,7 @@ def check_bulk_match(token):
     result = rv.return_value
     if result['status'] == 'ok':
         result['result'] = '/downloads/%s' % result['result']
-    resp = make_response(json.dumps(result), status_code)
+    resp = make_response(json.dumps(result))
     resp.headers['Content-Type'] = 'application/json'
     return resp
 

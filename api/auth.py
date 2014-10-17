@@ -7,7 +7,7 @@ from flask_wtf import Form
 from flask_wtf.csrf import CsrfProtect
 from wtforms import TextField, PasswordField
 from wtforms.validators import DataRequired, Email
-from api.database import session as db_session
+from api.database import app_session as db_session
 from api.models import User
 import os
 import json

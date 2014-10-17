@@ -15,14 +15,18 @@ DEFAULT_ROLES = [
     }
 ]
 
-engine = create_engine(DB_CONN, convert_unicode=True)
+app_engine = create_engine(DB_CONN, convert_unicode=True)
+worker_engine = create_engine(DB_CONN, convert_unicode=True)
 
-session = scoped_session(sessionmaker(bind=engine, 
+app_session = scoped_session(sessionmaker(bind=app_engine, 
                                       autocommit=False, 
                                       autoflush=False))
 
+worker_session = scoped_session(sessionmaker(bind=worker_engine,
+                                          autocommit=False,
+                                          autoflush=False))
+
 Base = declarative_base()
-Base.query = session.query_property()
 
 def init_db():
     import api.models
