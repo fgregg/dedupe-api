@@ -27,9 +27,20 @@ def writeRawTable(filename=None,
     sql_table = Table('raw_%s' % session_key, metadata, *cols)
     sql_table.append_column(Column('record_id', Integer, primary_key=True))
     metadata.create_all(engine)
-    reader = UnicodeCSVDictReader(converted)
-    for row in reader:
-        engine.execute(sql_table.insert(), **row)
+    names = [c.name for c in sql_table.columns if c.name != 'record_id']
+    copy_st = 'COPY "raw_%s" (' % session_key
+    for idx, name in enumerate(names):
+        if idx < len(names) - 1:
+            copy_st += '"%s", ' % name
+        else:
+            copy_st += '"%s")' % name
+    else:
+        copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',')"
+    converted.seek(0)
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    cur.copy_expert(copy_st, converted)
+    conn.commit()
     return fieldnames
 
 def writeEntityMap(clustered_dupes, session_key, data_d):

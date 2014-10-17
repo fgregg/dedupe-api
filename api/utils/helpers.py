@@ -1,7 +1,7 @@
 import re
 import dedupe
 from api.database import app_session, worker_session
-from sqlalchemy import Table, MetaData
+from sqlalchemy import Table, MetaData, distinct
 from unidecode import unidecode
 from itertools import count
 
@@ -35,3 +35,13 @@ def makeDataDict(session_key, primary_key=None, table_name=None, worker=False):
         d = {k: preProcess(unicode(v)) for k,v in zip(fields, row)}
         result.update({int(d[primary_key]): d})
     return result
+
+def getDistinct(field_name, session_key):
+    engine = app_session.bind
+    metadata = MetaData()
+    table = Table('raw_%s' % session_key, metadata,
+        autoload=True, autoload_with=engine)
+    q = app_session.query(distinct(getattr(table.c, field_name)))\
+        .filter(getattr(table.c, field_name) != None)
+    distinct_values = [preProcess(v[0]) for v in q.all()]
+    return distinct_values

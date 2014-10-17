@@ -15,7 +15,7 @@ import dedupe
 from api.utils.delayed_tasks import dedupeit
 from api.utils.dedupe_functions import DedupeFileError
 from api.utils.db_functions import writeRawTable
-from api.utils.helpers import makeDataDict
+from api.utils.helpers import makeDataDict, getDistinct
 from api.models import DedupeSession, User
 from api.database import app_session as db_session
 from api.auth import check_roles, csrf, login_required
@@ -92,7 +92,7 @@ def train():
         db_session.add(sess)
         db_session.commit()
         return redirect(url_for('trainer.select_fields'))
-    return make_response(render_app_template('upload.html', error=error, user=user), status_code)
+    return make_response(render_template('upload.html', error=error, user=user), status_code)
 
 # from sqlalchemy.ext.declarative import declarative_base
 
@@ -130,32 +130,57 @@ def select_fields():
     fields = flask_session.get('fieldnames')
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
+        flask_session['field_list'] = field_list
         if field_list:
-            training = True
-            field_defs = []
-            for field in field_list:
-                field_defs.append({'field': field, 'type': 'String'})
-            sess = db_session.query(DedupeSession).get(flask_session['session_key'])
-            sess.field_defs = json.dumps(field_defs)
-            db_session.add(sess)
-            db_session.commit()
-            deduper = dedupe.Dedupe(field_defs)
-            data_d = makeDataDict(sess.id, table_name=sess.table_name)
-            deduper.sample(data_d, sample_size=5000, rand_p=0)
-            flask_session['deduper'] = deduper
-            return redirect(url_for('trainer.training_run'))
+            return redirect(url_for('trainer.select_field_types'))
         else:
             error = 'You must select at least one field to compare on.'
             status_code = 500
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_app_template('select_fields.html', error=error, fields=fields, user=user)
+    return render_template('select_fields.html', error=error, fields=fields, user=user)
+
+@trainer.route('/select_field_types/', methods=['GET', 'POST'])
+@login_required
+@check_roles(roles=['admin'])
+def select_field_types():
+    user = db_session.query(User).get(flask_session['user_id'])
+    sess = db_session.query(DedupeSession).get(flask_session['session_key'])
+    field_list = flask_session['field_list']
+    if request.method == 'POST':
+        field_dict = {}
+        for k,v in request.form.items():
+            if k != 'csrf_token':
+                field_name, form_field = k.split('_')
+                if not field_dict.get(field_name):
+                    field_dict[field_name] = {}
+                if form_field == 'missing':
+                    field_dict[field_name]['has_missing'] = True
+                if form_field == 'type': 
+                    field_dict[field_name]['type'] = v
+        field_defs = []
+        for k,v in field_dict.items():
+            d = {'field': k}
+            if v['type'] == 'Categorical':
+                v['categories'] = getDistinct(k,sess.id)
+            d.update(v)
+            field_defs.append(d)
+        sess = db_session.query(DedupeSession).get(flask_session['session_key'])
+        sess.field_defs = json.dumps(field_defs)
+        db_session.add(sess)
+        db_session.commit()
+        deduper = dedupe.Dedupe(field_defs)
+        data_d = makeDataDict(sess.id, table_name=sess.table_name)
+        deduper.sample(data_d, sample_size=5000, rand_p=0)
+        flask_session['deduper'] = deduper
+        return redirect(url_for('trainer.training_run'))
+    return render_template('select_field_types.html', user=user, field_list=field_list)
 
 @trainer.route('/training_run/')
 @login_required
 @check_roles(roles=['admin'])
 def training_run():
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_app_template('training_run.html', user=user)
+    return render_template('training_run.html', user=user)
 
 @trainer.route('/get-pair/')
 @login_required
@@ -238,7 +263,7 @@ def mark_pair():
 @check_roles(roles=['admin'])
 def dedupe_finished():
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_app_template("dedupe_finished.html", user=user)
+    return render_template("dedupe_finished.html", user=user)
 
 @trainer.route('/dedupe_finished/checkscore.php')
 def pong_score():
@@ -250,7 +275,7 @@ def pong_score():
 
 @trainer.route('/about/')
 def about():
-    return render_app_template("about.html")
+    return render_template("about.html")
 
 @trainer.route('/working/')
 @login_required
@@ -271,12 +296,4 @@ def working():
         start = flask_session['adjust_start']
         end = time.time()
     return jsonify(ready=True, result=rv.return_value)
-
-# UTILITY
-def render_app_template(template, **kwargs):
-    '''Add some goodies to all templates.'''
-
-    if 'config' not in kwargs:
-        kwargs['config'] = current_app.config
-    return render_template(template, **kwargs)
 
