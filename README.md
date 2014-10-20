@@ -30,7 +30,7 @@ createdb dedupeapi
 Create your own `app_config.py` file:
 
 ```
-cp dedupe-api/app_config.py.example dedupe-api/app_config.py
+cp api/app_config.py.example api/app_config.py
 ```
 
 You will want to change, at the minimum, the following `app_config.py` fields:
@@ -40,8 +40,7 @@ You will want to change, at the minimum, the following `app_config.py` fields:
 
 * `DEFAULT_USER`: change the username, email and password on the administrator account you will use on Plenario locally.
 
-Before running the server, [Redis](http://redis.io/) and
-[Celery](http://www.celeryproject.org/) also need to be running.
+Before running the server, [Redis](http://redis.io/).
 
 * To start Redis locally (in the background):
 ```
