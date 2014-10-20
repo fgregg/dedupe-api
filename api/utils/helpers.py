@@ -7,10 +7,10 @@ from itertools import count
 
 def preProcess(column):
     if not column:
-        column = ''
+        column = u''
     if column == 'None':
-        column = ''
-    column = unidecode(unicode(column))
+        column = u''
+    column = unidecode(column)
     column = re.sub('  +', ' ', column)
     column = re.sub('\n', ' ', column)
     column = column.strip().strip('"').strip("'").lower().strip()
@@ -27,7 +27,7 @@ def makeDataDict(session_key, primary_key=None, table_name=None, worker=False):
     metadata = MetaData()
     table = Table(table_name, metadata, 
         autoload=True, autoload_with=engine)
-    fields = [str(s) for s in table.columns.keys()]
+    fields = [unicode(s) for s in table.columns.keys()]
     if not primary_key:
         try:
             primary_key = [p.name for p in table.primary_key][0]

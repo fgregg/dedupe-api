@@ -94,31 +94,6 @@ def train():
         return redirect(url_for('trainer.select_fields'))
     return make_response(render_template('upload.html', error=error, user=user), status_code)
 
-# from sqlalchemy.ext.declarative import declarative_base
-
-# @csrf.exempt
-# @trainer.route('/fetch-tables/', methods=['POST'])
-# @login_required
-# @check_roles(roles=['admin'])
-# def fetch_tables():
-#     conn_string = request.form['conn_string']
-#     engine = getEngine(conn_string)
-#     Rebase = declarative_base()
-#     resp = {
-#         'status': 'ok',
-#         'table_names': [],
-#     }
-#     try:
-#         Rebase.metadata.reflect(engine)
-#         resp['table_names'] = Rebase.metadata.tables.keys()
-#     except OperationalError, e:
-#         print e.message
-#         resp['status'] = 'error'
-#         resp['message'] = e.message
-#     resp = make_response(json.dumps(resp))
-#     resp.headers['Content-Type'] = 'application/json'
-#     return resp
-
 @trainer.route('/select_fields/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
