@@ -14,12 +14,12 @@ Repository for Enterprise Dedupe API
 
 ```bash
 git clone git@github.com:datamade/dedupe-api.git
-cd plenario
+cd dedupe-api
 $ pip install "numpy>=1.6"
 $ pip install -r requirements.txt
 ```
 
-Create a PostgreSQL database for Plenario. (If you aren't
+Create a PostgreSQL database for dedupeapi. (If you aren't
   already running [PostgreSQL](http://www.postgresql.org/), we recommend
   installing version 9.3 or later.)
 
