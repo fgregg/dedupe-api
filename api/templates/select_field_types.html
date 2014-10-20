@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block content %}
+    <div class="col-md-12">
+    {% include "dedupe_steps.html" %}
+    <h3>3. Field data types</h3>
+    {% include "error.html" %}
+    </div>
+    <div class="col-md-12">
+        <div class="row">
+            <div class="col-md-8">
+                <div class='well'>
+                    <form id="fields" role="form" action="{{ url_for('trainer.select_field_types')}}" method="post" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                        <div class="form-group">
+                            {% for field in field_list %}
+                              <div class="row">
+                                <div class="col-sm-6">
+                                    <label>{{ field }}: </label>
+                                    <select class="form-control" name="{{ field }}_type">
+                                        <option value="String">String</option>
+                                        <option value="ShortString">ShortString</option>
+                                        <option value="Text">Text</option>
+                                        <option value="LatLong">LatLong</option>
+                                        <option value="Set">Set</option>
+                                        <option value="Exact">Exact</option>
+                                        <option value="Categorical">Categorical</option>
+                                        <option value="Source">Source</option>
+                                    </select>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="checkbox">
+                                        <label>
+                                            <input type="checkbox" name="{{ field }}_missing"> Missing data
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="start-training">
+                            Next &raquo;
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class='col-md-4'>
+                <div class='alert alert-info'>
+                    <p>
+                        <i class='icon-info-sign'></i>
+                        This is some interesting information about field types!
+                    </p>
+
+                    <p>This is a list:</p>
+
+                    <ul>
+                        <li>Item 1 (super important)</li>
+                        <li>Item 2 (Hi there)</li>
+                        <li>Item 3 (Also important but lives in the shadow of item 1)</li>
+                        <li>Item 4 (No on even knows he's here sometimes)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+{% block extra_javascript %}
+{% if not fields %}
+<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
+<script type="text/javascript">
+    $(document).ready(function(){
+        console.log('woo')
+    })
+</script>
+{% endif %}
+{% endblock %}
