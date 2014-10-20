@@ -20,10 +20,10 @@ from csvkit.unicsv import UnicodeCSVReader
 manager = Blueprint('manager', __name__)
 
 def role_choices():
-    return Role.query.all()
+    return db_session.query(Role).all()
 
 def group_choices():
-    return Group.query.all()
+    return db_session.query(Group).all()
 
 class AddUserForm(Form):
     name = TextField('name', validators=[DataRequired()])
