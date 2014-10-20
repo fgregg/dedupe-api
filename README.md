@@ -7,8 +7,8 @@ Repository for Enterprise Dedupe API
 
 **Install OS level dependencies:** 
 
-* Python 2.7
-* Redis
+* [Python 2.7](https://www.python.org/download/releases/2.7/)
+* [Redis](http://redis.io/)
 
 **Install app requirements**
 
