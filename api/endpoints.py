@@ -296,6 +296,7 @@ def get_cluster(session_id):
         resp['message'] = "You don't have access to session '%s'" % session_id
         status_code = 401
     else:
+        checkin_sessions()
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
         clusters_q = db_session.query(entity_table.c.group_id.distinct())
@@ -321,10 +322,10 @@ def get_cluster(session_id):
             records = db_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
             raw_fields = [f['name'] for f in records.column_descriptions]
             records = records.all()
-            ten_minutes = datetime.now() + timedelta(minutes=10)
+            one_minute = datetime.now() + timedelta(minutes=1)
             upd = entity_table.update()\
                 .where(entity_table.c.group_id.in_(subq))\
-                .values(checked_out=True, checkout_expire=ten_minutes)
+                .values(checked_out=True, checkout_expire=one_minute)
             engine.execute(upd)
             resp['confidence'] = cluster[0][2]
             resp['group_id'] = cluster[0][1]
