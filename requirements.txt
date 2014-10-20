@@ -8,3 +8,4 @@ Flask-WTF
 Flask-Login
 flask-bcrypt
 unidecode
+psycopg2

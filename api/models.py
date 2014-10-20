@@ -74,7 +74,7 @@ class Role(Base):
 class Group(Base):
     __tablename__ = 'dedupe_group'
     id = Column(String(36), default=get_uuid, primary_key=True)
-    name = Column(String(10))
+    name = Column(String(100))
     description = Column(String(255))
 
     def __repr__(self):
