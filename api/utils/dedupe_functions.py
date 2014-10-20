@@ -20,7 +20,7 @@ class DedupeFileError(Exception):
 class WebDeduper(object):
     
     def __init__(self, deduper,
-            recall_weight=2,
+            recall_weight=1,
             session_key=None):
         self.deduper = deduper
         self.recall_weight = float(recall_weight)

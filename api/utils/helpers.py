@@ -6,7 +6,11 @@ from unidecode import unidecode
 from itertools import count
 
 def preProcess(column):
-    column = unidecode(column)
+    if not column:
+        column = ''
+    if column == 'None':
+        column = ''
+    column = unidecode(unicode(column))
     column = re.sub('  +', ' ', column)
     column = re.sub('\n', ' ', column)
     column = column.strip().strip('"').strip("'").lower().strip()
@@ -41,7 +45,6 @@ def getDistinct(field_name, session_key):
     metadata = MetaData()
     table = Table('raw_%s' % session_key, metadata,
         autoload=True, autoload_with=engine)
-    q = app_session.query(distinct(getattr(table.c, field_name)))\
-        .filter(getattr(table.c, field_name) != None)
-    distinct_values = [preProcess(v[0]) for v in q.all()]
+    q = app_session.query(distinct(getattr(table.c, field_name)))
+    distinct_values = [preProcess(unicode(v[0])) for v in q.all()]
     return distinct_values

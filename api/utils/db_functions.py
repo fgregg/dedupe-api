@@ -26,7 +26,7 @@ def writeRawTable(filename=None,
     metadata = MetaData()
     sql_table = Table('raw_%s' % session_key, metadata, *cols)
     sql_table.append_column(Column('record_id', Integer, primary_key=True))
-    metadata.create_all(engine)
+    sql_table.create(engine)
     names = [c.name for c in sql_table.columns if c.name != 'record_id']
     copy_st = 'COPY "raw_%s" (' % session_key
     for idx, name in enumerate(names):
@@ -50,7 +50,7 @@ def writeEntityMap(clustered_dupes, session_key, data_d):
     engine = worker_session.bind
     metadata = MetaData()
     dt = entity_map('entity_%s' % session_key, metadata)
-    metadata.create_all(engine)
+    dt.create(engine)
     rows = []
     sess = worker_session.query(DedupeSession).get(session_key)
     field_defs = json.loads(sess.field_defs)
@@ -82,7 +82,7 @@ def writeBlockingMap(session_key, block_data):
     metadata = MetaData()
     bkm = block_map_table('block_%s' % session_key, metadata)
     engine = worker_session.bind
-    metadata.create_all(engine)
+    bkm.create(engine)
     insert_data = []
     for key, record_id in block_data:
         insert_data.append({'block_key': key, 'record_id': record_id})
@@ -106,5 +106,5 @@ def writeCanonTable(session_id):
     canon_table = Table('canon_%s' % session_id, metadata,
         *cols, extend_existing=True)
     canon_table.append_column(Column('canon_record_id', Integer, primary_key=True))
-    metadata.create_all(engine)
+    canon_table.create(engine)
 
