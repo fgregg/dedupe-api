@@ -109,5 +109,5 @@ def writeCanonTable(session_id):
     canon_table = Table('canon_%s' % session_id, metadata,
         *cols, extend_existing=True)
     canon_table.append_column(Column('canon_record_id', Integer, primary_key=True))
-    canon_table.append_column(Column('entity_id', Integer, primary_key=True))
+    canon_table.append_column(Column('entity_id', Integer))
     canon_table.create(engine)

@@ -12,7 +12,7 @@ import copy
 import time
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
-from api.utils.delayed_tasks import dedupeit
+from api.utils.delayed_tasks import dedupeRaw
 from api.utils.dedupe_functions import DedupeFileError
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import makeDataDict, getDistinct
@@ -246,11 +246,7 @@ def mark_pair():
         db_session.add(sess)
         db_session.commit()
         sample = deduper.data_sample
-        args = {
-            'data_sample': sample,
-            'session_id': flask_session['session_id'],
-        }
-        rv = dedupeit.delay(**args)
+        rv = dedupeRaw.delay(session_id, sample)
         flask_session['deduper_key'] = rv.key
         resp = {'finished': True}
         flask_session['dedupe_start'] = time.time()
@@ -276,7 +272,7 @@ def dedupe_finished():
 
 @trainer.route('/dedupe_finished/checkscore.php')
 def pong_score():
-    print request.data
+    print request.args
     resp = {}
     resp = make_response(json.dumps(resp))
     resp.headers['Content-Type'] = 'application/json'

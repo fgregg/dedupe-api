@@ -6,7 +6,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict
-from api.utils.dedupe_functions import WebDeduper
+from api.utils.dedupe_functions import dedupeRaw
 from api.utils.db_functions import writeCanonTable
 from sqlalchemy import Table, MetaData
 from itertools import groupby
@@ -73,20 +73,31 @@ def bulkMatchWorker(session_id, file_contents, field_map, filename):
     return result
 
 @queuefunc
-def dedupeit(**kwargs):
-    dd_session = worker_session.query(DedupeSession).get(kwargs['session_id'])
+def dedupeRaw(session_id, data_sample):
+    dd_session = worker_session.query(DedupeSession)\
+        .get(session_id)
     d = dedupe.Dedupe(json.loads(dd_session.field_defs), 
-        data_sample=kwargs['data_sample'])
-    deduper = WebDeduper(d, session_id=dd_session.id)
-    dd_session.status = 'dedupe started'
+        data_sample=data_sample)
+    training_data = StringIO(dd_session.training_data)
+    deduper.readTraining(training_data)
+    deduper.train()
+    settings_file_obj = StringIO()
+    deduper.writeSettings(settings_file_obj)
+    dd_session.settings_file = settings_file_obj.getvalue()
     worker_session.add(dd_session)
     worker_session.commit()
-    files = deduper.dedupe()
-    dd_session.status = 'review queue ready'
-    worker_session.add(dd_session)
-    worker_session.commit()
-    del d
-    return files
+    table_name = dd_session.table_name
+    data_d = makeDataDict(dd_session.id, table_name=table_name, worker=True)
+    threshold = deduper.threshold(data_d, recall_weight=1)
+    clustered_dupes = deduper.match(data_d, threshold)
+    writeEntityMap(clustered_dupes, session_id, data_d)
+    dd_tuples = ((k,v) for k,v in data_d.items())
+    block_data = deduper.blocker(dd_tuples)
+    writeBlockingMap(session_id, block_data)
+    return 'ok'
+
+@queuefunc
+def dedupeCanon(session_id)
 
 @queuefunc
 def retrain(session_id):
@@ -147,3 +158,4 @@ def makeCanonicalTable(session_id):
     canon_table = Table('canon_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, extend_existing=True)
     engine.execute(canon_table.insert(), canonical_rows)
+    dedupeCanon(session_id)
