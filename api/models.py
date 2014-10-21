@@ -43,6 +43,7 @@ class DedupeSession(Base):
     field_defs = Column(LargeBinary)
     conn_string = Column(String)
     table_name = Column(String)
+    status = Column(String)
     group_id = Column(String(36), ForeignKey('dedupe_group.id'))
     group = relationship('Group', backref=backref('sessions'))
 
@@ -74,7 +75,7 @@ class Role(Base):
 class Group(Base):
     __tablename__ = 'dedupe_group'
     id = Column(String(36), default=get_uuid, primary_key=True)
-    name = Column(String(100))
+    name = Column(String(10))
     description = Column(String(255))
 
     def __repr__(self):

@@ -21,11 +21,11 @@ class WebDeduper(object):
     
     def __init__(self, deduper,
             recall_weight=1,
-            session_key=None):
+            session_id=None):
         self.deduper = deduper
         self.recall_weight = float(recall_weight)
-        self.session_key = session_key
-        self.dd_session = worker_session.query(DedupeSession).get(session_key)
+        self.session_id = session_id
+        self.dd_session = worker_session.query(DedupeSession).get(session_id)
         self.training_data = StringIO(self.dd_session.training_data)
         # Will need to figure out static dedupe, maybe
         self.deduper.readTraining(self.training_data)
@@ -41,8 +41,8 @@ class WebDeduper(object):
         data_d = makeDataDict(self.dd_session.id, table_name=self.dd_session.table_name, worker=True)
         threshold = self.deduper.threshold(data_d, recall_weight=self.recall_weight)
         clustered_dupes = self.deduper.match(data_d, threshold)
-        writeEntityMap(clustered_dupes, self.session_key, data_d)
+        writeEntityMap(clustered_dupes, self.session_id, data_d)
         dd_tuples = ((k,v) for k,v in data_d.items())
         block_data = self.deduper.blocker(dd_tuples)
-        writeBlockingMap(self.session_key, block_data)
+        writeBlockingMap(self.session_id, block_data)
         return 'ok'

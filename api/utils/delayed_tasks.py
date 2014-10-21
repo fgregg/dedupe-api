@@ -74,17 +74,23 @@ def bulkMatchWorker(session_id, file_contents, field_map, filename):
 
 @queuefunc
 def dedupeit(**kwargs):
-    dd_session = worker_session.query(DedupeSession).get(kwargs['session_key'])
+    dd_session = worker_session.query(DedupeSession).get(kwargs['session_id'])
     d = dedupe.Dedupe(json.loads(dd_session.field_defs), 
         data_sample=kwargs['data_sample'])
-    deduper = WebDeduper(d, session_key=dd_session.id)
+    deduper = WebDeduper(d, session_id=dd_session.id)
+    dd_session.status = 'dedupe started'
+    worker_session.add(dd_session)
+    worker_session.commit()
     files = deduper.dedupe()
+    dd_session.status = 'review queue ready'
+    worker_session.add(dd_session)
+    worker_session.commit()
     del d
     return files
 
 @queuefunc
-def retrain(session_key):
-    sess = worker_session.query(DedupeSession).get(session_key)
+def retrain(session_id):
+    sess = worker_session.query(DedupeSession).get(session_id)
     gaz = dedupe.Gazetteer(json.loads(sess.field_defs))
     gaz.readTraining(StringIO(sess.training_data))
     gaz.train()
@@ -124,9 +130,9 @@ def makeCanonicalTable(session_id):
     raw_fields = [c for c in raw_table.columns.keys()]
     primary_key = [p.name for p in raw_table.primary_key][0]
     canonical_rows = []
-    for k,v in groups.items():
+    for key,value in groups.items():
         cluster_rows = worker_session.query(raw_table)\
-            .filter(getattr(raw_table.c, primary_key).in_(v)).all()
+            .filter(getattr(raw_table.c, primary_key).in_(value)).all()
         rows_d = []
         for row in cluster_rows:
             d = {}
@@ -134,7 +140,9 @@ def makeCanonicalTable(session_id):
                 if k != 'record_id':
                     d[k] = preProcess(unicode(v))
             rows_d.append(d)
-        canonical_rows.append(dedupe.canonicalize(rows_d))
+        canonical_form = dedupe.canonicalize(rows_d)
+        canonical_form['entity_id'] = key
+        canonical_rows.append(canonical_form)
     writeCanonTable(session_id)
     canon_table = Table('canon_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, extend_existing=True)

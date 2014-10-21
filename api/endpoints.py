@@ -28,18 +28,18 @@ dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
 
 def validate_post(post):
     api_key = post.get('api_key')
-    session_key = post.get('session_key')
+    session_id = post.get('session_key')
     obj = post.get('object')
     r = {'status': 'ok', 'message': '', 'object': obj}
     status_code = 200
     # should probably validate if the user has access to the session
-    sess = db_session.query(DedupeSession).get(session_key)
+    sess = db_session.query(DedupeSession).get(session_id)
     user = db_session.query(User).get(api_key)
     if not api_key:
         r['status'] = 'error'
         r['message'] = 'API Key is required'
         status_code = 401
-    elif not session_key:
+    elif not session_id:
         r['status'] = 'error'
         r['message'] = 'Session Key is required'
         status_code = 401
@@ -67,12 +67,12 @@ def match():
     r, status_code, user, sess = validate_post(post)
     if r['status'] != 'error':
         api_key = post['api_key']
-        session_key = post['session_key']
+        session_id = post['session_key']
         n_matches = post.get('num_matches', 5)
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
         model_fields = [f['field'] for f in field_defs]
-        entity_table = Table('entity_%s' % session_key, Base.metadata, 
+        entity_table = Table('entity_%s' % session_id, Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
         raw_table = Table(sess.table_name, Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
@@ -142,7 +142,7 @@ def train():
         status_code = 400
     if r['status'] != 'error':
         api_key = post['api_key']
-        session_key = post['session_key']
+        session_id = post['session_key']
         obj = post['object']
         positive = []
         negative = []
@@ -169,7 +169,7 @@ def train():
             sess.training_data = json.dumps(training_data)
             db_session.add(sess)
             db_session.commit()
-            retrain.delay(session_key)
+            retrain.delay(session_id)
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -336,6 +336,9 @@ def get_cluster(session_id):
                 cluster_list.append(d)
         else:
             makeCanonicalTable.delay(session_id)
+            sess.status = 'review complete'
+            db_session.add(sess)
+            db_session.commit()
         resp['objects'] = cluster_list
         resp['total_clusters'] = total_clusters
         resp['review_remainder'] = review_remainder
@@ -387,6 +390,42 @@ def mark_cluster(session_id):
         }
         status_code = 200
     resp = make_response(json.dumps(r), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+status_lookup = {
+    'dataset uploaded': 'training started',
+    'training started': 'training completed',
+    'training completed': 'dedupe started',
+    'dedupe started': 'review queue ready',
+    'review queue ready': 'review complete',
+    'review complete': '',
+}
+
+@endpoints.route('/session-status/<session_id>/')
+@check_api_key()
+def session_status(session_id):
+    resp = {
+        'status': 'ok',
+        'message': '',
+    }
+    status_code = 200
+    api_key = request.args.get('api_key')
+    if not api_key:
+        api_key = flask_session['user_id']
+    user = db_session.query(User).get(api_key)
+    sess = db_session.query(DedupeSession)\
+        .filter(DedupeSession.group.has(
+            Group.id.in_([i.id for i in user.groups])))\
+        .filter(DedupeSession.id == session_id)\
+        .first()
+    if not sess:
+        resp['status'] = 'error'
+        resp['message'] = "You don't have access to session '%s'" % session_id
+        status_code = 401
+    else:
+        resp['session_status'] = sess.status
+    resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
 

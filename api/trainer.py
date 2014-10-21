@@ -16,7 +16,7 @@ from api.utils.delayed_tasks import dedupeit
 from api.utils.dedupe_functions import DedupeFileError
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import makeDataDict, getDistinct
-from api.models import DedupeSession, User
+from api.models import DedupeSession, User, Group
 from api.database import app_session as db_session
 from api.auth import check_roles, csrf, login_required
 from api.database import app_session
@@ -47,7 +47,7 @@ def train():
     user = db_session.query(User).get(flask_session['user_id'])
     status_code = 200
     error = None
-    flask_session['session_key'] = unicode(uuid4())
+    flask_session['session_id'] = unicode(uuid4())
     session_values = [
         'dedupe_start',
         'sample',
@@ -68,9 +68,9 @@ def train():
     if request.method == 'POST':
         f = request.files['input_file']
         conn_string = current_app.config['DB_CONN']
-        table_name = 'raw_%s' % flask_session['session_key']
+        table_name = 'raw_%s' % flask_session['session_id']
         primary_key = 'record_id'
-        fieldnames = writeRawTable(session_key=flask_session['session_key'],
+        fieldnames = writeRawTable(session_id=flask_session['session_id'],
             filename=f.filename,
             file_obj=f)
         session_name = f.filename
@@ -84,11 +84,12 @@ def train():
         # Will need to revisit this when there are more groups
         group = user.groups[0]
         sess = DedupeSession(
-            id=flask_session['session_key'], 
+            id=flask_session['session_id'], 
             name=session_name,
             group=group,
             conn_string=conn_string,
-            table_name=table_name)
+            table_name=table_name, 
+            status='dataset uploaded')
         db_session.add(sess)
         db_session.commit()
         return redirect(url_for('trainer.select_fields'))
@@ -119,7 +120,7 @@ def select_fields():
 @check_roles(roles=['admin'])
 def select_field_types():
     user = db_session.query(User).get(flask_session['user_id'])
-    sess = db_session.query(DedupeSession).get(flask_session['session_key'])
+    sess = db_session.query(DedupeSession).get(flask_session['session_id'])
     field_list = flask_session['field_list']
     if request.method == 'POST':
         field_dict = {}
@@ -139,14 +140,10 @@ def select_field_types():
                 v['categories'] = getDistinct(k,sess.id)
             d.update(v)
             field_defs.append(d)
-        sess = db_session.query(DedupeSession).get(flask_session['session_key'])
+        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
         sess.field_defs = json.dumps(field_defs)
         db_session.add(sess)
         db_session.commit()
-        deduper = dedupe.Dedupe(field_defs)
-        data_d = makeDataDict(sess.id, table_name=sess.table_name)
-        deduper.sample(data_d, sample_size=5000, rand_p=0)
-        flask_session['deduper'] = deduper
         return redirect(url_for('trainer.training_run'))
     return render_template('select_field_types.html', user=user, field_list=field_list)
 
@@ -154,8 +151,34 @@ def select_field_types():
 @login_required
 @check_roles(roles=['admin'])
 def training_run():
+    if request.args.get('session_id'):
+        session_id = request.args['session_id']
+        try:
+            del flask_session['counter']
+        except KeyError:
+            pass
+    elif flask_session.get('session_id'):
+        session_id = flask_session['session_id']
+    else:
+        return redirect(url_for('trainer.train_start'))
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('training_run.html', user=user)
+    sess = db_session.query(DedupeSession)\
+        .filter(DedupeSession.group.has(
+            Group.id.in_([i.id for i in user.groups])))\
+        .filter(DedupeSession.id == session_id)\
+        .first()
+    if not sess:
+        error = "You don't have access to session '%s'" % session_id
+        status_code = 401
+    else:
+        error = None
+        status_code = 200
+        field_defs = json.loads(sess.field_defs)
+        deduper = dedupe.Dedupe(field_defs)
+        data_d = makeDataDict(sess.id, table_name=sess.table_name)
+        deduper.sample(data_d, sample_size=5000, rand_p=0)
+        flask_session['deduper'] = deduper
+    return make_response(render_template('training_run.html', user=user, error=error), status_code)
 
 @trainer.route('/get-pair/')
 @login_required
@@ -190,6 +213,10 @@ def mark_pair():
         counter = flask_session['counter']
     else:
         counter = {'yes': 0, 'no': 0, 'unsure': 0}
+        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
+        sess.status = 'training started'
+        db_session.add(sess)
+        db_session.commit()
     if flask_session.get('training_data'):
         labels = flask_session['training_data']
     else:
@@ -207,14 +234,21 @@ def mark_pair():
         resp = {'counter': counter}
     elif action == 'finish':
         training_data = flask_session['training_data']
-        sess = db_session.query(DedupeSession).get(flask_session['session_key'])
-        sess.training_data = json.dumps(training_data, default=_to_json)
+        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
+        if sess.training_data:
+            td = json.loads(sess.training_data)
+            td['distinct'].extend(training_data['distinct'])
+            td['match'].extend(training_data['match'])
+            sess.training_data = json.dumps(td, default=_to_json)
+        else:
+            sess.training_data = json.dumps(training_data, default=_to_json)
+        sess.status = 'training complete'
         db_session.add(sess)
         db_session.commit()
         sample = deduper.data_sample
         args = {
             'data_sample': sample,
-            'session_key': flask_session['session_key'],
+            'session_id': flask_session['session_id'],
         }
         rv = dedupeit.delay(**args)
         flask_session['deduper_key'] = rv.key
