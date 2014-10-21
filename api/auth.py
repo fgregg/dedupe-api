@@ -8,7 +8,7 @@ from flask_wtf.csrf import CsrfProtect
 from wtforms import TextField, PasswordField
 from wtforms.validators import DataRequired, Email
 from api.database import app_session as db_session
-from api.models import User
+from api.models import User, DedupeSession, Group
 import os
 import json
 from uuid import uuid4
@@ -87,6 +87,13 @@ def check_api_key():
                 response = make_response(json.dumps(resp), status_code)
                 response.headers['Content-Type'] = 'application/json'
                 return response
+            else:
+                user = db_session.query(User).get(api_key)
+                sess = db_session.query(DedupeSession)\
+                    .filter(DedupeSession.group.has(
+                        Group.id.in_([i.id for i in user.groups])))\
+                    .all()
+                flask_session['user_sessions'] = [s.id for s in sess]
             return f(*args, **kwargs)
         return decorated
     return decorator
