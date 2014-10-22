@@ -7,7 +7,7 @@ from api.app_config import DOWNLOAD_FOLDER
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, app_engine as engine, Base
 from api.auth import csrf, check_api_key
-from api.utils.delayed_tasks import makeCanonicalTable, retrain, bulkMatchWorker
+from api.utils.delayed_tasks import retrain, bulkMatchWorker
 from api.utils.helpers import preProcess
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
@@ -81,7 +81,7 @@ def match():
         match_list = []
         if exact_match:
             cluster = db_session.query(entity_table.c.record_id)\
-                .filter(entity_table.c.group_id == exact_match.group_id)\
+                .filter(entity_table.c.entity_id == exact_match.entity_id)\
                 .all()
             raw_ids = [c[0] for c in cluster]
             raw_record = db_session.query(*raw_cols)\
@@ -331,22 +331,23 @@ def get_cluster(session_id):
         checkin_sessions()
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
-        clusters_q = db_session.query(entity_table.c.group_id.distinct())
-        total_clusters = clusters_q.count()
-        review_remainder = clusters_q.filter(entity_table.c.clustered == False).count()
+        total_clusters = db_session.query(entity_table.c.entity_id.distinct()).count()
+        review_remainder = db_session.query(entity_table)\
+            .filter(entity_table.c.clustered == False)\
+            .count()
         cluster_list = []
         if review_remainder > 0:
             field_defs = [f['field'] for f in json.loads(sess.field_defs)]
             raw_table = Table(sess.table_name, Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
-            entity_fields = ['record_id', 'group_id', 'confidence']
+            entity_fields = ['record_id', 'entity_id', 'confidence']
             entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
-            subq = db_session.query(entity_table.c.group_id)\
+            subq = db_session.query(entity_table.c.entity_id)\
                 .filter(entity_table.c.checked_out == False)\
                 .filter(entity_table.c.clustered == False)\
                 .order_by(entity_table.c.confidence).limit(1).subquery()
             cluster = db_session.query(*entity_cols)\
-                .filter(entity_table.c.group_id.in_(subq)).all()
+                .filter(entity_table.c.entity_id.in_(subq)).all()
             raw_ids = [c[0] for c in cluster]
             raw_cols = [getattr(raw_table.c, f) for f in field_defs]
             primary_key = [p.name for p in raw_table.primary_key][0]
@@ -356,19 +357,24 @@ def get_cluster(session_id):
             records = records.all()
             one_minute = datetime.now() + timedelta(minutes=1)
             upd = entity_table.update()\
-                .where(entity_table.c.group_id.in_(subq))\
+                .where(entity_table.c.entity_id.in_(subq))\
                 .values(checked_out=True, checkout_expire=one_minute)
             engine.execute(upd)
             resp['confidence'] = cluster[0][2]
-            resp['group_id'] = cluster[0][1]
+            resp['entity_id'] = cluster[0][1]
             for thing in records:
                 d = {}
                 for k,v in zip(raw_fields, thing):
                     d[k] = v
                 cluster_list.append(d)
         else:
-            makeCanonicalTable.delay(session_id)
-            sess.status = 'review complete'
+            if sess.status == 'first pass review complete':
+                sess.status = 'review complete'
+                # Need to run the thing that makes the canon here.
+            else:
+                sess.status = 'first pass review complete'
+                # Need to run the thing that dedupes clusters 
+                # in the entity table here.
             db_session.add(sess)
             db_session.commit()
         resp['objects'] = cluster_list
@@ -427,20 +433,20 @@ def mark_cluster(session_id):
     else:
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
-        group_id = request.args.get('group_id')
+        entity_id = request.args.get('entity_id')
         action = request.args.get('action')
         if action == 'yes':
             upd = entity_table.update()\
-                .where(entity_table.c.group_id == group_id)\
+                .where(entity_table.c.entity_id == entity_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
             engine.execute(upd)
         elif action == 'no':
             dels = entity_table.delete()\
-                .where(entity_table.c.group_id == group_id)
+                .where(entity_table.c.entity_id == entity_id)
             engine.execute(dels)
         r = {
             'session_id': session_id, 
-            'group_id': group_id, 
+            'entity_id': entity_id, 
             'status': 'ok', 
             'action': action,
             'message': ''

@@ -246,7 +246,7 @@ def mark_pair():
         db_session.add(sess)
         db_session.commit()
         sample = deduper.data_sample
-        rv = dedupeRaw.delay(session_id, sample)
+        rv = dedupeRaw.delay(flask_session['session_id'], sample)
         flask_session['deduper_key'] = rv.key
         resp = {'finished': True}
         flask_session['dedupe_start'] = time.time()

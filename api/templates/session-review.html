@@ -26,9 +26,9 @@
         get_cluster();
         $('.mark-entity').on('click', function(e){
             e.preventDefault();
-            var group_id = $('#group-display').data('group');
+            var entity_id = $('#group-display').data('group');
             var action = $(this).attr('id').split('_')[0];
-            $.getJSON('/mark-cluster/{{session_id}}/', {'group_id': group_id, 'action': action}, function(resp){
+            $.getJSON('/mark-cluster/{{session_id}}/', {'entity_id': entity_id, 'action': action}, function(resp){
                 get_cluster();
             })
         })
@@ -39,7 +39,7 @@
                 $('#counter').html('<p>' + resp.review_remainder + ' out of ' + resp.total_clusters + ' left to review</p>')
                 var head = '';
                 var body = '';
-                $('#group-display').data('group', resp.group_id);
+                $('#group-display').data('group', resp.entity_id);
                 $.each(resp.objects, function(i, item){
                     if (i == 0){
                         head += '<tr>';

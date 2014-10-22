@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
-    Column, Table, Float, DateTime, Text
+    Column, Table, Float, DateTime, Text, BigInteger
 from sqlalchemy.orm import relationship, backref, synonym
 from api.database import Base, app_session as session
 from flask_bcrypt import Bcrypt
@@ -8,13 +8,18 @@ from datetime import datetime, timedelta
 
 bcrypt = Bcrypt()
 
-def entity_map(name, metadata, pk_type=Integer):
+from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+
+def entity_map(name, metadata):
     table = Table(name, metadata, 
-        Column('record_id', pk_type, primary_key=True),
-        Column('group_id', Integer), 
+        Column('entity_id', String),
+        Column('record_id', BigInteger),
+        Column('canon_record_id', Integer), 
         Column('confidence', Float(precision=50)),
         Column('source_hash', String(32)),
-        Column('source', pk_type, default=None),
+        Column('source', String),
         Column('clustered', Boolean, default=False),
         Column('checked_out', Boolean, default=False),
         Column('checkout_expire', DateTime),
