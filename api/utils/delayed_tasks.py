@@ -95,7 +95,11 @@ def dedupeRaw(session_id, data_sample):
     clustered_dupes = runDedupe(dd_session, deduper, data_d)
     review_count = writeEntityMap(clustered_dupes, session_id, data_d)
     if not review_count:
+        dd_session.status = 'first pass review complete'
+        worker_session.add(dd_session)
+        worker_session.commit()
         dedupeCanon(session_id)
+        
    #dd_tuples = ((k,v) for k,v in data_d.items())
    #block_data = deduper.blocker(dd_tuples)
    #writeBlockingMap(session_id, block_data)
@@ -112,7 +116,7 @@ def dedupeCanon(session_id):
     sample = deduper.data_sample
     clustered_dupes = runDedupe(dd_session, deduper, data_d)
     review_count = rewriteEntityMap(clustered_dupes, session_id, data_d)
-    return session_id
+    return 'ok'
 
 @queuefunc
 def retrain(session_id):

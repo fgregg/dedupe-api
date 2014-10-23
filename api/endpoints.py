@@ -7,7 +7,7 @@ from api.app_config import DOWNLOAD_FOLDER
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, app_engine as engine, Base
 from api.auth import csrf, check_api_key
-from api.utils.delayed_tasks import retrain, bulkMatchWorker
+from api.utils.delayed_tasks import retrain, bulkMatchWorker, dedupeCanon
 from api.utils.helpers import preProcess
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
@@ -368,13 +368,12 @@ def get_cluster(session_id):
                     d[k] = v
                 cluster_list.append(d)
         else:
+            # This is where we run dedupeCanon 
             if sess.status == 'first pass review complete':
                 sess.status = 'review complete'
-                # Need to run the thing that makes the canon here.
             else:
                 sess.status = 'first pass review complete'
-                # Need to run the thing that dedupes clusters 
-                # in the entity table here.
+                dedupeCanon.delay(sess.id)
             db_session.add(sess)
             db_session.commit()
         resp['objects'] = cluster_list

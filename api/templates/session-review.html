@@ -8,15 +8,17 @@
               <thead></thead>
               <tbody></tbody>
           </table>
-          <h4>Does the cluster above refer to the same entity? <span id="confidence"></span></h4>
-          <button class="btn btn-success mark-entity" id="yes">
-              <i class='icon-ok'></i>
-              Yes
-          </button>
-          <button class="btn btn-danger mark-entity" id="no">
-              <i class='icon-remove'></i>
-              No
-          </button>
+          <div id="review-buttons">
+              <h4>Does the cluster above refer to the same entity? <span id="confidence"></span></h4>
+              <button class="btn btn-success mark-entity" id="yes">
+                  <i class='icon-ok'></i>
+                  Yes
+              </button>
+              <button class="btn btn-danger mark-entity" id="no">
+                  <i class='icon-remove'></i>
+                  No
+              </button>
+          </div>
       </div>
     </div>
 {% endblock %}
@@ -58,7 +60,8 @@
                 $('#group-display thead').html(head);
                 $('#group-display tbody').html(body);
             } else {
-                $('#group-display').html("<h3>You're done!</h3><p>Now creating the canonical table</p>")
+                $('#group-display').html("<h3>You're done!</h3>")
+                $('#review-buttons').hide()
             }
         })
     }

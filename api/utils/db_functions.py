@@ -48,7 +48,7 @@ def writeRawTable(filename=None,
 
 def writeEntityMap(clustered_dupes, session_id, data_d):
     """ 
-    Write entity map table
+    Write entity map table the first time (after training)
     """
     engine = worker_session.bind
     metadata = MetaData()
@@ -63,6 +63,8 @@ def writeEntityMap(clustered_dupes, session_id, data_d):
     makeCanonTable(session_id)
     for cluster in clustered_dupes:
         id_set, confidence_score = cluster
+        # leaving out low confidence clusters
+        # This is a non-scientificly proven threshold
         if confidence_score > 0.2:
             members = worker_session.query(raw_table).filter(pk_col.in_(id_set)).all()
             entity_id = unicode(uuid4())
@@ -77,6 +79,8 @@ def writeEntityMap(clustered_dupes, session_id, data_d):
                     'source': 'raw_%s' % session_id,
                     'checked_out': False,
                 }
+                # auto accepting clsuters with higher confidence.
+                # Also a non-scientificly proven threshold
                 if confidence_score >= 0.28:
                     m['clustered'] = True
                 else:
