@@ -15,7 +15,7 @@ from dedupe.convenience import canonicalize
 from cPickle import loads
 from cStringIO import StringIO
 from sqlalchemy.exc import NoSuchTableError
-from sqlalchemy import Table, select, and_, func
+from sqlalchemy import Table, select, and_, func, distinct
 from sqlalchemy.ext.declarative import declarative_base
 from itertools import groupby
 from operator import itemgetter
@@ -332,7 +332,7 @@ def get_cluster(session_id):
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
         total_clusters = db_session.query(entity_table.c.entity_id.distinct()).count()
-        review_remainder = db_session.query(entity_table)\
+        review_remainder = db_session.query(entity_table.c.entity_id.distinct())\
             .filter(entity_table.c.clustered == False)\
             .count()
         cluster_list = []
@@ -432,17 +432,51 @@ def mark_cluster(session_id):
     else:
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
+        raw_table = Table('raw_%s' % session_id, Base.metadata,
+            autoload=True, autoload_with=engine)
         entity_id = request.args.get('entity_id')
         action = request.args.get('action')
+        canon_table = Table('canon_%s' % session_id, Base.metadata,
+            autoload=True, autoload_with=engine)
+        canon_ids = db_session.query(canon_table.c.canon_record_id.distinct())\
+            .join(entity_table, canon_table.c.canon_record_id == entity_table.c.canon_record_id)\
+            .filter(entity_table.c.entity_id == entity_id)\
+            .subquery()
+        canons = db_session.query(canon_table)\
+            .filter(canon_table.c.canon_record_id.in_(canon_ids))\
+            .all()
+        fields = [c for c in canon_table.columns.keys() if c != 'canon_record_id']
+        pairs = []
+        for canon in canons:
+            pairs.append({k:v for k,v in zip(fields, canon)})
+        training_data = json.loads(sess.training_data)
         if action == 'yes':
             upd = entity_table.update()\
                 .where(entity_table.c.entity_id == entity_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
             engine.execute(upd)
+            training_data['match'].append(pairs)
         elif action == 'no':
-            dels = entity_table.delete()\
-                .where(entity_table.c.entity_id == entity_id)
-            engine.execute(dels)
+            rows = db_session.query(entity_table)\
+                .filter(entity_table.c.entity_id == entity_id)\
+                .all()
+            upd_rows = [r for r in rows if r.former_entity_id]
+            del_rows = [r for r in rows if not r.former_entity_id]
+            for row in upd_rows:
+                upd = entity_table.update()\
+                    .where(entity_table.c.entity_id == row.entity_id)\
+                    .where(entity_table.c.former_entity_id == row.former_entity_id)\
+                    .values(entity_id=row.former_entity_id, clustered=True)
+                engine.execute(upd)
+            for row in del_rows:
+                delete = entity_table.delete()\
+                    .where(entity_table.c.entity_id == row.entity_id)\
+                    .where(entity_table.c.former_entity_id == row.former_entity_id)
+                engine.execute(delete)
+            training_data['distinct'].append(pairs)
+        sess.training_data = json.dumps(training_data)
+        db_session.add(sess)
+        db_session.commit()
         r = {
             'session_id': session_id, 
             'entity_id': entity_id, 

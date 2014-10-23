@@ -8,7 +8,7 @@ from api.utils.helpers import preProcess
 from csvkit import convert
 from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
-    create_engine, Float, Boolean, BigInteger
+    create_engine, Float, Boolean, BigInteger, distinct
 from unidecode import unidecode
 from uuid import uuid4
 
@@ -78,16 +78,17 @@ def writeEntityMap(clustered_dupes, session_id, data_d):
                     'entity_id': entity_id,
                     'source': 'raw_%s' % session_id,
                     'checked_out': False,
+                    'clustered': False,
                 }
                 # auto accepting clsuters with higher confidence.
                 # Also a non-scientificly proven threshold
-                if confidence_score >= 0.28:
-                    m['clustered'] = True
-                else:
-                    m['clustered'] = False
+                #if confidence_score >= 0.28:
+                #    m['clustered'] = True
+                #else:
+                #    m['clustered'] = False
                 engine.execute(entity_table.insert(), m)
             canonicalizeEntity(session_id, entity_id)
-    review_count = worker_session.query(entity_table.c.entity_id)\
+    review_count = worker_session.query(distinct(entity_table.c.entity_id))\
         .filter(entity_table.c.clustered == False)\
         .count()
     return review_count
@@ -104,32 +105,20 @@ def rewriteEntityMap(clustered_dupes, session_id, data_d):
         autoload=True, autoload_with=engine)
     raw_table = Table('raw_%s' % session_id, metadata,
         autoload=True, autoload_with=engine)
-    raw_fields = raw_table.columns.keys()
     for cluster in clustered_dupes:
         id_set, confidence_score = cluster
-        members = worker_session.query(raw_table, entity_table.c.entity_id)\
+        members = worker_session.query(raw_table.c.record_id, entity_table.c.entity_id)\
             .join(entity_table, raw_table.c.record_id == entity_table.c.record_id)\
             .join(canon_table, entity_table.c.entity_id == canon_table.c.entity_id)\
             .filter(canon_table.c.canon_record_id.in_(id_set))\
             .all()
-        entity_id = unicode(uuid4())
-        old_entities = []
+        entity_id = members[0][1]
         for member in members:
-            old_entities.append(member[-1])
-            hash_me = ';'.join([preProcess(unicode(getattr(member, i))) for i in model_fields])
-            md5_hash = md5(unidecode(hash_me)).hexdigest()
-            m = {
-                'confidence': float(confidence_score),
-                'record_id': member.record_id,
-                'source_hash': md5_hash,
-                'entity_id': entity_id,
-                'source': 'raw_%s' % session_id,
-                'clustered': False,
-                'checked_out': False,
-            }
-            engine.execute(entity_table.insert(), m)
-        delete = entity_table.delete().where(entity_table.c.entity_id.in_(old_entities))
-        engine.execute(delete)
+            upd = entity_table.update()\
+                .where(entity_table.c.record_id == member[0])\
+                .values(entity_id=entity_id, clustered=False, 
+                    former_entity_id=member[1])
+            engine.execute(upd)
     review_count = worker_session.query(entity_table.c.entity_id)\
         .filter(entity_table.c.clustered == False)\
         .count()

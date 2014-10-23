@@ -94,12 +94,12 @@ def dedupeRaw(session_id, data_sample):
     data_d = makeDataDict(dd_session.id, worker=True)
     clustered_dupes = runDedupe(dd_session, deduper, data_d)
     review_count = writeEntityMap(clustered_dupes, session_id, data_d)
+    print review_count
     if not review_count:
         dd_session.status = 'first pass review complete'
         worker_session.add(dd_session)
         worker_session.commit()
         dedupeCanon(session_id)
-        
    #dd_tuples = ((k,v) for k,v in data_d.items())
    #block_data = deduper.blocker(dd_tuples)
    #writeBlockingMap(session_id, block_data)
@@ -109,6 +109,7 @@ def dedupeRaw(session_id, data_sample):
 def dedupeCanon(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
+    print dd_session
     deduper = dedupe.Dedupe(json.loads(dd_session.field_defs))
     data_d = makeDataDict(dd_session.id, 
         worker=True, table_name='canon_%s' % session_id)
