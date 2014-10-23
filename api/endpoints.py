@@ -49,7 +49,7 @@ def validate_post(post, user_sessions):
         r['status'] = 'error'
         r['message'] = 'Invalid Session ID'
         status_code = 400
-    return r, status_code, user, sess
+    return r, status_code, sess
 
 @csrf.exempt
 @endpoints.route('/match/', methods=['POST'])
@@ -60,7 +60,7 @@ def match():
     except ValueError:
         post = json.loads(request.form.keys()[0])
     user_sessions = flask_session['user_sessions']
-    r, status_code, user, sess = validate_post(post, user_sessions)
+    r, status_code, sess = validate_post(post, user_sessions)
     if r['status'] != 'error':
         api_key = post['api_key']
         session_id = post['session_key']
@@ -446,16 +446,17 @@ def mark_cluster(session_id):
             .filter(canon_table.c.canon_record_id.in_(canon_ids))\
             .all()
         fields = [c for c in canon_table.columns.keys() if c != 'canon_record_id']
+        first = {k:v for k,v in zip(fields, canons[0])}
         pairs = []
-        for canon in canons:
-            pairs.append({k:v for k,v in zip(fields, canon)})
+        for canon in canons[1:]:
+            pairs.append([first, {k:v for k,v in zip(fields, canon)}])
         training_data = json.loads(sess.training_data)
         if action == 'yes':
             upd = entity_table.update()\
                 .where(entity_table.c.entity_id == entity_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
             engine.execute(upd)
-            training_data['match'].append(pairs)
+            training_data['match'].extend(pairs)
         elif action == 'no':
             rows = db_session.query(entity_table)\
                 .filter(entity_table.c.entity_id == entity_id)\

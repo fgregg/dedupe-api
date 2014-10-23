@@ -80,6 +80,11 @@ def check_api_key():
                 api_key = request.form['api_key']
             elif request.args.get('api_key'):
                 api_key = request.args['api_key']
+            else:
+                try:
+                    api_key = json.loads(request.data).get('api_key')
+                except ValueError:
+                    api_key = None
             if not api_key:
                 resp['status'] = 'error'
                 resp['message'] = "'api_key' is a required parameter"
