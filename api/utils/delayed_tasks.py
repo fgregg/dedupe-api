@@ -7,7 +7,7 @@ from api.models import DedupeSession
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict
 from api.utils.db_functions import makeCanonTable, writeEntityMap, \
-    rewriteEntityMap
+    rewriteEntityMap, writeBlockingMap
 from sqlalchemy import Table, MetaData
 from itertools import groupby
 from operator import itemgetter
@@ -46,8 +46,7 @@ def bulkMatchWorker(session_id, file_contents, field_map, filename):
     # Need a thing that will make a data_d without a DB
     data_d = iterDataDict(rows)
     deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
-    table_name = None
-    trained_data_d = makeDataDict(session_id, table_name=table_name, worker=True)
+    trained_data_d = makeDataDict(session_id, worker=True)
     deduper.index(trained_data_d)
     linked = deduper.match(messy_data_d, threshold=0, n_matches=5)
     s.seek(0)
@@ -81,6 +80,20 @@ def runDedupe(dd_session, deduper, data_d):
     dd_session.settings_file = settings_file_obj.getvalue()
     worker_session.add(dd_session)
     worker_session.commit()
+    deduper.cleanupTraining()
+    engine = worker_session.bind
+    metadata = MetaData()
+    proc_table = Table('processed_%s' % dd_session.id, metadata,
+        autoload=True, autoload_with=engine)
+    for field in deduper.blocker.tfidf_fields:
+        fd = worker_session.query(proc_table.c.record_id, 
+            getattr(proc_table.c, field)).yield_per(100)
+        field_data = (row for row in fd)
+        print field_data
+        deduper.blocker.tfIdfBlock(field_data, field)
+    blocked_data = deduper.blocker(data_d.items())
+    writeBlockingMap(dd_session.id, blocked_data)
+
     threshold = deduper.threshold(data_d, recall_weight=1)
     clustered_dupes = deduper.match(data_d, threshold)
     return clustered_dupes
@@ -94,26 +107,24 @@ def dedupeRaw(session_id, data_sample):
     data_d = makeDataDict(dd_session.id, worker=True)
     clustered_dupes = runDedupe(dd_session, deduper, data_d)
     review_count = writeEntityMap(clustered_dupes, session_id, data_d)
-    print review_count
     if not review_count:
         dd_session.status = 'first pass review complete'
         worker_session.add(dd_session)
         worker_session.commit()
         dedupeCanon(session_id)
-   #dd_tuples = ((k,v) for k,v in data_d.items())
-   #block_data = deduper.blocker(dd_tuples)
-   #writeBlockingMap(session_id, block_data)
+    dd_tuples = ((k,v) for k,v in data_d.items())
+    block_data = deduper.blocker(dd_tuples)
+    writeBlockingMap(session_id, block_data)
     return 'ok'
 
 @queuefunc
 def dedupeCanon(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
-    print dd_session
     deduper = dedupe.Dedupe(json.loads(dd_session.field_defs))
     data_d = makeDataDict(dd_session.id, 
-        worker=True, table_name='canon_%s' % session_id)
-    deduper.sample(data_d, sample_size=5000, rand_p=0)
+        worker=True, table_name='canon_%s' % session_id, sample=True)
+    deduper.sample(data_d, sample_size=5000, blocked_proportion=1)
     sample = deduper.data_sample
     clustered_dupes = runDedupe(dd_session, deduper, data_d)
     review_count = rewriteEntityMap(clustered_dupes, session_id, data_d)

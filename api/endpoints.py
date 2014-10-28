@@ -21,6 +21,7 @@ from itertools import groupby
 from operator import itemgetter
 from datetime import datetime, timedelta
 from hashlib import md5
+from unidecode import unidecode
 
 endpoints = Blueprint('endpoints', __name__)
 
@@ -75,7 +76,7 @@ def match():
         raw_cols = [getattr(raw_table.c, f) for f in model_fields]
         pk_col = [p for p in raw_table.primary_key][0]
         hash_me = ';'.join([preProcess(unicode(obj[i])) for i in model_fields])
-        md5_hash = md5(hash_me).hexdigest()
+        md5_hash = md5(unidecode(hash_me)).hexdigest()
         exact_match = db_session.query(entity_table)\
             .filter(entity_table.c.source_hash == md5_hash).first()
         match_list = []

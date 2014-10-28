@@ -30,7 +30,7 @@ def entity_map(name, metadata):
 
 def block_map_table(name, metadata, pk_type=Integer):
     table = Table(name, metadata,
-        Column('block_key', Text),
+        Column('block_key', Text, index=True),
         Column('record_id', pk_type),
         extend_existing=True
     )

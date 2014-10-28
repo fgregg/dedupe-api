@@ -4,13 +4,14 @@ from cStringIO import StringIO
 from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
-from api.utils.helpers import preProcess
+from api.utils.helpers import preProcess, slugify
 from csvkit import convert
 from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
-    create_engine, Float, Boolean, BigInteger, distinct
+    create_engine, Float, Boolean, BigInteger, distinct, text
 from unidecode import unidecode
 from uuid import uuid4
+from csvkit.unicsv import UnicodeCSVWriter
 
 def writeRawTable(filename=None,
               session_id=None,
@@ -24,7 +25,7 @@ def writeRawTable(filename=None,
     converted.seek(0)
     cols = []
     for field in fieldnames:
-        cols.append(Column(field, String))
+        cols.append(Column(slugify(unicode(field)), String))
     engine = app_session.bind
     metadata = MetaData()
     sql_table = Table('raw_%s' % session_id, metadata, *cols)
@@ -44,7 +45,26 @@ def writeRawTable(filename=None,
     cur = conn.cursor()
     cur.copy_expert(copy_st, converted)
     conn.commit()
+    writeProcessedTable(session_id)
     return fieldnames
+
+def writeProcessedTable(session_id):
+    engine = app_session.bind
+    metadata = MetaData()
+    raw_table = Table('raw_%s' % session_id, metadata, 
+        autoload=True, autoload_with=engine)
+    raw_fields = [f for f in raw_table.columns.keys() if f != 'record_id']
+    create = 'CREATE TABLE "processed_%s" AS (SELECT record_id, ' % session_id
+    for idx, field in enumerate(raw_fields):
+        if idx < len(raw_fields) - 1:
+            create += 'TRIM(COALESCE(LOWER("%s"), \'\')) AS %s, ' % (field, field)
+        else:
+            create += 'TRIM(COALESCE(LOWER("%s"), \'\')) AS %s ' % (field, field)
+    else:
+        create += 'FROM "raw_%s")' % session_id
+    create_stmt = text(create)
+    engine.execute(create_stmt)
+    engine.execute('ALTER TABLE "processed_%s" ADD PRIMARY KEY (record_id)' % session_id)
 
 def writeEntityMap(clustered_dupes, session_id, data_d):
     """ 
@@ -180,9 +200,13 @@ def writeBlockingMap(session_id, block_data):
     metadata = MetaData()
     bkm = block_map_table('block_%s' % session_id, metadata)
     engine = worker_session.bind
-    bkm.create(engine)
-    insert_data = []
-    for key, record_id in block_data:
-        insert_data.append({'block_key': key, 'record_id': record_id})
-    engine.execute(bkm.insert(), insert_data)
+    bkm.create(engine, checkfirst=True)
+    s = StringIO()
+    writer = UnicodeCSVWriter(s)
+    writer.writerows(block_data)
+    s.seek(0)
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    cur.copy_expert('COPY "block_%s" FROM STDIN CSV' % session_id, s)
+    conn.commit()
 

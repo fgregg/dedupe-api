@@ -15,7 +15,7 @@ import dedupe
 from api.utils.delayed_tasks import dedupeRaw
 from api.utils.dedupe_functions import DedupeFileError
 from api.utils.db_functions import writeRawTable
-from api.utils.helpers import makeDataDict, getDistinct
+from api.utils.helpers import makeDataDict, getDistinct, slugify
 from api.models import DedupeSession, User, Group
 from api.database import app_session as db_session
 from api.auth import check_roles, csrf, login_required
@@ -135,9 +135,10 @@ def select_field_types():
                     field_dict[field_name]['type'] = v
         field_defs = []
         for k,v in field_dict.items():
-            d = {'field': k}
+            slug = slugify(unicode(k))
+            d = {'field': slug}
             if v['type'] == 'Categorical':
-                v['categories'] = getDistinct(k,sess.id)
+                v['categories'] = getDistinct(slug,sess.id)
             d.update(v)
             field_defs.append(d)
         sess = db_session.query(DedupeSession).get(flask_session['session_id'])
@@ -175,8 +176,8 @@ def training_run():
         status_code = 200
         field_defs = json.loads(sess.field_defs)
         deduper = dedupe.Dedupe(field_defs)
-        data_d = makeDataDict(sess.id, table_name=sess.table_name)
-        deduper.sample(data_d, sample_size=5000, rand_p=0)
+        data_d = makeDataDict(sess.id, sample=True)
+        deduper.sample(data_d, sample_size=5000, blocked_proportion=1)
         flask_session['deduper'] = deduper
     return make_response(render_template('training_run.html', user=user, error=error), status_code)
 
