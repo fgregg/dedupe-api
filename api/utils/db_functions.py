@@ -8,7 +8,8 @@ from api.utils.helpers import preProcess, slugify
 from csvkit import convert
 from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
-    create_engine, Float, Boolean, BigInteger, distinct, text
+    create_engine, Float, Boolean, BigInteger, distinct, text, select, \
+    Text, func
 from unidecode import unidecode
 from uuid import uuid4
 from csvkit.unicsv import UnicodeCSVWriter
@@ -66,7 +67,7 @@ def writeProcessedTable(session_id):
     engine.execute(create_stmt)
     engine.execute('ALTER TABLE "processed_%s" ADD PRIMARY KEY (record_id)' % session_id)
 
-def writeEntityMap(clustered_dupes, session_id, data_d):
+def writeEntityMap(clustered_dupes, session_id):
     """ 
     Write entity map table the first time (after training)
     """
@@ -81,6 +82,8 @@ def writeEntityMap(clustered_dupes, session_id, data_d):
         autoload=True, autoload_with=engine)
     pk_col = [p for p in raw_table.primary_key][0]
     makeCanonTable(session_id)
+    # Instead of iterating, this should be a CREATE TABLE AS SELECT
+    # type thing.
     for cluster in clustered_dupes:
         id_set, confidence_score = cluster
         # leaving out low confidence clusters
@@ -198,8 +201,11 @@ def makeCanonTable(session_id):
 
 def writeBlockingMap(session_id, block_data):
     metadata = MetaData()
-    bkm = block_map_table('block_%s' % session_id, metadata)
     engine = worker_session.bind
+    bkm = Table('block_%s' % session_id, metadata,
+        Column('block_key', Text, index=True),
+        Column('record_id', Integer)
+    )
     bkm.create(engine, checkfirst=True)
     s = StringIO()
     writer = UnicodeCSVWriter(s)
@@ -209,4 +215,62 @@ def writeBlockingMap(session_id, block_data):
     cur = conn.cursor()
     cur.copy_expert('COPY "block_%s" FROM STDIN CSV' % session_id, s)
     conn.commit()
+    
+    plural_key = Table('plural_key_%s' % session_id, metadata,
+        Column('block_key', Text, index=True),
+        Column('block_id', Integer, primary_key=True)
+    )
+    plural_key.create(engine, checkfirst=True)
+    bkm_sel = select([bkm.c.block_key], from_obj=bkm)\
+        .group_by(bkm.c.block_key)\
+        .having(func.count(bkm.c.block_key) > 1)
+    pl_ins = plural_key.insert()\
+        .from_select([plural_key.c.block_key], bkm_sel)
+    engine.execute(pl_ins)
+    
+    pl_bk_stmt = '''
+        CREATE TABLE "plural_block_%s" AS (
+            SELECT p.block_id, b.record_id 
+                FROM "block_%s" AS b
+                INNER JOIN "plural_key_%s" AS p
+                USING (block_key)
+            )''' % (session_id, session_id, session_id)
+    engine.execute(pl_bk_stmt)
+    engine.execute('''
+        CREATE INDEX "pl_bk_idx_%s" 
+        ON "plural_block_%s" (record_id)''' % (session_id, session_id)
+    )
+    engine.execute(''' 
+        CREATE UNIQUE INDEX "pl_bk_id_idx_%s" on "plural_block_%s" 
+        (block_id, record_id) ''' % (session_id, session_id)
+    )
+
+    cov_bks_stmt = ''' 
+        CREATE TABLE "covered_%s" AS (
+            SELECT record_id, 
+            string_agg(CAST(block_id AS TEXT), ',' ORDER BY block_id) 
+                AS sorted_ids
+            FROM "plural_block_%s"
+            GROUP BY record_id
+        )
+    ''' % (session_id, session_id)
+    engine.execute(cov_bks_stmt)
+    engine.execute(''' 
+        CREATE UNIQUE INDEX "cov_bks_id_idx_%s" ON "covered_%s" (record_id)
+        ''' % (session_id, session_id)
+    )
+
+    small_cov = ''' 
+        CREATE TABLE "small_cov_%s" AS (
+            SELECT record_id, 
+                   block_id,
+                   TRIM(',' FROM split_part(sorted_ids, CAST(block_id AS TEXT), 1))
+                       AS smaller_ids
+            FROM "plural_block_%s"
+            INNER JOIN "covered_%s"
+            USING (record_id)
+        )
+    ''' % (session_id, session_id, session_id)
+    engine.execute(small_cov)
+
 

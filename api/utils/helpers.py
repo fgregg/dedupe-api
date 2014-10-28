@@ -30,6 +30,26 @@ def preProcess(column):
     column = column.strip().strip('"').strip("'").lower().strip()
     return column
 
+def clusterGen(result_set, fields):
+    lset = set
+    block_id = None
+    records = []
+    for row in result_set:
+        row = {k:v for k,v in zip(fields, row)}
+        if row['block_id'] != block_id:
+            if records:
+                yield records
+            block_id = row['block_id']
+            records = []
+        smaller_ids = row['smaller_ids']
+        if smaller_ids:
+            smaller_ids = lset(smaller_ids.split(','))
+        else:
+            smaller_ids = lset([])
+        records.append((row['record_id'], row, smaller_ids))
+    if records:
+        yield records
+
 def makeDataDict(session_id, sample=False, worker=False, table_name=None):
     if worker:
         session = worker_session
