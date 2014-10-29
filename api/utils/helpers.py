@@ -35,7 +35,7 @@ def clusterGen(result_set, fields):
     block_id = None
     records = []
     for row in result_set:
-        row = {k:v for k,v in zip(fields, row)}
+        row = dict(zip(fields, row))
         if row['block_id'] != block_id:
             if records:
                 yield records

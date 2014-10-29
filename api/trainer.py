@@ -126,8 +126,7 @@ def select_field_types():
         field_dict = {}
         for k,v in request.form.items():
             if k != 'csrf_token':
-                form_field = k.split('_')[-1]
-                field_name = '_'.join(k.split('_')[:-1])
+                field_name, form_field = k.rsplit('_')
                 if not field_dict.get(field_name):
                     field_dict[field_name] = {}
                 if form_field == 'missing':

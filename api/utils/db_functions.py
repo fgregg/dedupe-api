@@ -75,46 +75,51 @@ def writeEntityMap(clustered_dupes, session_id):
     metadata = MetaData()
     entity_table = entity_map('entity_%s' % session_id, metadata)
     entity_table.create(engine, checkfirst=True)
-    sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs)
-    model_fields = [f['field'] for f in field_defs]
-    raw_table = Table('raw_%s' % session_id, metadata, 
-        autoload=True, autoload_with=engine)
-    pk_col = [p for p in raw_table.primary_key][0]
-    makeCanonTable(session_id)
-    # Instead of iterating, this should be a CREATE TABLE AS SELECT
-    # type thing.
-    for cluster in clustered_dupes:
-        id_set, confidence_score = cluster
+    s = StringIO()
+    writer = UnicodeCSVWriter(s)
+    for cluster, score in clustered_dupes:
         # leaving out low confidence clusters
         # This is a non-scientificly proven threshold
-        if confidence_score > 0.2:
-            members = worker_session.query(raw_table).filter(pk_col.in_(id_set)).all()
+        if score > 0.2:
             entity_id = unicode(uuid4())
-            for member in members:
-                hash_me = ';'.join([preProcess(unicode(getattr(member, i))) for i in model_fields])
-                md5_hash = md5(unidecode(hash_me)).hexdigest()
-                m = {
-                    'confidence': float(confidence_score),
-                    'record_id': member.record_id,
-                    'source_hash': md5_hash,
-                    'entity_id': entity_id,
-                    'source': 'raw_%s' % session_id,
-                    'checked_out': False,
-                    'clustered': False,
-                }
-                # auto accepting clsuters with higher confidence.
-                # Also a non-scientificly proven threshold
-                #if confidence_score >= 0.28:
-                #    m['clustered'] = True
-                #else:
-                #    m['clustered'] = False
-                engine.execute(entity_table.insert(), m)
-            canonicalizeEntity(session_id, entity_id)
-    review_count = worker_session.query(distinct(entity_table.c.entity_id))\
-        .filter(entity_table.c.clustered == False)\
-        .count()
-    return review_count
+            for record_id in cluster:
+                writer.writerow([
+                    record_id, 
+                    entity_id, 
+                    score, 
+                    'raw_%s' % session_id,
+                    'FALSE',
+                    'FALSE',
+                ])
+    s.seek(0)
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    cur.copy_expert('''
+        COPY "entity_%s" (
+            record_id, 
+            entity_id, 
+            confidence,
+            source,
+            clustered,
+            checked_out
+        ) 
+        FROM STDIN CSV''' % session_id, s)
+    conn.commit()
+    
+    dd = worker_session.query(DedupeSession).get(session_id)
+    fields = [f['field'] for f in json.loads(dd.field_defs)]
+    upd = 'UPDATE "entity_%s" SET source_hash=s.source_hash \
+        FROM (SELECT MD5(CONCAT(' % session_id
+    for idx, field in enumerate(fields):
+        if idx < len(fields) - 1:
+            upd += '%s,' % field
+        else:
+            upd += '%s))' % field
+    else:
+        upd += 'AS source_hash, record_id FROM "raw_%s") AS s \
+            WHERE "entity_%s".record_id=s.record_id' % (session_id, session_id)
+    engine.execute(upd)
+    return 'ok'
 
 def rewriteEntityMap(clustered_dupes, session_id, data_d):
     sess = worker_session.query(DedupeSession).get(session_id)
