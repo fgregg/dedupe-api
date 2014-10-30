@@ -4,11 +4,11 @@ import time
 from cStringIO import StringIO
 from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
-from api.models import DedupeSession
+from api.models import DedupeSession, User
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen
 from api.utils.db_functions import makeCanonTable, writeEntityMap, \
-    rewriteEntityMap, writeBlockingMap
+    rewriteEntityMap, writeBlockingMap, writeRawTable
 from sqlalchemy import Table, MetaData
 from itertools import groupby
 from operator import itemgetter
@@ -17,6 +17,37 @@ from csvkit.unicsv import UnicodeCSVDictReader, UnicodeCSVReader, \
     UnicodeCSVWriter
 from os.path import join, dirname, abspath
 from datetime import datetime
+import cPickle
+
+@queuefunc
+def initializeSession(session_id, filename, file_contents):
+    writeRawTable(session_id=session_id,
+        filename=filename,
+        file_obj=StringIO(file_contents))
+    sess = worker_session.query(DedupeSession).get(session_id)
+    while True:
+        worker_session.refresh(sess, ['field_defs', 'sample'])
+        if not sess.field_defs:
+            time.sleep(3)
+        else:
+            print sess.field_defs
+            field_defs = json.loads(sess.field_defs)
+            d = dedupe.Dedupe(field_defs)
+            print 'making data_d'
+            start = time.time()
+            data_d = makeDataDict(sess.id, sample=True)
+            end = time.time()
+            print 'data_d took %s' % (end - start)
+            print 'starting sample'
+            start = time.time()
+            d.sample(data_d, sample_size=5000, blocked_proportion=1)
+            end = time.time()
+            print 'sample took %s' % (end - start)
+            sess.sample = cPickle.dumps(d.data_sample)
+            worker_session.add(sess)
+            worker_session.commit()
+            break
+    return 'woo'
 
 @queuefunc
 def bulkMatchWorker(session_id, file_contents, field_map, filename):
@@ -96,7 +127,7 @@ def blockDedupe(session_id, deduper):
     proc_records = worker_session.query(proc_table)\
         .yield_per(1000)
     fields = proc_table.columns.keys()
-    full_data = ((getattr(row, 'record_id'), {k:v for k,v in zip(fields, row)}) \
+    full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records)
     blocked_data = deduper.blocker(full_data)
     writeBlockingMap(session_id, blocked_data)

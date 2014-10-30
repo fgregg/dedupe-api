@@ -68,7 +68,7 @@ def makeDataDict(session_id, sample=False, worker=False, table_name=None):
         # need to figure out what to do in this case
         raise
     result = {}
-    for idx,row in enumerate(session.query(table).yield_per(100)):
+    for idx,row in enumerate(session.query(table).yield_per(1000)):
         d = {k: v for k,v in zip(fields, row)}
         if sample:
             result[idx] = d

@@ -6,7 +6,7 @@ from api.models import DedupeSession, User, Group
 from api.app_config import DOWNLOAD_FOLDER
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, app_engine as engine, Base
-from api.auth import csrf, check_api_key
+from api.auth import csrf, check_sessions
 from api.utils.delayed_tasks import retrain, bulkMatchWorker, dedupeCanon
 from api.utils.helpers import preProcess
 import dedupe
@@ -54,7 +54,7 @@ def validate_post(post, user_sessions):
 
 @csrf.exempt
 @endpoints.route('/match/', methods=['POST'])
-@check_api_key()
+@check_sessions()
 def match():
     try:
         post = json.loads(request.data)
@@ -127,7 +127,7 @@ def match():
 
 @csrf.exempt
 @endpoints.route('/train/', methods=['POST'])
-@check_api_key()
+@check_sessions()
 def train():
     try:
         post = json.loads(request.data)
@@ -174,7 +174,7 @@ def train():
     return resp
 
 @endpoints.route('/training-data/<session_id>/')
-@check_api_key()
+@check_sessions()
 def training_data(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
@@ -193,7 +193,7 @@ def training_data(session_id):
     return resp
 
 @endpoints.route('/settings-file/<session_id>/')
-@check_api_key()
+@check_sessions()
 def settings_file(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
@@ -211,7 +211,7 @@ def settings_file(session_id):
     return resp
 
 @endpoints.route('/field-definitions/<session_id>/')
-@check_api_key()
+@check_sessions()
 def field_definitions(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
@@ -229,7 +229,7 @@ def field_definitions(session_id):
     return resp
 
 @endpoints.route('/delete-session/<session_id>/')
-@check_api_key()
+@check_sessions()
 def delete_session(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
@@ -272,7 +272,7 @@ def delete_session(session_id):
     return resp
 
 @endpoints.route('/session-list/')
-@check_api_key()
+@check_sessions()
 def review():
     user_sessions = flask_session['user_sessions']
     resp = {
@@ -308,7 +308,7 @@ def checkin_sessions():
     return None
 
 @endpoints.route('/get-review-cluster/<session_id>/')
-@check_api_key()
+@check_sessions()
 def get_cluster(session_id):
     resp = {
         'status': 'ok',
@@ -385,7 +385,7 @@ def get_cluster(session_id):
     return response
 
 @endpoints.route('/mark-all-clusters/<session_id>/')
-@check_api_key()
+@check_sessions()
 def mark_all_clusters(session_id):
     resp = {
         'status': 'ok',
@@ -410,7 +410,7 @@ def mark_all_clusters(session_id):
     return response
     
 @endpoints.route('/mark-cluster/<session_id>/')
-@check_api_key()
+@check_sessions()
 def mark_cluster(session_id):
     resp = {
         'status': 'ok',
@@ -501,7 +501,7 @@ status_lookup = {
 }
 
 @endpoints.route('/session-status/<session_id>/')
-@check_api_key()
+@check_sessions()
 def session_status(session_id):
     resp = {
         'status': 'ok',
@@ -529,7 +529,7 @@ def session_status(session_id):
 
 @csrf.exempt
 @endpoints.route('/bulk-match/<session_id>/', methods=['POST'])
-@check_api_key()
+@check_sessions()
 def bulk_match(session_id):
     """ 
     field_map looks like:
@@ -574,7 +574,7 @@ def bulk_match(session_id):
     return resp
 
 @endpoints.route('/check-bulk-match/<token>/')
-@check_api_key()
+@check_sessions()
 def check_bulk_match(token):
     rv = DelayedResult(token)
     if rv.return_value is None:

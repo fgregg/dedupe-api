@@ -5,7 +5,7 @@
     <h3>3. Training</h3>
     {% include "error.html" %}
   </div>
-
+    {% if init_status == 'finished' %}
     <div class='col-md-8'>
         <table id='labeler' class='table table-bordered'>
             <thead>
@@ -38,7 +38,12 @@
             </button>
         </p>
     </div>
-
+    {% else %}
+    <div class="col-md-8">
+        <h3>We're still working on finishing up processing your upload</h3>
+        <p>This should be done in a couple minutes...<span id="spinner"></span></p>
+    </div>
+    {% endif %}
     <div class='col-md-4'>
         <table id='your-training' class='table table-bordered' data-content="Try to label at least 10 'yes' and 10 'no' examples." rel="popover" data-placement="top" data-trigger="hover">
             <tbody>
@@ -86,87 +91,109 @@
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
-<script type="text/javascript">
+{% if init_status == 'finished' %}
+    <script type="text/javascript">
 
-    $('#your-training').popover();
+        $('#your-training').popover();
 
-    var training_threshold = 20;
-    var modal_shown = false;
+        var training_threshold = 20;
+        var modal_shown = false;
 
-    function render_training_pair(){
-        $.when( $.getJSON('{{ url_for("trainer.get_pair") }}') ).then(
-            function(data, textStatus, jqXHR ){
+        function render_training_pair(){
+            $.when( $.getJSON('{{ url_for("trainer.get_pair") }}') ).then(
+                function(data, textStatus, jqXHR ){
 
-                $('#labeler').spin(false);
-                $.each(data, function(i, json){
+                    $('#labeler').spin(false);
+                    $.each(data, function(i, json){
 
-                    var diff_class = 'danger';
-                    if (json.left == json.right)
-                        diff_class = 'success';
-                    var template = "\
-                    <tr>\
-                        <td class='field-name'>" + json.field + "</td>\
-                        <td class='" + diff_class + "'>" + json.left + "</td>\
-                        <td class='" + diff_class + "'>" + json.right + "</td>\
-                    </tr>"
-                    $("#labeler tbody").append(template);
-                })
-            }
-        )
-    }
-
-    function mark_training_pair(action){
-        return $.ajax({
-            url: '{{ url_for("trainer.mark_pair") }}',
-            dataType: 'json',
-            data: {'action': action}
-        })
-    }
-
-    function update_your_training(counter){
-
-        var yes_class = 'warning';
-        if (counter.yes >= training_threshold) yes_class = 'success';
-
-        var no_class = 'warning';
-        if (counter.no >= training_threshold) no_class = 'success';
-
-        if (counter.no >= training_threshold && counter.yes >= training_threshold) {
-            if (!modal_shown) {
-                $('#finished-modal').modal();
-                modal_shown = true;
-            }
+                        var diff_class = 'danger';
+                        if (json.left == json.right)
+                            diff_class = 'success';
+                        var template = "\
+                        <tr>\
+                            <td class='field-name'>" + json.field + "</td>\
+                            <td class='" + diff_class + "'>" + json.left + "</td>\
+                            <td class='" + diff_class + "'>" + json.right + "</td>\
+                        </tr>"
+                        $("#labeler tbody").append(template);
+                    })
+                }
+            )
         }
 
-        if (counter.no >= (training_threshold / 2) && counter.yes >= (training_threshold / 2)) {
-            console.log('blah!');
-            $("#finish").removeClass('hidden');
+        function mark_training_pair(action){
+            return $.ajax({
+                url: '{{ url_for("trainer.mark_pair") }}',
+                dataType: 'json',
+                data: {'action': action}
+            })
         }
 
-        $("#num-yes span").html(counter.yes);
-        $("#num-yes").attr('class', yes_class);
-        $("#num-no span").html(counter.no);
-        $("#num-no").attr('class', no_class);
-        $("#num-unsure span").html(counter.unsure);
-    }
+        function update_your_training(counter){
 
-    $('.btn').on('click', function(e){
-        e.preventDefault();
-        $('#labeler').spin('large');
-        var action = $(this).attr('id').split('-')[0];
-        $.when(mark_training_pair(action)).then(
-            function(data){
-                $("#labeler tbody").html('');
-                if (action !== 'finish' && action !== 'finished-modal-btn'){
-                    update_your_training(data.counter);
-                    render_training_pair();
-                } else {
-                    window.location = "{{ url_for('trainer.dedupe_finished') }}";
+            var yes_class = 'warning';
+            if (counter.yes >= training_threshold) yes_class = 'success';
+
+            var no_class = 'warning';
+            if (counter.no >= training_threshold) no_class = 'success';
+
+            if (counter.no >= training_threshold && counter.yes >= training_threshold) {
+                if (!modal_shown) {
+                    $('#finished-modal').modal();
+                    modal_shown = true;
                 }
             }
-        )
-    });
 
-    render_training_pair();
-</script>
+            if (counter.no >= (training_threshold / 2) && counter.yes >= (training_threshold / 2)) {
+                console.log('blah!');
+                $("#finish").removeClass('hidden');
+            }
+
+            $("#num-yes span").html(counter.yes);
+            $("#num-yes").attr('class', yes_class);
+            $("#num-no span").html(counter.no);
+            $("#num-no").attr('class', no_class);
+            $("#num-unsure span").html(counter.unsure);
+        }
+
+        $('.btn').on('click', function(e){
+            e.preventDefault();
+            $('#labeler').spin('large');
+            var action = $(this).attr('id').split('-')[0];
+            $.when(mark_training_pair(action)).then(
+                function(data){
+                    $("#labeler tbody").html('');
+                    if (action !== 'finish' && action !== 'finished-modal-btn'){
+                        update_your_training(data.counter);
+                        render_training_pair();
+                    } else {
+                        window.location = "{{ url_for('trainer.dedupe_finished') }}";
+                    }
+                }
+            )
+        });
+
+        render_training_pair();
+    </script>
+{% else %}
+  <script type="text/javascript">
+      function poll_worker(){
+          $.ajax({
+              url: '/get-init-status/{{session["init_key"]}}/',
+              success: function(data){
+                  if (data.ready){
+                      window.location.reload()
+                  } else {
+                      setTimeout(poll_worker, 3000);
+                  }
+              },
+              dataType: 'json',
+          })
+      }
+      $('#spinner').spin({'left': 0});
+      $(document).ready(function(){
+          poll_worker();
+      })
+    </script>
+{% endif %}
 {% endblock %}

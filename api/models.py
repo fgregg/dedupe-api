@@ -47,6 +47,7 @@ class DedupeSession(Base):
     settings_file = Column(LargeBinary)
     gaz_settings_file = Column(LargeBinary)
     field_defs = Column(LargeBinary)
+    sample = Column(LargeBinary)
     conn_string = Column(String)
     table_name = Column(String)
     status = Column(String)

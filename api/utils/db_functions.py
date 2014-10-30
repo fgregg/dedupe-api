@@ -20,10 +20,8 @@ def writeRawTable(filename=None,
     """ 
     Create a table from incoming tabular data
     """
-    file_format = convert.guess_format(filename)
-    converted = StringIO(convert.convert(file_obj, file_format))
-    fieldnames = converted.next().strip('\r\n').split(',')
-    converted.seek(0)
+    fieldnames = file_obj.next().strip('\r\n').split(',')
+    file_obj.seek(0)
     cols = []
     for field in fieldnames:
         cols.append(Column(slugify(unicode(field)), String))
@@ -41,10 +39,10 @@ def writeRawTable(filename=None,
             copy_st += '"%s")' % name
     else:
         copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',')"
-    converted.seek(0)
+    file_obj.seek(0)
     conn = engine.raw_connection()
     cur = conn.cursor()
-    cur.copy_expert(copy_st, converted)
+    cur.copy_expert(copy_st, file_obj)
     conn.commit()
     writeProcessedTable(session_id)
     return fieldnames
@@ -119,7 +117,10 @@ def writeEntityMap(clustered_dupes, session_id):
         upd += 'AS source_hash, record_id FROM "raw_%s") AS s \
             WHERE "entity_%s".record_id=s.record_id' % (session_id, session_id)
     engine.execute(upd)
-    return 'ok'
+    review_count = worker_session.query(distinct(entity_table.c.entity_id))\
+        .filter(entity_table.c.clustered == False)\
+        .count()
+    return review_count
 
 def rewriteEntityMap(clustered_dupes, session_id, data_d):
     sess = worker_session.query(DedupeSession).get(session_id)

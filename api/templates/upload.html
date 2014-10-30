@@ -3,7 +3,7 @@
 <div class="row">
   <div class="col-md-12">
   {% include "dedupe_steps.html" %}
-  <h3>1. Upload a spreadsheet or connect to a database</h3>
+  <h3>1. Upload a spreadsheet</h3>
   {% include "error.html" %}
   </div>
 </div>
@@ -11,10 +11,10 @@
   <div class="col-md-12">
 
     <div class='well'>
-      <form role="form" action="{{ url_for('trainer.train') }}" method="POST" enctype="multipart/form-data">
+      <form role="form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-          <div class="upload">
-              <div class="form-group">
+          <div class="upload row">
+              <div class="form-group col-md-12">
                   <label for="input_file">Upload a spreadsheet</label>
                   <input type="file" id="id_input_file" name="input_file">
                   <p class="help-block">
@@ -22,9 +22,46 @@
                   </p>
               </div>
           </div>
-          <button type="submit" id="submit-upload" class="btn btn-primary">Next &raquo;</button>
+          <div class="row">
+              <div class="col-md-12">
+                  <div id="progress" class="progress">
+                      <div class="progress-bar progress-bar-success"></div>
+                  </div>
+              </div>
+          </div>
+          <a href="{{ url_for('trainer.select_fields') }}" id="next-step" class="btn btn-primary" style="display:none;">
+              Next &raquo;
+          </a>
       </form>
     </div>
   </div>
 </div>
+{% endblock %}
+{% block extra_javascript %}
+    <script src="{{ url_for('static', filename='js/jquery.ui.widget.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/jquery.iframe-transport.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/jquery.fileupload.js') }}"></script>
+<script type="text/javascript">
+$(function () {
+    $('#id_input_file').fileupload({
+        url: '/upload/',
+        dataType: 'json',
+        start: function(e, data){
+            $('#progress').show()
+        },
+        done: function (e, data) {
+            console.log(data.result)
+            $('#progress').hide();
+            $('#next-step').show();
+        },
+        progressall: function (e, data) {
+            var progress = parseInt(data.loaded / data.total * 100, 10);
+            $('#progress .progress-bar').css(
+                'width',
+                progress + '%'
+            );
+        }
+    });
+});
+</script>
 {% endblock %}

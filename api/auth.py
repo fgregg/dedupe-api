@@ -64,7 +64,7 @@ def check_roles(roles=[]):
         return decorated
     return decorator
 
-def check_api_key():
+def check_sessions():
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):

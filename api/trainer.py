@@ -6,13 +6,14 @@ from werkzeug import secure_filename
 import time
 from datetime import datetime, timedelta
 import json
+import cPickle
 import re
 import os
 import copy
 import time
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
-from api.utils.delayed_tasks import dedupeRaw
+from api.utils.delayed_tasks import dedupeRaw, initializeSession
 from api.utils.dedupe_functions import DedupeFileError
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import makeDataDict, getDistinct, slugify
@@ -23,11 +24,12 @@ from api.database import app_session
 from sqlalchemy.exc import OperationalError, NoSuchTableError
 from sqlalchemy import Table
 from cStringIO import StringIO
-import csv
 from redis import Redis
 from api.queue import DelayedResult
 from uuid import uuid4
 import collections
+from csvkit.unicsv import UnicodeCSVReader
+from csvkit import convert
 
 redis = Redis()
 
@@ -41,68 +43,74 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@trainer.route('/train-start/', methods=['GET', 'POST'])
+@trainer.route('/upload/', methods=['POST'])
+@login_required
+def upload():
+    f = request.files['input_file']
+    flask_session['session_name'] = f.filename
+    file_type = f.filename.rsplit('.')[1]
+    u = StringIO(f.read())
+    u.seek(0)
+    if file_type != 'csv':
+        file_format = convert.guess_format(flask_session['session_name'])
+        u = StringIO(convert.convert(u, file_format))
+    fieldnames = [slugify(unicode(i)) for i in u.next().strip('\r\n').split(',')]
+    flask_session['fieldnames'] = fieldnames
+    u.seek(0)
+    user_id = flask_session['user_id']
+    user = db_session.query(User).get(user_id)
+    group = user.groups[0]
+    sess = DedupeSession(
+        id=flask_session['session_id'], 
+        name=f.filename,
+        group=group,
+        status='dataset uploaded')
+    db_session.add(sess)
+    db_session.commit()
+    flask_session['init_key'] = initializeSession.delay(flask_session['session_id'], 
+        fieldnames, u.getvalue()).key
+    return jsonify(ready=True)
+
+@trainer.route('/get-init-status/<init_key>/')
+@login_required
+def get_init_status(init_key):
+    rv = DelayedResult(init_key)
+    if rv.return_value is None:
+        return jsonify(ready=False)
+    redis.delete(init_key)
+    del flask_session['init_key']
+    return jsonify(ready=True, result=rv.return_value)
+
+@trainer.route('/train-start/', methods=['GET'])
 @login_required
 def train():
     user = db_session.query(User).get(flask_session['user_id'])
     status_code = 200
     error = None
-    flask_session['session_id'] = unicode(uuid4())
     session_values = [
-        'dedupe_start',
         'sample',
-        'sample_key',
         'fieldnames',
         'session_name',
-        'last_interaction',
         'training_data',
         'current_pair',
         'field_defs',
         'counter',
+        'deduper',
     ]
+    flask_session['session_id'] = unicode(uuid4())
     for k in session_values:
         try:
             del flask_session[k]
         except KeyError:
             pass
-    if request.method == 'POST':
-        f = request.files['input_file']
-        conn_string = current_app.config['DB_CONN']
-        table_name = 'raw_%s' % flask_session['session_id']
-        primary_key = 'record_id'
-        fieldnames = writeRawTable(session_id=flask_session['session_id'],
-            filename=f.filename,
-            file_obj=f)
-        session_name = f.filename
-        flask_session['last_interaction'] = datetime.now()
-        flask_session['fieldnames'] = fieldnames
-        old = datetime.now() - timedelta(seconds=60 * 30)
-        if flask_session['last_interaction'] < old:
-            del flask_session['deduper']
-        flask_session['session_name'] = session_name
-        # Add this session to the user's first group
-        # Will need to revisit this when there are more groups
-        group = user.groups[0]
-        sess = DedupeSession(
-            id=flask_session['session_id'], 
-            name=session_name,
-            group=group,
-            conn_string=conn_string,
-            table_name=table_name, 
-            status='dataset uploaded')
-        db_session.add(sess)
-        db_session.commit()
-        return redirect(url_for('trainer.select_fields'))
     return make_response(render_template('upload.html', error=error, user=user), status_code)
 
-@trainer.route('/select_fields/', methods=['GET', 'POST'])
+@trainer.route('/select-fields/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
 def select_fields():
     status_code = 200
     error = None
-    session_name = flask_session['session_name']
-    flask_session['last_interaction'] = datetime.now()
     fields = flask_session.get('fieldnames')
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
@@ -115,7 +123,7 @@ def select_fields():
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('select_fields.html', error=error, fields=fields, user=user)
 
-@trainer.route('/select_field_types/', methods=['GET', 'POST'])
+@trainer.route('/select-field-types/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
 def select_field_types():
@@ -126,7 +134,7 @@ def select_field_types():
         field_dict = {}
         for k,v in request.form.items():
             if k != 'csrf_token':
-                field_name, form_field = k.rsplit('_')
+                field_name, form_field = k.rsplit('_', 1)
                 if not field_dict.get(field_name):
                     field_dict[field_name] = {}
                 if form_field == 'missing':
@@ -175,11 +183,16 @@ def training_run():
         error = None
         status_code = 200
         field_defs = json.loads(sess.field_defs)
-        deduper = dedupe.Dedupe(field_defs)
-        data_d = makeDataDict(sess.id, sample=True)
-        deduper.sample(data_d, sample_size=5000, blocked_proportion=1)
-        flask_session['deduper'] = deduper
-    return make_response(render_template('training_run.html', user=user, error=error), status_code)
+        init_status = 'processing'
+        if sess.sample:
+            sample = cPickle.loads(sess.sample)
+            deduper = dedupe.Dedupe(field_defs, data_sample=sample)
+            flask_session['deduper'] = deduper
+            init_status = 'finished'
+    return make_response(render_template(
+                            'training_run.html', 
+                            user=user, error=error, 
+                            init_status=init_status), status_code)
 
 @trainer.route('/get-pair/')
 @login_required
