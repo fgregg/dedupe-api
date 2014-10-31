@@ -9,19 +9,22 @@ from api.trainer import trainer
 from api.manager import manager
 from api.redis_session import RedisSessionInterface
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'upload_data')
+try:
+    from raven.contrib.flask import Sentry
+    from geomancer.app_config import SENTRY_DSN
+    sentry = Sentry(dsn=SENTRY_DSN)
+except ImportError:
+    sentry = None
+except KeyError:
+    sentry = None
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object('api.app_config')
     redis = Redis()
     app.session_interface = RedisSessionInterface(redis=redis)
-    if app.config.get('SENTRY_DSN'):
-        try:
-            from raven.contrib.flask import Sentry
-            sentry = Sentry(app)
-        except ImportError:
-            pass
+    if sentry:
+        sentry.init_app(app)
     csrf.init_app(app)
     bcrypt.init_app(app)
     login_manager.init_app(app)

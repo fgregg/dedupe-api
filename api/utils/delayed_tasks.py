@@ -120,11 +120,11 @@ def blockDedupe(session_id, deduper):
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
         fd = worker_session.query(proc_table.c.record_id, 
-            getattr(proc_table.c, field)).yield_per(10000)
+            getattr(proc_table.c, field)).yield_per(50000)
         field_data = (row for row in fd)
         deduper.blocker.tfIdfBlock(field_data, field)
     proc_records = worker_session.query(proc_table)\
-        .yield_per(10000)
+        .yield_per(50000)
     fields = proc_table.columns.keys()
     full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records)
@@ -141,7 +141,7 @@ def findClusters(session_id, deduper):
     rows = worker_session.query(small_cov, proc)\
         .join(proc, small_cov.c.record_id == proc.c.record_id)\
         .order_by(small_cov.c.block_id)\
-        .yield_per(10000)
+        .yield_per(50000)
     fields = small_cov.columns.keys() + proc.columns.keys()
     clustered_dupes = deduper.matchBlocks(clusterGen(rows, fields), threshold=0.5)
     return clustered_dupes

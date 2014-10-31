@@ -14,7 +14,6 @@ import time
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession
-from api.utils.dedupe_functions import DedupeFileError
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import makeDataDict, getDistinct, slugify
 from api.models import DedupeSession, User, Group
