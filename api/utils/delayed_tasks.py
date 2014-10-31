@@ -30,19 +30,18 @@ def initializeSession(session_id, filename, file_contents):
         if not sess.field_defs:
             time.sleep(3)
         else:
-            print sess.field_defs
             field_defs = json.loads(sess.field_defs)
             d = dedupe.Dedupe(field_defs)
-            print 'making data_d'
             start = time.time()
             data_d = makeDataDict(sess.id, sample=True)
+            if len(data_d) <= 50000:
+                sample_size = 5000
+            else:
+                sample_size = round(int(len(data_d) * 0.01), -3)
             end = time.time()
-            print 'data_d took %s' % (end - start)
-            print 'starting sample'
             start = time.time()
-            d.sample(data_d, sample_size=5000, blocked_proportion=1)
+            d.sample(data_d, sample_size=sample_size, blocked_proportion=1)
             end = time.time()
-            print 'sample took %s' % (end - start)
             sess.sample = cPickle.dumps(d.data_sample)
             worker_session.add(sess)
             worker_session.commit()
@@ -121,11 +120,11 @@ def blockDedupe(session_id, deduper):
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
         fd = worker_session.query(proc_table.c.record_id, 
-            getattr(proc_table.c, field)).yield_per(1000)
+            getattr(proc_table.c, field)).yield_per(10000)
         field_data = (row for row in fd)
         deduper.blocker.tfIdfBlock(field_data, field)
     proc_records = worker_session.query(proc_table)\
-        .yield_per(1000)
+        .yield_per(10000)
     fields = proc_table.columns.keys()
     full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records)
@@ -142,7 +141,7 @@ def findClusters(session_id, deduper):
     rows = worker_session.query(small_cov, proc)\
         .join(proc, small_cov.c.record_id == proc.c.record_id)\
         .order_by(small_cov.c.block_id)\
-        .yield_per(1000)
+        .yield_per(10000)
     fields = small_cov.columns.keys() + proc.columns.keys()
     clustered_dupes = deduper.matchBlocks(clusterGen(rows, fields), threshold=0.5)
     return clustered_dupes
