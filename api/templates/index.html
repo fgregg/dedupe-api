@@ -12,7 +12,6 @@
                 <tr id="review-header">
                     <th>Name</th>
                     <th></th>
-                    <th></th>
                 </tr>
             </thead>
             <tbody id="session-list"></tbody>
@@ -35,11 +34,25 @@
                 var rows = ''
                 $.each(resp.objects, function(i, object){
                     rows += '<tr><td>' + object.name + '</td>';
-                    rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
-                    rows += '<td><a href="/delete-session/' + object.id + '/">Delete</a></td>';
+                    if (object.status == 'entity map created'){
+                        rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
+                        $('#review-header').append('<th></th>');
+                    }
+                    rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
                     rows += '</tr>';
                 });
                 $('#session-list').html(rows);
+                $('.delete-session').on('click', function(e){
+                    e.preventDefault();
+                    var sess_id = $(this).data('session_id');
+                    console.log(sess_id);
+                    var row = $(this).parent().parent()
+                    $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
+                        function(data){
+                            $(row).remove();
+                        }
+                    )
+                })
             }
         )
     })

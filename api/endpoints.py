@@ -262,7 +262,7 @@ def delete_session(session_id):
         except NoSuchTableError:
             pass
         try:
-            master_table = Table('master_%s' % session_id, 
+            master_table = Table('processed_%s' % session_id, 
                 Base.metadata, autoload=True, autoload_with=engine)
             master_table.drop(engine)
         except NoSuchTableError:
