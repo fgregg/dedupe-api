@@ -340,7 +340,7 @@ def get_cluster(session_id):
         cluster_list = []
         if review_remainder > 0:
             field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-            raw_table = Table(sess.table_name, Base.metadata, 
+            raw_table = Table('raw_%s' % sess.id, Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
             entity_fields = ['record_id', 'entity_id', 'confidence']
             entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
@@ -438,27 +438,28 @@ def mark_cluster(session_id):
             autoload=True, autoload_with=engine)
         entity_id = request.args.get('entity_id')
         action = request.args.get('action')
-        canon_table = Table('canon_%s' % session_id, Base.metadata,
-            autoload=True, autoload_with=engine)
-        canon_ids = db_session.query(canon_table.c.canon_record_id.distinct())\
-            .join(entity_table, canon_table.c.canon_record_id == entity_table.c.canon_record_id)\
-            .filter(entity_table.c.entity_id == entity_id)\
-            .subquery()
-        canons = db_session.query(canon_table)\
-            .filter(canon_table.c.canon_record_id.in_(canon_ids))\
-            .all()
-        fields = [c for c in canon_table.columns.keys() if c != 'canon_record_id']
-        first = {k:v for k,v in zip(fields, canons[0])}
-        pairs = []
-        for canon in canons[1:]:
-            pairs.append([first, {k:v for k,v in zip(fields, canon)}])
+       #canon_table = Table('canon_%s' % session_id, Base.metadata,
+       #    autoload=True, autoload_with=engine)
+       #canon_ids = db_session.query(canon_table.c.canon_record_id.distinct())\
+       #    .join(entity_table, canon_table.c.canon_record_id == entity_table.c.canon_record_id)\
+       #    .filter(entity_table.c.entity_id == entity_id)\
+       #    .subquery()
+       #canons = db_session.query(canon_table)\
+       #    .filter(canon_table.c.canon_record_id.in_(canon_ids))\
+       #    .all()
+       #fields = [c for c in canon_table.columns.keys() if c != 'canon_record_id']
+       #print canons
+       #first = {k:v for k,v in zip(fields, canons[0])}
+       #pairs = []
+       #for canon in canons[1:]:
+       #    pairs.append([first, {k:v for k,v in zip(fields, canon)}])
         training_data = json.loads(sess.training_data)
         if action == 'yes':
             upd = entity_table.update()\
                 .where(entity_table.c.entity_id == entity_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
             engine.execute(upd)
-            training_data['match'].extend(pairs)
+            # training_data['match'].extend(pairs)
         elif action == 'no':
             rows = db_session.query(entity_table)\
                 .filter(entity_table.c.entity_id == entity_id)\

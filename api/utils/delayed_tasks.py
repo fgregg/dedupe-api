@@ -169,6 +169,7 @@ def dedupeRaw(session_id, data_sample):
     trainDedupe(dd_session, deduper)
     blockDedupe(session_id, deduper)
     clustered_dupes = findClusters(session_id, deduper)
+    makeCanonTable(session_id)
     review_count = writeEntityMap(clustered_dupes, session_id)
     dd_session.status = 'entity map created'
     worker_session.add(dd_session)
