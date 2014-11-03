@@ -2,7 +2,7 @@ import re
 import dedupe
 from dedupe.core import frozendict
 from api.database import app_session, worker_session
-from sqlalchemy import Table, MetaData, distinct
+from sqlalchemy import Table, MetaData, distinct, and_, func
 from unidecode import unidecode
 from unicodedata import normalize
 from itertools import count
@@ -50,30 +50,31 @@ def clusterGen(result_set, fields):
     if records:
         yield records
 
-def makeDataDict(session_id, sample=False, worker=False, table_name=None):
-    if worker:
-        session = worker_session
-    else:
-        session = app_session
+def makeDataDict(session_id, fields=None):
+    session = worker_session
     engine = session.bind
     metadata = MetaData()
-    if not table_name:
-        table_name = 'processed_%s' % session_id
+    table_name = 'processed_%s' % session_id
     table = Table(table_name, metadata, 
         autoload=True, autoload_with=engine)
-    fields = [unicode(s) for s in table.columns.keys()]
+    if not fields:
+        fields = [unicode(s) for s in table.columns.keys()]
     try:
         primary_key = [p.name for p in table.primary_key][0]
     except IndexError:
         # need to figure out what to do in this case
         raise
     result = {}
-    for idx,row in enumerate(session.query(table).yield_per(1000)):
-        d = {k: v for k,v in zip(fields, row)}
-        if sample:
-            result[idx] = d
-        else:
-            result[int(d[primary_key])] = d
+    cols = [getattr(table.c, f) for f in fields]
+    cols.append(getattr(table.c, primary_key))
+    curs = session.query(*cols)
+    count = curs.count()
+    # Going to limit the size of this to a million rows for the moment
+    # Seems like this tends to take up a ton of RAM
+    if count >= 500000:
+        curs = curs.order_by(func.random()).limit(500000)
+    for row in curs.yield_per(10000):
+        result[int(getattr(row, primary_key))] = dict(zip(fields, row))
     return result
 
 def getDistinct(field_name, session_id):

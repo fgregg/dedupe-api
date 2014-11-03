@@ -287,7 +287,8 @@ def review():
     for sess in sessions:
         d = {
             'name': sess.name,
-            'id': sess.id
+            'id': sess.id,
+            'status': sess.status,
         }
         all_sessions.append(d)
     resp['objects'] = all_sessions

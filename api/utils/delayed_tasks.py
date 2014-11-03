@@ -21,31 +21,36 @@ import cPickle
 
 @queuefunc
 def initializeSession(session_id, filename, file_contents):
+    file_obj = StringIO(file_contents)
     writeRawTable(session_id=session_id,
         filename=filename,
-        file_obj=StringIO(file_contents))
+        file_obj=file_obj)
+    del file_obj
     sess = worker_session.query(DedupeSession).get(session_id)
+    data_d = None
     while True:
         worker_session.refresh(sess, ['field_defs', 'sample'])
         if not sess.field_defs:
             time.sleep(3)
         else:
             field_defs = json.loads(sess.field_defs)
+            fields = [f['field'] for f in field_defs]
             d = dedupe.Dedupe(field_defs)
-            start = time.time()
-            data_d = makeDataDict(sess.id, sample=True)
+            data_d = makeDataDict(sess.id, fields=fields)
             if len(data_d) <= 50000:
                 sample_size = 5000
             else:
                 sample_size = round(int(len(data_d) * 0.01), -3)
-            end = time.time()
+            print 'sample size: %s' % sample_size
             start = time.time()
             d.sample(data_d, sample_size=sample_size, blocked_proportion=1)
             end = time.time()
+            print 'sample time %s' % (end - start)
             sess.sample = cPickle.dumps(d.data_sample)
             worker_session.add(sess)
             worker_session.commit()
             break
+    del data_d
     return 'woo'
 
 @queuefunc
@@ -105,7 +110,10 @@ def bulkMatchWorker(session_id, file_contents, field_map, filename):
 def trainDedupe(dd_session, deduper):
     training_data = StringIO(dd_session.training_data)
     deduper.readTraining(training_data)
+    start = time.time()
     deduper.train()
+    end = time.time()
+    print 'training %s' % (end - start)
     settings_file_obj = StringIO()
     deduper.writeSettings(settings_file_obj)
     dd_session.settings_file = settings_file_obj.getvalue()
@@ -128,8 +136,14 @@ def blockDedupe(session_id, deduper):
     fields = proc_table.columns.keys()
     full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records)
+    start = time.time()
     blocked_data = deduper.blocker(full_data)
+    end = time.time()
+    print 'blocking took %s' % (end - start)
+    start = time.time()
     writeBlockingMap(session_id, blocked_data)
+    end = time.time()
+    print 'wrote blocking map in %s' % (end - start)
     
 def findClusters(session_id, deduper):
     engine = worker_session.bind
@@ -143,7 +157,7 @@ def findClusters(session_id, deduper):
         .order_by(small_cov.c.block_id)\
         .yield_per(50000)
     fields = small_cov.columns.keys() + proc.columns.keys()
-    clustered_dupes = deduper.matchBlocks(clusterGen(rows, fields), threshold=0.5)
+    clustered_dupes = deduper.matchBlocks(clusterGen(rows, fields), threshold=0.75)
     return clustered_dupes
 
 @queuefunc
@@ -156,6 +170,9 @@ def dedupeRaw(session_id, data_sample):
     blockDedupe(session_id, deduper)
     clustered_dupes = findClusters(session_id, deduper)
     review_count = writeEntityMap(clustered_dupes, session_id)
+    dd_session.status = 'entity map created'
+    worker_session.add(dd_session)
+    worker_session.commit()
     print review_count
    #if not review_count:
    #    dd_session.status = 'first pass review complete'
