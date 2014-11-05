@@ -50,7 +50,7 @@ def clusterGen(result_set, fields):
     if records:
         yield records
 
-def makeDataDict(session_id, fields=None):
+def makeDataDict(session_id, fields=None, sample=False):
     session = worker_session
     engine = session.bind
     metadata = MetaData()
@@ -69,12 +69,17 @@ def makeDataDict(session_id, fields=None):
     cols.append(getattr(table.c, primary_key))
     curs = session.query(*cols)
     count = curs.count()
-    # Going to limit the size of this to a million rows for the moment
+    print 'count %s' % count
+    # Going to limit the size of this to half a million rows for the moment
     # Seems like this tends to take up a ton of RAM
     if count >= 500000:
         curs = curs.order_by(func.random()).limit(500000)
-    for row in curs.yield_per(10000):
-        result[int(getattr(row, primary_key))] = dict(zip(fields, row))
+    if sample:
+        result = dict((i, dedupe.frozendict(zip(fields, row))) 
+                            for i, row in enumerate(curs))
+    else:
+        for row in curs:
+            result[int(getattr(row, primary_key))] = dedupe.frozendict(zip(fields, row))
     return result
 
 def getDistinct(field_name, session_id):

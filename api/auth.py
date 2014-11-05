@@ -12,6 +12,7 @@ from api.models import User, DedupeSession, Group
 import os
 import json
 from uuid import uuid4
+from sqlalchemy import func
 
 auth = Blueprint('auth', __name__)
 
@@ -33,7 +34,8 @@ class LoginForm(Form):
             return False
 
         user = db_session.query(User)\
-            .filter(User.email == self.email.data).first()
+            .filter(func.lower(User.email) == func.lower(self.email.data))\
+            .first()
         if user is None:
             self.email.errors.append('Email address is not registered')
             return False

@@ -20,14 +20,15 @@ DEFAULT_ROLES = [
     }
 ]
 
-app_engine = create_engine(DB_CONN, convert_unicode=True)
-worker_engine = create_engine(DB_CONN, convert_unicode=True)
+engine = create_engine(DB_CONN, 
+                       convert_unicode=True, 
+                       server_side_cursors=True)
 
-app_session = scoped_session(sessionmaker(bind=app_engine, 
+app_session = scoped_session(sessionmaker(bind=engine, 
                                       autocommit=False, 
                                       autoflush=False))
 
-worker_session = scoped_session(sessionmaker(bind=worker_engine,
+worker_session = scoped_session(sessionmaker(bind=engine,
                                           autocommit=False,
                                           autoflush=False))
 

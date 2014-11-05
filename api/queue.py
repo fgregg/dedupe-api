@@ -53,3 +53,7 @@ def queue_daemon(rv_ttl=500):
         if rv is not None:
             redis.set(key, dumps(rv))
             redis.expire(key, rv_ttl)
+            del args
+            del kwargs
+            del rv
+            del msg

@@ -1,3 +1,4 @@
+import os
 import json
 import dedupe
 from cStringIO import StringIO
@@ -9,7 +10,7 @@ from csvkit import convert
 from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
     create_engine, Float, Boolean, BigInteger, distinct, text, select, \
-    Text, func
+    Text, func, Index
 from unidecode import unidecode
 from uuid import uuid4
 from csvkit.unicsv import UnicodeCSVWriter
@@ -73,37 +74,39 @@ def writeEntityMap(clustered_dupes, session_id):
     metadata = MetaData()
     entity_table = entity_map('entity_%s' % session_id, metadata)
     entity_table.create(engine, checkfirst=True)
-    s = StringIO()
-    writer = UnicodeCSVWriter(s)
-    for cluster, score in clustered_dupes:
-        # leaving out low confidence clusters
-        # This is a non-scientificly proven threshold
-        if score > 0.2:
-            entity_id = unicode(uuid4())
-            for record_id in cluster:
-                writer.writerow([
-                    record_id, 
-                    entity_id, 
-                    score, 
-                    'raw_%s' % session_id,
-                    'FALSE',
-                    'FALSE',
-                ])
-    s.seek(0)
+    with open('/tmp/%s.csv' % session_id, 'wb') as s:
+        writer = UnicodeCSVWriter(s)
+        for cluster, score in clustered_dupes:
+            # leaving out low confidence clusters
+            # This is a non-scientificly proven threshold
+            if score > 0.2:
+                entity_id = unicode(uuid4())
+                for record_id in cluster:
+                    writer.writerow([
+                        record_id, 
+                        entity_id, 
+                        score, 
+                        'raw_%s' % session_id,
+                        'FALSE',
+                        'FALSE',
+                    ])
     conn = engine.raw_connection()
     cur = conn.cursor()
-    cur.copy_expert('''
-        COPY "entity_%s" (
-            record_id, 
-            entity_id, 
-            confidence,
-            source,
-            clustered,
-            checked_out
-        ) 
-        FROM STDIN CSV''' % session_id, s)
+    with open('/tmp/%s.csv' % session_id, 'rb') as s:
+        cur.copy_expert('''
+            COPY "entity_%s" (
+                record_id, 
+                entity_id, 
+                confidence,
+                source,
+                clustered,
+                checked_out
+            ) 
+            FROM STDIN CSV''' % session_id, s)
     conn.commit()
     
+    os.remove('/tmp/%s.csv' % session_id)
+
     dd = worker_session.query(DedupeSession).get(session_id)
     fields = [f['field'] for f in json.loads(dd.field_defs)]
     upd = 'UPDATE "entity_%s" SET source_hash=s.source_hash \
@@ -209,21 +212,26 @@ def writeBlockingMap(session_id, block_data):
     metadata = MetaData()
     engine = worker_session.bind
     bkm = Table('block_%s' % session_id, metadata,
-        Column('block_key', Text, index=True),
+        Column('block_key', Text),
         Column('record_id', Integer)
     )
     bkm.create(engine, checkfirst=True)
-    s = StringIO()
-    writer = UnicodeCSVWriter(s)
-    writer.writerows(block_data)
-    s.seek(0)
+    with open('/tmp/%s.csv' % session_id, 'wb') as s:
+        writer = UnicodeCSVWriter(s)
+        writer.writerows(block_data)
     conn = engine.raw_connection()
     cur = conn.cursor()
-    cur.copy_expert('COPY "block_%s" FROM STDIN CSV' % session_id, s)
+    with open('/tmp/%s.csv' % session_id, 'rb') as s:
+        cur.copy_expert('COPY "block_%s" FROM STDIN CSV' % session_id, s)
     conn.commit()
     
+    os.remove('/tmp/%s.csv' % session_id)
+
+    block_key_idx = Index('bk_%s_idx' % session_id, bkm.c.block_key)
+    block_key_idx.create(engine)
+
     plural_key = Table('plural_key_%s' % session_id, metadata,
-        Column('block_key', Text, index=True),
+        Column('block_key', Text),
         Column('block_id', Integer, primary_key=True)
     )
     plural_key.create(engine, checkfirst=True)
@@ -234,6 +242,9 @@ def writeBlockingMap(session_id, block_data):
         .from_select([plural_key.c.block_key], bkm_sel)
     engine.execute(pl_ins)
     
+    pl_key_idx = Index('pk_%s_idx' % session_id, plural_key.c.block_key)
+    pl_key_idx.create(engine)
+
     pl_bk_stmt = '''
         CREATE TABLE "plural_block_%s" AS (
             SELECT p.block_id, b.record_id 
@@ -278,5 +289,9 @@ def writeBlockingMap(session_id, block_data):
         )
     ''' % (session_id, session_id, session_id)
     engine.execute(small_cov)
+    engine.execute('''
+        CREATE INDEX "sc_idx_%s" 
+        ON "small_cov_%s" (record_id)''' % (session_id, session_id)
+    )
 
 

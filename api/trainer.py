@@ -45,6 +45,7 @@ def allowed_file(filename):
 @trainer.route('/upload/', methods=['POST'])
 @login_required
 def upload():
+    session_id = flask_session['session_id']
     f = request.files['input_file']
     flask_session['session_name'] = f.filename
     file_type = f.filename.rsplit('.')[1]
@@ -55,19 +56,21 @@ def upload():
         u = StringIO(convert.convert(u, file_format))
     fieldnames = [slugify(unicode(i)) for i in u.next().strip('\r\n').split(',')]
     flask_session['fieldnames'] = fieldnames
-    u.seek(0)
     user_id = flask_session['user_id']
     user = db_session.query(User).get(user_id)
     group = user.groups[0]
     sess = DedupeSession(
-        id=flask_session['session_id'], 
+        id=session_id, 
         name=f.filename,
         group=group,
         status='dataset uploaded')
     db_session.add(sess)
     db_session.commit()
-    flask_session['init_key'] = initializeSession.delay(flask_session['session_id'], 
-        fieldnames, u.getvalue()).key
+    u.seek(0)
+    with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
+        s.write(u.getvalue())
+    del u
+    flask_session['init_key'] = initializeSession.delay(session_id, fieldnames).key
     return jsonify(ready=True)
 
 @trainer.route('/get-init-status/<init_key>/')
@@ -258,8 +261,7 @@ def mark_pair():
         sess.status = 'training complete'
         db_session.add(sess)
         db_session.commit()
-        sample = deduper.data_sample
-        rv = dedupeRaw.delay(flask_session['session_id'], sample)
+        rv = dedupeRaw.delay(flask_session['session_id'])
         flask_session['deduper_key'] = rv.key
         resp = {'finished': True}
         flask_session['dedupe_start'] = time.time()

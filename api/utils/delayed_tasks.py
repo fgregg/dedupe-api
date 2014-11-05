@@ -1,4 +1,5 @@
 import dedupe
+import os
 import json
 import time
 from cStringIO import StringIO
@@ -18,96 +19,59 @@ from csvkit.unicsv import UnicodeCSVDictReader, UnicodeCSVReader, \
 from os.path import join, dirname, abspath
 from datetime import datetime
 import cPickle
+from multiprocessing.dummy import Process, Queue
+
+def drawSample(session_id):
+    sess = worker_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(sess.field_defs)
+    fields = [f['field'] for f in field_defs]
+    d = dedupe.Dedupe(field_defs)
+    data_d = makeDataDict(sess.id, fields=fields, sample=True)
+    if len(data_d) < 50001:
+        sample_size = 5000
+    else:
+        sample_size = round(int(len(data_d) * 0.01), -3)
+    start = time.time()
+    d.sample(data_d, sample_size=sample_size, blocked_proportion=1)
+    end = time.time()
+    sess.sample = cPickle.dumps(d.data_sample)
+    worker_session.add(sess)
+    worker_session.commit()
 
 @queuefunc
-def initializeSession(session_id, filename, file_contents):
-    file_obj = StringIO(file_contents)
-    writeRawTable(session_id=session_id,
-        filename=filename,
-        file_obj=file_obj)
-    del file_obj
+def initializeSession(session_id, filename):
+    file_obj = open('/tmp/%s_raw.csv' % session_id, 'rb')
+    q = Queue()
+    kwargs = {
+        'session_id':session_id,
+        'filename': filename,
+        'file_obj':file_obj
+    }
+    raw_process = Process(target=writeRawTable, 
+                          kwargs=kwargs)
+    raw_process.start()
+    raw_process.join()
+    os.remove('/tmp/%s_raw.csv' % session_id)
     sess = worker_session.query(DedupeSession).get(session_id)
-    data_d = None
     while True:
         worker_session.refresh(sess, ['field_defs', 'sample'])
         if not sess.field_defs:
             time.sleep(3)
         else:
-            field_defs = json.loads(sess.field_defs)
-            fields = [f['field'] for f in field_defs]
-            d = dedupe.Dedupe(field_defs)
-            data_d = makeDataDict(sess.id, fields=fields)
-            if len(data_d) <= 50000:
-                sample_size = 5000
-            else:
-                sample_size = round(int(len(data_d) * 0.01), -3)
-            print 'sample size: %s' % sample_size
-            start = time.time()
-            d.sample(data_d, sample_size=sample_size, blocked_proportion=1)
-            end = time.time()
-            print 'sample time %s' % (end - start)
-            sess.sample = cPickle.dumps(d.data_sample)
-            worker_session.add(sess)
-            worker_session.commit()
+            sample_process = Process(target=drawSample, 
+                                     args=(session_id,))
+            sample_process.start()
+            sample_process.join()
             break
-    del data_d
     return 'woo'
 
-@queuefunc
-def bulkMatchWorker(session_id, file_contents, field_map, filename):
-    ftype = convert.guess_format(filename)
-    s = StringIO(file_contents)
-    result = {
-        'status': 'ok',
-        'result': '',
-        'message': ''
-    }
-    try:
-        converted = convert.convert(s, ftype)
-    except UnicodeDecodeError:
-        result['status'] = 'error'
-        result['message'] = 'Problem decoding file'
-        return result
-    sess = worker_session.query(DedupeSession).get(session_id)
-    model_fields = [f.get('field') for f in json.loads(sess.field_defs)]
-    s = StringIO(converted)
-    reader = UnicodeCSVDictReader(s)
-    rows = []
-    for row in reader:
-        r = {k: row.get(k, '') for k in field_map.values() if k}
-        e = {k: '' for k in model_fields}
-        for k,v in field_map.items():
-            e[k] = r.get(v, '')
-        rows.append(e)
-    # Need a thing that will make a data_d without a DB
-    data_d = iterDataDict(rows)
-    deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
-    trained_data_d = makeDataDict(session_id, worker=True)
-    deduper.index(trained_data_d)
-    linked = deduper.match(messy_data_d, threshold=0, n_matches=5)
-    s.seek(0)
-    reader = UnicodeCSVReader(s)
-    raw_header = reader.next()
-    raw_header.extend([f for f in field_map.keys()])
-    raw_rows = list(reader)
-    fname = '%s_%s' % (datetime.now().isoformat(), filename)
-    fpath = join(DOWNLOAD_FOLDER, fname)
-    with open(fpath, 'wb') as outp:
-        writer = UnicodeCSVWriter(outp)
-        writer.writerow(raw_header)
-        for link in linked:
-            for l in link:
-                id_set, conf = l
-                messy_id, trained_id = id_set
-                messy_row = raw_rows[int(messy_id)]
-                trained_row = trained_data_d[trained_id]
-                for k in field_map.keys():
-                    messy_row.append(trained_row.get(k))
-                writer.writerow(messy_row)
-    result['result'] = fname
-    return result
 
-def trainDedupe(dd_session, deduper):
+def trainBlockCluster(session_id):
+    dd_session = worker_session.query(DedupeSession)\
+        .get(session_id)
+    data_sample = cPickle.loads(dd_session.sample)
+    deduper = dedupe.Dedupe(json.loads(dd_session.field_defs), 
+        data_sample=data_sample)
     training_data = StringIO(dd_session.training_data)
     deduper.readTraining(training_data)
     start = time.time()
@@ -120,22 +84,21 @@ def trainDedupe(dd_session, deduper):
     worker_session.add(dd_session)
     worker_session.commit()
     deduper.cleanupTraining()
-    
-def blockDedupe(session_id, deduper):
+
     engine = worker_session.bind
     metadata = MetaData()
     proc_table = Table('processed_%s' % session_id, metadata,
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
         fd = worker_session.query(proc_table.c.record_id, 
-            getattr(proc_table.c, field)).yield_per(50000)
-        field_data = (row for row in fd)
+            getattr(proc_table.c, field))
+        field_data = (row for row in fd.yield_per(50000))
         deduper.blocker.tfIdfBlock(field_data, field)
-    proc_records = worker_session.query(proc_table)\
-        .yield_per(50000)
+        del field_data
+    proc_records = worker_session.query(proc_table)
     fields = proc_table.columns.keys()
     full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
-        for row in proc_records)
+        for row in proc_records.yield_per(50000))
     start = time.time()
     blocked_data = deduper.blocker(full_data)
     end = time.time()
@@ -145,41 +108,27 @@ def blockDedupe(session_id, deduper):
     end = time.time()
     print 'wrote blocking map in %s' % (end - start)
     
-def findClusters(session_id, deduper):
-    engine = worker_session.bind
-    metadata = MetaData()
     small_cov = Table('small_cov_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     proc = Table('processed_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     rows = worker_session.query(small_cov, proc)\
         .join(proc, small_cov.c.record_id == proc.c.record_id)\
-        .order_by(small_cov.c.block_id)\
-        .yield_per(50000)
+        .order_by(small_cov.c.block_id)
     fields = small_cov.columns.keys() + proc.columns.keys()
-    clustered_dupes = deduper.matchBlocks(clusterGen(rows, fields), threshold=0.75)
-    return clustered_dupes
-
-@queuefunc
-def dedupeRaw(session_id, data_sample):
-    dd_session = worker_session.query(DedupeSession)\
-        .get(session_id)
-    deduper = dedupe.Dedupe(json.loads(dd_session.field_defs), 
-        data_sample=data_sample)
-    trainDedupe(dd_session, deduper)
-    blockDedupe(session_id, deduper)
-    clustered_dupes = findClusters(session_id, deduper)
-    makeCanonTable(session_id)
-    review_count = writeEntityMap(clustered_dupes, session_id)
+    clustered_dupes = deduper.matchBlocks(
+        clusterGen(rows.yield_per(50000), fields), threshold=0.75
+    )
     dd_session.status = 'entity map created'
     worker_session.add(dd_session)
     worker_session.commit()
-    print review_count
-   #if not review_count:
-   #    dd_session.status = 'first pass review complete'
-   #    worker_session.add(dd_session)
-   #    worker_session.commit()
-   #    dedupeCanon(session_id)
+    return clustered_dupes
+
+@queuefunc
+def dedupeRaw(session_id):
+    clustered_dupes = trainBlockCluster(session_id)
+    makeCanonTable(session_id)
+    review_count = writeEntityMap(clustered_dupes, session_id)
     return 'ok'
 
 @queuefunc
@@ -254,3 +203,57 @@ def retrain(session_id):
 #     canon_table = Table('canon_%s' % session_id, metadata,
 #         autoload=True, autoload_with=engine, extend_existing=True)
 #     engine.execute(canon_table.insert(), canonical_rows)
+
+@queuefunc
+def bulkMatchWorker(session_id, file_contents, field_map, filename):
+    ftype = convert.guess_format(filename)
+    s = StringIO(file_contents)
+    result = {
+        'status': 'ok',
+        'result': '',
+        'message': ''
+    }
+    try:
+        converted = convert.convert(s, ftype)
+    except UnicodeDecodeError:
+        result['status'] = 'error'
+        result['message'] = 'Problem decoding file'
+        return result
+    sess = worker_session.query(DedupeSession).get(session_id)
+    model_fields = [f.get('field') for f in json.loads(sess.field_defs)]
+    s = StringIO(converted)
+    reader = UnicodeCSVDictReader(s)
+    rows = []
+    for row in reader:
+        r = {k: row.get(k, '') for k in field_map.values() if k}
+        e = {k: '' for k in model_fields}
+        for k,v in field_map.items():
+            e[k] = r.get(v, '')
+        rows.append(e)
+    # Need a thing that will make a data_d without a DB
+    data_d = iterDataDict(rows)
+    deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+    trained_data_d = makeDataDict(session_id, worker=True)
+    deduper.index(trained_data_d)
+    linked = deduper.match(messy_data_d, threshold=0, n_matches=5)
+    s.seek(0)
+    reader = UnicodeCSVReader(s)
+    raw_header = reader.next()
+    raw_header.extend([f for f in field_map.keys()])
+    raw_rows = list(reader)
+    fname = '%s_%s' % (datetime.now().isoformat(), filename)
+    fpath = join(DOWNLOAD_FOLDER, fname)
+    with open(fpath, 'wb') as outp:
+        writer = UnicodeCSVWriter(outp)
+        writer.writerow(raw_header)
+        for link in linked:
+            for l in link:
+                id_set, conf = l
+                messy_id, trained_id = id_set
+                messy_row = raw_rows[int(messy_id)]
+                trained_row = trained_data_d[trained_id]
+                for k in field_map.keys():
+                    messy_row.append(trained_row.get(k))
+                writer.writerow(messy_row)
+    result['result'] = fname
+    return result

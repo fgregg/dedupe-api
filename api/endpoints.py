@@ -5,7 +5,7 @@ from flask import Flask, make_response, request, Blueprint, \
 from api.models import DedupeSession, User, Group
 from api.app_config import DOWNLOAD_FOLDER
 from api.queue import DelayedResult, redis
-from api.database import app_session as db_session, app_engine as engine, Base
+from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
 from api.utils.delayed_tasks import retrain, bulkMatchWorker, dedupeCanon
 from api.utils.helpers import preProcess
@@ -243,30 +243,24 @@ def delete_session(session_id):
         data = db_session.query(DedupeSession).get(session_id)
         db_session.delete(data)
         db_session.commit()
-        try:
-            data_table = Table('entity_%s' % session_id, 
-                Base.metadata, autoload=True, autoload_with=engine)
-            data_table.drop(engine)
-        except NoSuchTableError:
-            pass
-        try:
-            raw_table = Table('raw_%s' % session_id, 
-                Base.metadata, autoload=True, autoload_with=engine)
-            raw_table.drop(engine)
-        except NoSuchTableError:
-            pass
-        try:
-            block_table = Table('block_%s' % session_id, 
-                Base.metadata, autoload=True, autoload_with=engine)
-            block_table.drop(engine)
-        except NoSuchTableError:
-            pass
-        try:
-            master_table = Table('processed_%s' % session_id, 
-                Base.metadata, autoload=True, autoload_with=engine)
-            master_table.drop(engine)
-        except NoSuchTableError:
-            pass
+        tables = [
+            'entity',
+            'raw',
+            'processed',
+            'block',
+            'plural_block',
+            'canon',
+            'covered',
+            'plural_key',
+            'small_cov',
+        ]
+        for table in tables:
+            try:
+                data_table = Table('%s_%s' % (table,session_id), 
+                    Base.metadata, autoload=True, autoload_with=engine)
+                data_table.drop(engine)
+            except NoSuchTableError:
+                pass
         resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
         resp.headers['Content-Type'] = 'application/json'
     return resp
