@@ -293,5 +293,9 @@ def writeBlockingMap(session_id, block_data):
         CREATE INDEX "sc_idx_%s" 
         ON "small_cov_%s" (record_id)''' % (session_id, session_id)
     )
+    engine.execute('''
+        CREATE INDEX "sc_bk_idx_%s" 
+        ON "small_cov_%s" (block_id)''' % (session_id, session_id)
+    )
 
 
