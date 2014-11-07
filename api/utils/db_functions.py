@@ -26,7 +26,7 @@ def writeRawTable(filename=None,
     cols = []
     for field in fieldnames:
         cols.append(Column(slugify(unicode(field)), String))
-    engine = app_session.bind
+    engine = worker_session.bind
     metadata = MetaData()
     sql_table = Table('raw_%s' % session_id, metadata, *cols)
     sql_table.append_column(Column('record_id', BigInteger, primary_key=True))
@@ -49,7 +49,7 @@ def writeRawTable(filename=None,
     return fieldnames
 
 def writeProcessedTable(session_id):
-    engine = app_session.bind
+    engine = worker_session.bind
     metadata = MetaData()
     raw_table = Table('raw_%s' % session_id, metadata, 
         autoload=True, autoload_with=engine)
@@ -66,6 +66,58 @@ def writeProcessedTable(session_id):
     engine.execute(create_stmt)
     engine.execute('ALTER TABLE "processed_%s" ADD PRIMARY KEY (record_id)' % session_id)
 
+def initializeEntityMap(session_id, fields):
+    engine = worker_session.bind
+    metadata = MetaData()
+    proc_table = Table('processed_%s' % session_id, metadata, 
+        autoload=True, autoload_with=engine)
+    gb_cols = [getattr(proc_table.c, f) for f in fields]
+    rows = worker_session.query(func.array_agg(proc_table.c.record_id))\
+        .group_by(*gb_cols)\
+        .having(func.array_length(func.array_agg(proc_table.c.record_id),1) > 1)
+    entity_table = entity_map('entity_%s' % session_id, metadata)
+    entity_table.create(engine, checkfirst=True)
+    s = StringIO()
+    writer = UnicodeCSVWriter(s)
+    for row in rows:
+        king, members = row[0][0], row[0][1:]
+        entity_id = unicode(uuid4())
+        writer.writerow([
+            king, 
+            None, 
+            entity_id, 
+            100.0,
+            'raw_%s' % session_id,
+            'FALSE',
+            'FALSE',
+        ])
+        for member in members:
+            writer.writerow([
+                member,
+                king,
+                entity_id,
+                100.0,
+                'exact match',
+                'TRUE',
+                'FALSE',
+            ])
+    s.seek(0)
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    cur.copy_expert('''
+        COPY "entity_%s" (
+            record_id, 
+            target_record_id, 
+            entity_id, 
+            confidence,
+            source,
+            clustered,
+            checked_out
+        ) 
+        FROM STDIN CSV''' % session_id, s)
+    conn.commit()
+
+
 def writeEntityMap(clustered_dupes, session_id):
     """ 
     Write entity map table the first time (after training)
@@ -81,9 +133,20 @@ def writeEntityMap(clustered_dupes, session_id):
             # This is a non-scientificly proven threshold
             if score > 0.2:
                 entity_id = unicode(uuid4())
-                for record_id in cluster:
+                king, members = cluster[0], cluster[1:]
+                writer.writerow([
+                    king, 
+                    None, 
+                    entity_id, 
+                    score, 
+                    'raw_%s' % session_id,
+                    'FALSE',
+                    'FALSE',
+                ])
+                for record_id in members:
                     writer.writerow([
                         record_id, 
+                        king, 
                         entity_id, 
                         score, 
                         'raw_%s' % session_id,

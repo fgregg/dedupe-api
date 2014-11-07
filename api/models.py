@@ -17,6 +17,7 @@ def entity_map(name, metadata):
         Column('entity_id', String),
         Column('former_entity_id', String),
         Column('record_id', BigInteger),
+        Column('target_record_id', BigInteger),
         Column('canon_record_id', Integer), 
         Column('confidence', Float(precision=50)),
         Column('source_hash', String(32)),

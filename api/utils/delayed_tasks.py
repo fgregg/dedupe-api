@@ -7,9 +7,10 @@ from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User
 from api.database import worker_session
-from api.utils.helpers import preProcess, makeDataDict, clusterGen
+from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
+    makeSampleDict
 from api.utils.db_functions import makeCanonTable, writeEntityMap, \
-    rewriteEntityMap, writeBlockingMap, writeRawTable
+    rewriteEntityMap, writeBlockingMap, writeRawTable, initializeEntityMap
 from sqlalchemy import Table, MetaData
 from itertools import groupby
 from operator import itemgetter
@@ -19,14 +20,13 @@ from csvkit.unicsv import UnicodeCSVDictReader, UnicodeCSVReader, \
 from os.path import join, dirname, abspath
 from datetime import datetime
 import cPickle
-from multiprocessing.dummy import Process, Queue
 
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
     fields = [f['field'] for f in field_defs]
     d = dedupe.Dedupe(field_defs)
-    data_d = makeDataDict(sess.id, fields=fields, sample=True)
+    data_d = makeSampleDict(sess.id, fields=fields)
     if len(data_d) < 50001:
         sample_size = 5000
     else:
@@ -41,16 +41,12 @@ def drawSample(session_id):
 @queuefunc
 def initializeSession(session_id, filename):
     file_obj = open('/tmp/%s_raw.csv' % session_id, 'rb')
-    q = Queue()
     kwargs = {
         'session_id':session_id,
         'filename': filename,
         'file_obj':file_obj
     }
-    raw_process = Process(target=writeRawTable, 
-                          kwargs=kwargs)
-    raw_process.start()
-    raw_process.join()
+    writeRawTable(**kwargs)
     os.remove('/tmp/%s_raw.csv' % session_id)
     sess = worker_session.query(DedupeSession).get(session_id)
     while True:
@@ -58,10 +54,9 @@ def initializeSession(session_id, filename):
         if not sess.field_defs:
             time.sleep(3)
         else:
-            sample_process = Process(target=drawSample, 
-                                     args=(session_id,))
-            sample_process.start()
-            sample_process.join()
+            fields = [f['field'] for f in json.loads(sess.field_defs)]
+            initializeEntityMap(session_id, fields)
+            drawSample(session_id)
             break
     return 'woo'
 
@@ -137,7 +132,7 @@ def dedupeCanon(session_id):
         .get(session_id)
     deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
     data_d = makeDataDict(dd_session.id, 
-        worker=True, table_name='canon_%s' % session_id, sample=True)
+        worker=True, table_name='canon_%s' % session_id)
     deduper.sample(data_d, sample_size=5000, blocked_proportion=1)
     sample = deduper.data_sample
     clustered_dupes = runDedupe(dd_session, deduper, data_d)

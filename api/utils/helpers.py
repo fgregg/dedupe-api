@@ -50,7 +50,25 @@ def clusterGen(result_set, fields):
     if records:
         yield records
 
-def makeDataDict(session_id, fields=None, sample=False):
+def makeSampleDict(session_id, fields):
+    session = worker_session
+    engine = session.bind
+    metadata = MetaData()
+    proc_table = Table('processed_%s' % session_id, metadata, 
+        autoload=True, autoload_with=engine)
+    entity_table = Table('entity_%s' % session_id, metadata, 
+        autoload=True, autoload_with=engine)
+    result = {}
+    cols = [getattr(proc_table.c, f) for f in fields]
+    curs = session.query(*cols)\
+        .outerjoin(entity_table, 
+            proc_table.c.record_id == entity_table.c.record_id)\
+        .filter(entity_table.c.target_record_id == None)
+    result = dict((i, dedupe.frozendict(zip(fields, row))) 
+                            for i, row in enumerate(curs))
+    return result
+
+def makeDataDict(session_id, fields=None):
     session = worker_session
     engine = session.bind
     metadata = MetaData()
@@ -59,27 +77,14 @@ def makeDataDict(session_id, fields=None, sample=False):
         autoload=True, autoload_with=engine)
     if not fields:
         fields = [unicode(s) for s in table.columns.keys()]
-    try:
-        primary_key = [p.name for p in table.primary_key][0]
-    except IndexError:
-        # need to figure out what to do in this case
-        raise
+    primary_key = [p.name for p in table.primary_key][0]
     result = {}
+
     cols = [getattr(table.c, f) for f in fields]
     cols.append(getattr(table.c, primary_key))
     curs = session.query(*cols)
-    count = curs.count()
-    print 'count %s' % count
-    # Going to limit the size of this to half a million rows for the moment
-    # Seems like this tends to take up a ton of RAM
-    if count >= 500000:
-        curs = curs.order_by(func.random()).limit(500000)
-    if sample:
-        result = dict((i, dedupe.frozendict(zip(fields, row))) 
-                            for i, row in enumerate(curs))
-    else:
-        for row in curs:
-            result[int(getattr(row, primary_key))] = dedupe.frozendict(zip(fields, row))
+    for row in curs:
+        result[int(getattr(row, primary_key))] = dedupe.frozendict(zip(fields, row))
     return result
 
 def getDistinct(field_name, session_id):
