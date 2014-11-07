@@ -8,8 +8,6 @@ from api.utils.helpers import clusterGen
 from api.utils.db_functions import writeEntityMap, makeCanonTable
 from sqlalchemy import Table, MetaData, and_, func
 
-import psycopg2
-
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
         if end_id:

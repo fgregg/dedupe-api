@@ -8,7 +8,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
-    makeSampleDict
+    makeSampleDict, windowed_query
 from api.utils.db_functions import makeCanonTable, writeEntityMap, \
     rewriteEntityMap, writeBlockingMap, writeRawTable, initializeEntityMap
 from sqlalchemy import Table, MetaData
@@ -31,9 +31,7 @@ def drawSample(session_id):
         sample_size = 5000
     else:
         sample_size = round(int(len(data_d) * 0.01), -3)
-    start = time.time()
     d.sample(data_d, sample_size=sample_size, blocked_proportion=1)
-    end = time.time()
     sess.sample = cPickle.dumps(d.data_sample)
     worker_session.add(sess)
     worker_session.commit()
@@ -60,7 +58,6 @@ def initializeSession(session_id, filename):
             break
     return 'woo'
 
-
 def trainBlockCluster(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
@@ -69,10 +66,7 @@ def trainBlockCluster(session_id):
         data_sample=data_sample)
     training_data = StringIO(dd_session.training_data)
     deduper.readTraining(training_data)
-    start = time.time()
     deduper.train()
-    end = time.time()
-    print 'training %s' % (end - start)
     settings_file_obj = StringIO()
     deduper.writeSettings(settings_file_obj)
     dd_session.settings_file = settings_file_obj.getvalue()
@@ -94,14 +88,8 @@ def trainBlockCluster(session_id):
     fields = proc_table.columns.keys()
     full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records.yield_per(50000))
-    start = time.time()
     blocked_data = deduper.blocker(full_data)
-    end = time.time()
-    print 'blocking took %s' % (end - start)
-    start = time.time()
     writeBlockingMap(session_id, blocked_data)
-    end = time.time()
-    print 'wrote blocking map in %s' % (end - start)
     
     small_cov = Table('small_cov_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
@@ -111,8 +99,9 @@ def trainBlockCluster(session_id):
         .join(proc, small_cov.c.record_id == proc.c.record_id)\
         .order_by(small_cov.c.block_id)
     fields = small_cov.columns.keys() + proc.columns.keys()
-    clustered_dupes = deduper.matchBlocks(
-        clusterGen(rows.yield_per(50000), fields), threshold=0.75
+    clustered_dupes = d.matchBlocks(
+        clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
+        threshold=0.75
     )
     dd_session.status = 'entity map created'
     worker_session.add(dd_session)
