@@ -14,9 +14,9 @@ import uuid
 
 def entity_map(name, metadata):
     table = Table(name, metadata, 
-        Column('entity_id', String),
+        Column('entity_id', String, index=True),
         Column('former_entity_id', String),
-        Column('record_id', BigInteger),
+        Column('record_id', BigInteger, index=True),
         Column('target_record_id', BigInteger),
         Column('canon_record_id', Integer), 
         Column('confidence', Float(precision=50)),

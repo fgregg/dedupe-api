@@ -9,7 +9,7 @@ from api.models import DedupeSession, User
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
     makeSampleDict, windowed_query
-from api.utils.db_functions import makeCanonTable, writeEntityMap, \
+from api.utils.db_functions import makeCanonTable, updateEntityMap, \
     rewriteEntityMap, writeBlockingMap, writeRawTable, initializeEntityMap
 from sqlalchemy import Table, MetaData
 from itertools import groupby
@@ -95,9 +95,12 @@ def trainBlockCluster(session_id):
         autoload=True, autoload_with=engine, keep_existing=True)
     proc = Table('processed_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    rows = worker_session.query(small_cov, proc)\
-        .join(proc, small_cov.c.record_id == proc.c.record_id)\
-        .order_by(small_cov.c.block_id)
+    entity = Table('entity_%s' % sess.id, metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+    rows = worker_session.query(small_cov, proc_table)\
+        .join(proc_table, small_cov.c.record_id == proc_table.c.record_id)\
+        .join(entity, small_cov.c.record_id == entity.c.record_id)\
+        .filter(entity.c.target_record_id == None)
     fields = small_cov.columns.keys() + proc.columns.keys()
     clustered_dupes = d.matchBlocks(
         clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
@@ -112,7 +115,7 @@ def trainBlockCluster(session_id):
 def dedupeRaw(session_id):
     clustered_dupes = trainBlockCluster(session_id)
     makeCanonTable(session_id)
-    review_count = writeEntityMap(clustered_dupes, session_id)
+    review_count = updateEntityMap(clustered_dupes, session_id)
     return 'ok'
 
 @queuefunc

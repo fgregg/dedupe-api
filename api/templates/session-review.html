@@ -23,6 +23,8 @@
     </div>
 {% endblock %}
 {% block extra_javascript %}
+<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script type="text/javascript">
     $(document).ready(function(){
         get_cluster();
@@ -36,7 +38,9 @@
         })
     });
     function get_cluster(){
+        $('#group-display').spin('large');
         $.getJSON('/get-review-cluster/{{session_id}}/', {}, function(resp){
+            $('#group-display').spin(false);
             if (resp.objects.length > 0){
                 $('#counter').html('<p>' + resp.review_remainder + ' out of ' + resp.total_clusters + ' left to review</p>')
                 var head = '';

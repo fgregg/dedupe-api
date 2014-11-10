@@ -15,7 +15,7 @@ from dedupe.convenience import canonicalize
 from cPickle import loads
 from cStringIO import StringIO
 from sqlalchemy.exc import NoSuchTableError
-from sqlalchemy import Table, select, and_, func, distinct
+from sqlalchemy import Table, select, and_, func, distinct, text
 from sqlalchemy.ext.declarative import declarative_base
 from itertools import groupby
 from operator import itemgetter
@@ -274,17 +274,18 @@ def review():
         'message': ''
     }
     status_code = 200
-    sessions = db_session.query(DedupeSession)\
-        .filter(DedupeSession.id.in_(user_sessions))\
-        .all()
-    all_sessions = []
-    for sess in sessions:
-        d = {
-            'name': sess.name,
-            'id': sess.id,
-            'status': sess.status,
-        }
-        all_sessions.append(d)
+    sess_id = request.args.get('session_id')
+    if not sess_id:
+        sessions = db_session.query(DedupeSession)\
+            .filter(DedupeSession.id.in_(user_sessions))\
+            .all()
+        for sess in sessions:
+            d = {
+                'name': sess.name,
+                'id': sess.id,
+                'status': sess.status,
+            }
+            all_sessions.append(d)
     resp['objects'] = all_sessions
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
@@ -310,27 +311,21 @@ def get_cluster(session_id):
         'message': ''
     }
     status_code = 200
-    api_key = request.args.get('api_key')
-    if not api_key:
-        api_key = flask_session['user_id']
-    user = db_session.query(User).get(api_key)
-    sess = db_session.query(DedupeSession)\
-        .filter(DedupeSession.group.has(
-            Group.id.in_([i.id for i in user.groups])))\
-        .filter(DedupeSession.id == session_id)\
-        .first()
-    if not sess:
+    if session_id not in flask_session['user_sessions']:
         resp['status'] = 'error'
         resp['message'] = "You don't have access to session '%s'" % session_id
         status_code = 401
     else:
         checkin_sessions()
+        sess = db_session.query(DedupeSession).get(session_id)
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
-        total_clusters = db_session.query(entity_table.c.entity_id.distinct()).count()
-        review_remainder = db_session.query(entity_table.c.entity_id.distinct())\
-            .filter(entity_table.c.clustered == False)\
-            .count()
+       #total_clusters = db_session.query(entity_table.c.entity_id.distinct()).count()
+       #review_remainder = db_session.query(entity_table.c.entity_id.distinct())\
+       #    .filter(entity_table.c.clustered == False)\
+       #    .count()
+        total_clusters = 100
+        review_remainder = 100
         cluster_list = []
         if review_remainder > 0:
             field_defs = [f['field'] for f in json.loads(sess.field_defs)]
@@ -453,28 +448,49 @@ def mark_cluster(session_id):
                 .where(entity_table.c.entity_id == entity_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
             engine.execute(upd)
+            update_existing = text('''
+                UPDATE "entity_{0}" SET 
+                    entity_id = :entity_id, 
+                    clustered = TRUE 
+                    FROM (
+                        SELECT e.record_id 
+                            FROM "entity_{0}" AS e 
+                            JOIN (
+                                SELECT record_id 
+                                    FROM "entity_{0}"
+                                    WHERE entity_id = :entity_id
+                            ) AS s 
+                            ON e.target_record_id = s.record_id
+                    ) AS subq 
+                WHERE "entity_{0}".record_id = subq.record_id
+                '''.format(sess.id))
+            engine.execute(update_existing, entity_id=entity_id)
             # training_data['match'].extend(pairs)
         elif action == 'no':
-            rows = db_session.query(entity_table)\
-                .filter(entity_table.c.entity_id == entity_id)\
-                .all()
-            upd_rows = [r for r in rows if r.former_entity_id]
-            del_rows = [r for r in rows if not r.former_entity_id]
-            for row in upd_rows:
-                upd = entity_table.update()\
-                    .where(entity_table.c.entity_id == row.entity_id)\
-                    .where(entity_table.c.former_entity_id == row.former_entity_id)\
-                    .values(entity_id=row.former_entity_id, clustered=True)
-                engine.execute(upd)
-            for row in del_rows:
-                delete = entity_table.delete()\
-                    .where(entity_table.c.entity_id == row.entity_id)\
-                    .where(entity_table.c.former_entity_id == row.former_entity_id)
-                engine.execute(delete)
-            training_data['distinct'].append(pairs)
-        sess.training_data = json.dumps(training_data)
-        db_session.add(sess)
-        db_session.commit()
+            update_existing = text(''' 
+                UPDATE "entity_{0}" SET
+                    entity_id = subq.entity_id,
+                    clustered = :clustered
+                    FROM (
+                        SELECT DISTINCT e.entity_id, s.record_id
+                            FROM "entity_{0}" AS e
+                            JOIN (
+                                SELECT record_id 
+                                    FROM "entity_{0}"
+                                    WHERE entity_id = :entity_id
+                            ) AS s
+                            ON e.target_record_id = s.record_id
+                    ) as subq
+                WHERE "entity_{0}".record_id = subq.record_id
+                '''.format(sess.id))
+            engine.execute(update_existing, entity_id=entity_id, clustered=True)
+            delete = entity_table.delete()\
+                .where(entity_table.c.entity_id == entity_id)
+            engine.execute(delete)
+            #training_data['distinct'].append(pairs)
+       #sess.training_data = json.dumps(training_data)
+       #db_session.add(sess)
+       #db_session.commit()
         r = {
             'session_id': session_id, 
             'entity_id': entity_id, 

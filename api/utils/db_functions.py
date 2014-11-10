@@ -88,7 +88,7 @@ def initializeEntityMap(session_id, fields):
             entity_id, 
             100.0,
             'raw_%s' % session_id,
-            'FALSE',
+            'TRUE',
             'FALSE',
         ])
         for member in members:
@@ -97,7 +97,7 @@ def initializeEntityMap(session_id, fields):
                 king,
                 entity_id,
                 100.0,
-                'exact match',
+                'raw_%s' % session_id,
                 'TRUE',
                 'FALSE',
             ])
@@ -118,57 +118,69 @@ def initializeEntityMap(session_id, fields):
     conn.commit()
 
 
-def writeEntityMap(clustered_dupes, session_id):
+def updateEntityMap(clustered_dupes, session_id):
     """ 
-    Write entity map table the first time (after training)
+    Add to entity map table after training
     """
     engine = worker_session.bind
     metadata = MetaData()
-    entity_table = entity_map('entity_%s' % session_id, metadata)
-    entity_table.create(engine, checkfirst=True)
-    with open('/tmp/%s.csv' % session_id, 'wb') as s:
-        writer = UnicodeCSVWriter(s)
-        for cluster, score in clustered_dupes:
-            # leaving out low confidence clusters
-            # This is a non-scientificly proven threshold
-            if score > 0.2:
-                entity_id = unicode(uuid4())
-                king, members = cluster[0], cluster[1:]
-                writer.writerow([
-                    king, 
-                    None, 
-                    entity_id, 
-                    score, 
-                    'raw_%s' % session_id,
-                    'FALSE',
-                    'FALSE',
-                ])
-                for record_id in members:
-                    writer.writerow([
-                        record_id, 
-                        king, 
-                        entity_id, 
-                        score, 
-                        'raw_%s' % session_id,
-                        'FALSE',
-                        'FALSE',
-                    ])
-    conn = engine.raw_connection()
-    cur = conn.cursor()
-    with open('/tmp/%s.csv' % session_id, 'rb') as s:
-        cur.copy_expert('''
-            COPY "entity_%s" (
-                record_id, 
-                entity_id, 
-                confidence,
-                source,
-                clustered,
-                checked_out
-            ) 
-            FROM STDIN CSV''' % session_id, s)
-    conn.commit()
-    
-    os.remove('/tmp/%s.csv' % session_id)
+    entity = Table('entity_%s' % session_id, metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+    for cluster_ids, score in clustered_dupes:
+        # leaving out low confidence clusters
+        # This is a non-scientificly proven threshold
+        if score > 0.2:
+            ids = cluster_ids.split(';')
+            new_ent = unicode(uuid4())
+            existing = worker_session.query(entity.c.record_id)\
+                .filter(entity.c.record_id.in_(ids))\
+                .all()
+            if existing:
+                existing_ids = [unicode(i[0]) for i in existing]
+                new_ids = list(set(ids).difference(set(existing_ids)))
+                upd = {
+                    'entity_id': new_ent,
+                    'clustered': False,
+                    'confidence': score,
+                }
+                engine.execute(entity.update()\
+                    .where(entity.c.record_id.in_(existing_ids))\
+                    .values(**upd))
+                if new_ids:
+                    king = existing_ids[0]
+                    vals = []
+                    for i in new_ids:
+                        d = {
+                            'entity_id': new_ent,
+                            'record_id': i,
+                            'target_record_id': king,
+                            'clustered': False,
+                            'checked_out': False,
+                            'confidence': score
+                        }
+                        vals.append(d)
+                    engine.execute(entity.insert(), vals)
+            else:
+                king = ids.pop(0)
+                vals = [{
+                    'entity_id': new_ent,
+                    'record_id': king,
+                    'target_record_id': None,
+                    'clustered': False,
+                    'checked_out': False,
+                    'confidence': score
+                }]
+                for i in ids:
+                    d = {
+                        'entity_id': new_ent,
+                        'record_id': i,
+                        'target_record_id': king,
+                        'clustered': False,
+                        'checked_out': False,
+                        'confidence': score
+                    }
+                    vals.append(d)
+                engine.execute(entity.insert(), vals)
 
     dd = worker_session.query(DedupeSession).get(session_id)
     fields = [f['field'] for f in json.loads(dd.field_defs)]
