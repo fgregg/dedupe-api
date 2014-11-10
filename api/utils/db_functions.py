@@ -126,11 +126,10 @@ def updateEntityMap(clustered_dupes, session_id):
     metadata = MetaData()
     entity = Table('entity_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    for cluster_ids, score in clustered_dupes:
+    for ids, score in clustered_dupes:
         # leaving out low confidence clusters
         # This is a non-scientificly proven threshold
         if score > 0.2:
-            ids = cluster_ids.split(';')
             new_ent = unicode(uuid4())
             existing = worker_session.query(entity.c.record_id)\
                 .filter(entity.c.record_id.in_(ids))\
@@ -141,7 +140,7 @@ def updateEntityMap(clustered_dupes, session_id):
                 upd = {
                     'entity_id': new_ent,
                     'clustered': False,
-                    'confidence': score,
+                    'confidence': float(score),
                 }
                 engine.execute(entity.update()\
                     .where(entity.c.record_id.in_(existing_ids))\
@@ -156,7 +155,7 @@ def updateEntityMap(clustered_dupes, session_id):
                             'target_record_id': king,
                             'clustered': False,
                             'checked_out': False,
-                            'confidence': score
+                            'confidence': float(score),
                         }
                         vals.append(d)
                     engine.execute(entity.insert(), vals)
@@ -168,7 +167,7 @@ def updateEntityMap(clustered_dupes, session_id):
                     'target_record_id': None,
                     'clustered': False,
                     'checked_out': False,
-                    'confidence': score
+                    'confidence': float(score),
                 }]
                 for i in ids:
                     d = {
@@ -195,8 +194,8 @@ def updateEntityMap(clustered_dupes, session_id):
         upd += 'AS source_hash, record_id FROM "raw_%s") AS s \
             WHERE "entity_%s".record_id=s.record_id' % (session_id, session_id)
     engine.execute(upd)
-    review_count = worker_session.query(distinct(entity_table.c.entity_id))\
-        .filter(entity_table.c.clustered == False)\
+    review_count = worker_session.query(distinct(entity.c.entity_id))\
+        .filter(entity.c.clustered == False)\
         .count()
     return review_count
 

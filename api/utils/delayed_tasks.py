@@ -95,14 +95,14 @@ def trainBlockCluster(session_id):
         autoload=True, autoload_with=engine, keep_existing=True)
     proc = Table('processed_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    entity = Table('entity_%s' % sess.id, metadata,
+    entity = Table('entity_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     rows = worker_session.query(small_cov, proc_table)\
         .join(proc_table, small_cov.c.record_id == proc_table.c.record_id)\
         .join(entity, small_cov.c.record_id == entity.c.record_id)\
         .filter(entity.c.target_record_id == None)
     fields = small_cov.columns.keys() + proc.columns.keys()
-    clustered_dupes = d.matchBlocks(
+    clustered_dupes = deduper.matchBlocks(
         clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
         threshold=0.75
     )

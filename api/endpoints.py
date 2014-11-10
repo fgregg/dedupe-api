@@ -275,6 +275,7 @@ def review():
     }
     status_code = 200
     sess_id = request.args.get('session_id')
+    all_sessions = []
     if not sess_id:
         sessions = db_session.query(DedupeSession)\
             .filter(DedupeSession.id.in_(user_sessions))\
