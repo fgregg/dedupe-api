@@ -431,27 +431,12 @@ def mark_cluster(session_id):
         resp['message'] = "You don't have access to session '%s'" % session_id
         status_code = 401
     else:
-        entity_table = Table('entity_%s' % session_id, Base.metadata,
+        entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
-        raw_table = Table('raw_%s' % session_id, Base.metadata,
+        raw_table = Table('raw_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
         entity_id = request.args.get('entity_id')
         action = request.args.get('action')
-       #canon_table = Table('canon_%s' % session_id, Base.metadata,
-       #    autoload=True, autoload_with=engine)
-       #canon_ids = db_session.query(canon_table.c.canon_record_id.distinct())\
-       #    .join(entity_table, canon_table.c.canon_record_id == entity_table.c.canon_record_id)\
-       #    .filter(entity_table.c.entity_id == entity_id)\
-       #    .subquery()
-       #canons = db_session.query(canon_table)\
-       #    .filter(canon_table.c.canon_record_id.in_(canon_ids))\
-       #    .all()
-       #fields = [c for c in canon_table.columns.keys() if c != 'canon_record_id']
-       #print canons
-       #first = {k:v for k,v in zip(fields, canons[0])}
-       #pairs = []
-       #for canon in canons[1:]:
-       #    pairs.append([first, {k:v for k,v in zip(fields, canon)}])
         training_data = json.loads(sess.training_data)
         if action == 'yes':
             upd = entity_table.update()\

@@ -5,13 +5,14 @@ import time
 from cStringIO import StringIO
 from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
-from api.models import DedupeSession, User
+from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
     makeSampleDict, windowed_query
-from api.utils.db_functions import makeCanonTable, updateEntityMap, \
-    rewriteEntityMap, writeBlockingMap, writeRawTable, initializeEntityMap
-from sqlalchemy import Table, MetaData
+from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
+    writeRawTable, initializeEntityMap
+from sqlalchemy import Table, MetaData, Column, String, func
+from sqlalchemy.sql import label
 from itertools import groupby
 from operator import itemgetter
 from csvkit import convert
@@ -58,7 +59,7 @@ def initializeSession(session_id, filename):
             break
     return 'woo'
 
-def trainBlockCluster(session_id):
+def trainDedupe(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     data_sample = cPickle.loads(dd_session.sample)
@@ -74,9 +75,15 @@ def trainBlockCluster(session_id):
     worker_session.commit()
     deduper.cleanupTraining()
 
+def blockDedupe(session_id, table_name=None, primary_key='record_id'):
+    if not table_name:
+        table_name = 'processed_{0}'.format(session_id)
+    dd_session = worker_session.query(DedupeSession)\
+        .get(session_id)
+    deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
     engine = worker_session.bind
     metadata = MetaData()
-    proc_table = Table('processed_%s' % session_id, metadata,
+    proc_table = Table(table_name, metadata,
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
         fd = worker_session.query(proc_table.c.record_id, 
@@ -86,19 +93,27 @@ def trainBlockCluster(session_id):
         del field_data
     proc_records = worker_session.query(proc_table)
     fields = proc_table.columns.keys()
-    full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
+    full_data = ((getattr(row, primary_key), dict(zip(fields, row))) \
         for row in proc_records.yield_per(50000))
-    blocked_data = deduper.blocker(full_data)
-    writeBlockingMap(session_id, blocked_data)
-    
+    block_gen = deduper.blocker(full_data)
+    return block_gen
+
+def clusterDedupe(session_id, canonical=False):
+    dd_session = worker_session.query(DedupeSession)\
+        .get(session_id)
+    deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
+    engine = worker_session.bind
+    metadata = MetaData()
+    if canonical:
+        session_id = '{0}_cr'.format(session_id)
     small_cov = Table('small_cov_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     proc = Table('processed_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     entity = Table('entity_%s' % session_id, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    rows = worker_session.query(small_cov, proc_table)\
-        .join(proc_table, small_cov.c.record_id == proc_table.c.record_id)\
+    rows = worker_session.query(small_cov, proc)\
+        .join(proc, small_cov.c.record_id == proc.c.record_id)\
         .join(entity, small_cov.c.record_id == entity.c.record_id)\
         .filter(entity.c.target_record_id == None)
     fields = small_cov.columns.keys() + proc.columns.keys()
@@ -106,29 +121,84 @@ def trainBlockCluster(session_id):
         clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
         threshold=0.75
     )
-    dd_session.status = 'entity map created'
-    worker_session.add(dd_session)
-    worker_session.commit()
     return clustered_dupes
 
 @queuefunc
 def dedupeRaw(session_id):
-    clustered_dupes = trainBlockCluster(session_id)
-    makeCanonTable(session_id)
+    dd_session = worker_session.query(DedupeSession)\
+        .get(session_id)
+    trainDedupe(session_id)
+    block_gen = blockDedupe(session_id)
+    writeBlockingMap(session_id, block_gen)
+    clustered_dupes = clusterDedupe(session_id)
     review_count = updateEntityMap(clustered_dupes, session_id)
+    dd_session.status = 'entity map created'
+    worker_session.add(dd_session)
+    worker_session.commit()
     return 'ok'
 
 @queuefunc
 def dedupeCanon(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
-    deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
-    data_d = makeDataDict(dd_session.id, 
-        worker=True, table_name='canon_%s' % session_id)
-    deduper.sample(data_d, sample_size=5000, blocked_proportion=1)
-    sample = deduper.data_sample
-    clustered_dupes = runDedupe(dd_session, deduper, data_d)
-    review_count = rewriteEntityMap(clustered_dupes, session_id, data_d)
+    engine = worker_session.bind
+    metadata = MetaData()
+    entity = Table('entity_{0}'.format(session_id), metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+    proc_table = Table('processed_{0}'.format(session_id), metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+
+    cr_cols = [Column('entity_id', String, primary_key=True)]
+    for col in proc_table.columns:
+        cr_cols.append(Column(col.name, col.type))
+    cr = Table('cr_{0}'.format(session_id), metadata, *cr_cols)
+    cr.create(bind=engine, checkfirst=True)
+
+    cols = [entity.c.entity_id]
+    col_names = [c for c in proc_table.columns.keys() if c != 'record_id']
+    for name in col_names:
+        cols.append(label(name, func.array_agg(getattr(proc_table.c, name))))
+    rows = worker_session.query(*cols)\
+        .filter(entity.c.record_id == proc_table.c.record_id)\
+        .group_by(entity.c.entity_id)
+    names = cr.columns.keys()
+    with open('/tmp/cr_{0}.csv'.format(session_id), 'wb') as f:
+        writer = UnicodeCSVWriter(f)
+        writer.writerow(names)
+        for row in rows:
+            r = [row.entity_id]
+            dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
+            for idx, dct in enumerate(dicts):
+                for name in col_names:
+                    dicts[idx][name] = getattr(row, name)[idx]
+            canon_form = dedupe.canonicalize(dicts)
+            r = [canon_form[k] for k in names if canon_form.get(k) is not None]
+            writer.writerow(r)
+    copy_st = 'COPY "cr_{0}" ('.format(session_id)
+    for idx, name in enumerate(names):
+        if idx < len(names) - 1:
+            copy_st += '"{0}", '.format(name)
+        else:
+            copy_st += '"{0}")'.format(name)
+    else:
+        copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',')"
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    with open('/tmp/cr_{0}.csv'.format(session_id), 'rb') as f:
+        cur.copy_expert(copy_st, f)
+    conn.commit()
+    canon_table_name = 'cr_{0}'.format(session_id)
+    entity_table_name = 'entity_{0}_cr'.format(session_id)
+    block_gen = blockDedupe(session_id, 
+        table_name=canon_table_name, 
+        primary_key='entity_id')
+    clustered_dupes = clusterDedupe(session_id, canonical=True)
+    entity_table = entity_map(entity_table_name, metadata)
+    entity_table.create(bind=engine)
+    cluster_count = updateEntityMap(clustered_dupes,
+        session_id, 
+        raw_table=table_name, 
+        entity_table=entity_table_name)
     return 'ok'
 
 @queuefunc

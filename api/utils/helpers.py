@@ -1,11 +1,14 @@
 import re
-import dedupe
+import os
 from dedupe.core import frozendict
+from dedupe import canonicalize
 from api.database import app_session, worker_session
-from sqlalchemy import Table, MetaData, distinct, and_, func
+from sqlalchemy import Table, MetaData, distinct, and_, func, Column
 from unidecode import unidecode
 from unicodedata import normalize
 from itertools import count
+from csvkit.unicsv import UnicodeCSVDictWriter
+from csv import QUOTE_ALL
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
@@ -101,7 +104,7 @@ def makeSampleDict(session_id, fields):
         .outerjoin(entity_table, 
             proc_table.c.record_id == entity_table.c.record_id)\
         .filter(entity_table.c.target_record_id == None)
-    result = dict((i, dedupe.frozendict(zip(fields, row))) 
+    result = dict((i, frozendict(zip(fields, row))) 
                             for i, row in enumerate(curs))
     return result
 
@@ -121,7 +124,7 @@ def makeDataDict(session_id, fields=None):
     cols.append(getattr(table.c, primary_key))
     curs = session.query(*cols)
     for row in curs:
-        result[int(getattr(row, primary_key))] = dedupe.frozendict(zip(fields, row))
+        result[int(getattr(row, primary_key))] = frozendict(zip(fields, row))
     return result
 
 def getDistinct(field_name, session_id):

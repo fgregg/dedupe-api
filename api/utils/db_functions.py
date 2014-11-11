@@ -118,13 +118,17 @@ def initializeEntityMap(session_id, fields):
     conn.commit()
 
 
-def updateEntityMap(clustered_dupes, session_id):
+def updateEntityMap(clustered_dupes, session_id, raw_table=None, entity_table=None):
     """ 
     Add to entity map table after training
     """
     engine = worker_session.bind
     metadata = MetaData()
-    entity = Table('entity_%s' % session_id, metadata,
+    if not entity_table:
+        entity_table = 'entity_{0}'.format(session_id)
+    if not raw_table:
+        raw_table = 'raw_{0}'.format(session_id)
+    entity = Table(entity_table, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     for ids, score in clustered_dupes:
         # leaving out low confidence clusters
@@ -183,128 +187,80 @@ def updateEntityMap(clustered_dupes, session_id):
 
     dd = worker_session.query(DedupeSession).get(session_id)
     fields = [f['field'] for f in json.loads(dd.field_defs)]
-    upd = 'UPDATE "entity_%s" SET source_hash=s.source_hash \
-        FROM (SELECT MD5(CONCAT(' % session_id
+    upd = 'UPDATE "{0}" SET source_hash=s.source_hash \
+        FROM (SELECT MD5(CONCAT('.format(entity_table)
     for idx, field in enumerate(fields):
         if idx < len(fields) - 1:
-            upd += '%s,' % field
+            upd += '{0},'.format(field)
         else:
-            upd += '%s))' % field
+            upd += '{0}))'.format(field)
     else:
-        upd += 'AS source_hash, record_id FROM "raw_%s") AS s \
-            WHERE "entity_%s".record_id=s.record_id' % (session_id, session_id)
+        upd += 'AS source_hash, record_id FROM "{0}") AS s \
+            WHERE "{0}".record_id=s.record_id'.format(raw_table, entity_table)
     engine.execute(upd)
     review_count = worker_session.query(distinct(entity.c.entity_id))\
         .filter(entity.c.clustered == False)\
         .count()
     return review_count
 
-def rewriteEntityMap(clustered_dupes, session_id, data_d):
-    sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs)
-    model_fields = [f['field'] for f in field_defs]
-    engine = worker_session.bind
-    metadata = MetaData()
-    entity_table = Table('entity_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine)
-    canon_table = Table('canon_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine)
-    raw_table = Table('raw_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine)
-    for cluster in clustered_dupes:
-        id_set, confidence_score = cluster
-        members = worker_session.query(raw_table.c.record_id, entity_table.c.entity_id)\
-            .join(entity_table, raw_table.c.record_id == entity_table.c.record_id)\
-            .join(canon_table, entity_table.c.entity_id == canon_table.c.entity_id)\
-            .filter(canon_table.c.canon_record_id.in_(id_set))\
-            .all()
-        entity_id = members[0][1]
-        for member in members:
-            upd = entity_table.update()\
-                .where(entity_table.c.record_id == member[0])\
-                .values(entity_id=entity_id, clustered=False, 
-                    former_entity_id=member[1])
-            engine.execute(upd)
-    review_count = worker_session.query(entity_table.c.entity_id)\
-        .filter(entity_table.c.clustered == False)\
-        .count()
-    return review_count
+# def rewriteEntityMap(clustered_dupes, session_id, data_d):
+#     sess = worker_session.query(DedupeSession).get(session_id)
+#     field_defs = json.loads(sess.field_defs)
+#     model_fields = [f['field'] for f in field_defs]
+#     engine = worker_session.bind
+#     metadata = MetaData()
+#     entity_table = Table('entity_%s' % session_id, metadata,
+#         autoload=True, autoload_with=engine)
+#     canon_table = Table('canon_%s' % session_id, metadata,
+#         autoload=True, autoload_with=engine)
+#     raw_table = Table('raw_%s' % session_id, metadata,
+#         autoload=True, autoload_with=engine)
+#     for cluster in clustered_dupes:
+#         id_set, confidence_score = cluster
+#         members = worker_session.query(raw_table.c.record_id, entity_table.c.entity_id)\
+#             .join(entity_table, raw_table.c.record_id == entity_table.c.record_id)\
+#             .join(canon_table, entity_table.c.entity_id == canon_table.c.entity_id)\
+#             .filter(canon_table.c.canon_record_id.in_(id_set))\
+#             .all()
+#         entity_id = members[0][1]
+#         for member in members:
+#             upd = entity_table.update()\
+#                 .where(entity_table.c.record_id == member[0])\
+#                 .values(entity_id=entity_id, clustered=False, 
+#                     former_entity_id=member[1])
+#             engine.execute(upd)
+#     review_count = worker_session.query(entity_table.c.entity_id)\
+#         .filter(entity_table.c.clustered == False)\
+#         .count()
+#     return review_count
 
-
-def canonicalizeEntity(session_id, entity_id):
-    engine = worker_session.bind
-    metadata = MetaData()
-    entity_table = Table('entity_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-    raw_table = Table('raw_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-    raw_rows = worker_session.query(raw_table, entity_table.c.canon_record_id)\
-        .join(entity_table, raw_table.c.record_id == entity_table.c.record_id)\
-        .filter(entity_table.c.entity_id == entity_id)\
-        .all()
-    raw_fields = [c for c in raw_table.columns.keys()]
-    rows_d = []
-    for row in raw_rows:
-        d = {}
-        for k,v in zip(raw_fields, row[:-1]):
-            if k != 'record_id':
-                d[k] = preProcess(unicode(v))
-        rows_d.append(d)
-    canonical_form = dedupe.canonicalize(rows_d)
-    canonical_form['entity_id'] = entity_id
-    canon_table = Table('canon_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-    canon_row = engine.execute(canon_table.insert(), canonical_form)
-    upd = entity_table.update()\
-        .where(entity_table.c.entity_id == entity_id)\
-        .values(canon_record_id=canon_row.inserted_primary_key[0])
-    engine.execute(upd)
-
-def makeCanonTable(session_id):
-    engine = worker_session.bind
-    metadata = MetaData()
-    raw_table = Table('raw_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine)
-    cols = []
-    for col in raw_table.columns:
-        if col.name != 'record_id':
-            kwargs = {}
-            if col.type == Integer:
-                kwargs['default'] = 0
-            if col.type == Float:
-                kwargs['default'] = 0.0
-            if col.type == Boolean:
-                kwargs['default'] = None
-            cols.append(Column(col.name, col.type, **kwargs))
-    canon_table = Table('canon_%s' % session_id, metadata,
-        *cols, extend_existing=True)
-    canon_table.append_column(Column('canon_record_id', Integer, primary_key=True))
-    canon_table.append_column(Column('entity_id', String))
-    canon_table.create(engine, checkfirst=True)
-
-def writeBlockingMap(session_id, block_data):
+def writeBlockingMap(session_id, block_data, canonical=False):
+    pk_type = Integer
+    if canonical:
+        session_id = '{0}_cr'.format(session_id)
+        pk_type = String
     metadata = MetaData()
     engine = worker_session.bind
-    bkm = Table('block_%s' % session_id, metadata,
+    bkm = Table('block_{0}'.format(session_id), metadata,
         Column('block_key', Text),
-        Column('record_id', Integer)
+        Column('record_id', pk_type)
     )
     bkm.create(engine, checkfirst=True)
-    with open('/tmp/%s.csv' % session_id, 'wb') as s:
+    with open('/tmp/{0}.csv'.format(session_id), 'wb') as s:
         writer = UnicodeCSVWriter(s)
         writer.writerows(block_data)
     conn = engine.raw_connection()
     cur = conn.cursor()
-    with open('/tmp/%s.csv' % session_id, 'rb') as s:
-        cur.copy_expert('COPY "block_%s" FROM STDIN CSV' % session_id, s)
+    with open('/tmp/{0}.csv'.format(session_id), 'rb') as s:
+        cur.copy_expert('COPY "block_{0}" FROM STDIN CSV'.format(session_id), s)
     conn.commit()
     
-    os.remove('/tmp/%s.csv' % session_id)
+    os.remove('/tmp/{0}.csv'.format(session_id))
 
-    block_key_idx = Index('bk_%s_idx' % session_id, bkm.c.block_key)
+    block_key_idx = Index('bk_{0}_idx'.format(session_id), bkm.c.block_key)
     block_key_idx.create(engine)
 
-    plural_key = Table('plural_key_%s' % session_id, metadata,
+    plural_key = Table('plural_key_{0}'.format(session_id), metadata,
         Column('block_key', Text),
         Column('block_id', Integer, primary_key=True)
     )
@@ -316,60 +272,60 @@ def writeBlockingMap(session_id, block_data):
         .from_select([plural_key.c.block_key], bkm_sel)
     engine.execute(pl_ins)
     
-    pl_key_idx = Index('pk_%s_idx' % session_id, plural_key.c.block_key)
+    pl_key_idx = Index('pk_{0}_idx'.format(session_id), plural_key.c.block_key)
     pl_key_idx.create(engine)
 
     pl_bk_stmt = '''
-        CREATE TABLE "plural_block_%s" AS (
+        CREATE TABLE "plural_block_{0}" AS (
             SELECT p.block_id, b.record_id 
-                FROM "block_%s" AS b
-                INNER JOIN "plural_key_%s" AS p
+                FROM "block_{0}" AS b
+                INNER JOIN "plural_key_{0}" AS p
                 USING (block_key)
-            )''' % (session_id, session_id, session_id)
+            )'''.format(session_id)
     engine.execute(pl_bk_stmt)
     engine.execute('''
-        CREATE INDEX "pl_bk_idx_%s" 
-        ON "plural_block_%s" (record_id)''' % (session_id, session_id)
+        CREATE INDEX "pl_bk_idx_{0}" 
+        ON "plural_block_{0}" (record_id)'''.format(session_id)
     )
     engine.execute(''' 
-        CREATE UNIQUE INDEX "pl_bk_id_idx_%s" on "plural_block_%s" 
-        (block_id, record_id) ''' % (session_id, session_id)
+        CREATE UNIQUE INDEX "pl_bk_id_idx_{0}" on "plural_block_{0}" 
+        (block_id, record_id) '''.format(session_id)
     )
 
     cov_bks_stmt = ''' 
-        CREATE TABLE "covered_%s" AS (
+        CREATE TABLE "covered_{0}" AS (
             SELECT record_id, 
             string_agg(CAST(block_id AS TEXT), ',' ORDER BY block_id) 
                 AS sorted_ids
-            FROM "plural_block_%s"
+            FROM "plural_block_{0}"
             GROUP BY record_id
         )
-    ''' % (session_id, session_id)
+    '''.format(session_id)
     engine.execute(cov_bks_stmt)
     engine.execute(''' 
-        CREATE UNIQUE INDEX "cov_bks_id_idx_%s" ON "covered_%s" (record_id)
-        ''' % (session_id, session_id)
+        CREATE UNIQUE INDEX "cov_bks_id_idx_{0}" ON "covered_{0}" (record_id)
+        '''.format(session_id)
     )
 
     small_cov = ''' 
-        CREATE TABLE "small_cov_%s" AS (
+        CREATE TABLE "small_cov_{0}" AS (
             SELECT record_id, 
                    block_id,
                    TRIM(',' FROM split_part(sorted_ids, CAST(block_id AS TEXT), 1))
                        AS smaller_ids
-            FROM "plural_block_%s"
-            INNER JOIN "covered_%s"
+            FROM "plural_block_{0}"
+            INNER JOIN "covered_{0}"
             USING (record_id)
         )
-    ''' % (session_id, session_id, session_id)
+    '''.format(session_id)
     engine.execute(small_cov)
     engine.execute('''
-        CREATE INDEX "sc_idx_%s" 
-        ON "small_cov_%s" (record_id)''' % (session_id, session_id)
+        CREATE INDEX "sc_idx_{0}" 
+        ON "small_cov_{0}" (record_id)'''.format(session_id)
     )
     engine.execute('''
-        CREATE INDEX "sc_bk_idx_%s" 
-        ON "small_cov_%s" (block_id)''' % (session_id, session_id)
+        CREATE INDEX "sc_bk_idx_{0}" 
+        ON "small_cov_{0}" (block_id)'''.format(session_id)
     )
 
 
