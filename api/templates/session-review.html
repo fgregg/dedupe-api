@@ -3,21 +3,33 @@
 {% block content %}
     <div class="row">
       <div class="col-md-12">
-          <div id="counter"></div>
-          <table class="table" id="group-display">
-              <thead></thead>
-              <tbody></tbody>
-          </table>
-          <div id="review-buttons">
-              <h4>Does the cluster above refer to the same entity? <span id="confidence"></span></h4>
-              <button class="btn btn-success mark-entity" id="yes">
-                  <i class='icon-ok'></i>
-                  Yes
-              </button>
-              <button class="btn btn-danger mark-entity" id="no">
-                  <i class='icon-remove'></i>
-                  No
-              </button>
+          <div class="row">
+              <div id="counter" class="col-md-9"></div>
+              <div class="col-md-3">
+                  <button class="btn btn-danger accept-all">
+                      <i class='icon-ok'></i>
+                      Accept the rest
+                  </button>
+              </div>
+          </div>
+          <div class="row">
+              <div class="col-md-12">
+                  <table class="table" id="group-display">
+                      <thead></thead>
+                      <tbody></tbody>
+                  </table>
+                  <div id="review-buttons">
+                      <h4>Does the cluster above refer to the same entity? <span id="confidence"></span></h4>
+                      <button class="btn btn-success mark-entity" id="yes">
+                          <i class='icon-ok'></i>
+                          Yes
+                      </button>
+                      <button class="btn btn-danger mark-entity" id="no">
+                          <i class='icon-remove'></i>
+                          No
+                      </button>
+                  </div>
+              </div>
           </div>
       </div>
     </div>
@@ -34,6 +46,14 @@
             var action = $(this).attr('id').split('_')[0];
             $.getJSON('/mark-cluster/{{session_id}}/', {'entity_id': entity_id, 'action': action}, function(resp){
                 get_cluster();
+            })
+        })
+        $('.accept-all').on('click', function(e){
+            e.preventDefault();
+            $.getJSON('/mark-all-clusters/{{session_id}}', {'action': 'yes'}, function(resp){
+                $('#group-display').html("<h3>" + resp['message'] + "</h3>")
+                $('#review-buttons').hide()
+                $('#counter').parent().hide()
             })
         })
     });
@@ -66,6 +86,7 @@
             } else {
                 $('#group-display').html("<h3>You're done!</h3>")
                 $('#review-buttons').hide()
+                $('#counter').parent().hide()
             }
         })
     }

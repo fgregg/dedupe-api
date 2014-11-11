@@ -383,19 +383,28 @@ def mark_all_clusters(session_id):
         'message': ''
     }
     status_code = 200
-    api_key = request.args.get('api_key')
-    if not api_key:
-        api_key = flask_session['user_id']
-    user = db_session.query(User).get(api_key)
-    sess = db_session.query(DedupeSession)\
-        .filter(DedupeSession.group.has(
-            Group.id.in_([i.id for i in user.groups])))\
-        .filter(DedupeSession.id == session_id)\
-        .first()
-    if not sess:
+    if session_id not in flask_session['user_sessions']:
         resp['status'] = 'error'
         resp['message'] = "You don't have access to session '%s'" % session_id
         status_code = 401
+    else:
+        entity_table = Table('entity_%s' % session_id, Base.metadata,
+            autoload=True, autoload_with=engine)
+        upd = entity_table.update()\
+            .returning(entity_table.c.entity_id)\
+            .where(entity_table.c.clustered == False)\
+            .values(checked_out=False, clustered=True)
+        entities = engine.execute(upd)
+        count = len(set([c.entity_id for c in entities]))
+        resp['message'] = 'Marked {0} entities as clusters'.format(count)
+        sess = db_session.query(DedupeSession).get(session_id)
+        if sess.status == 'first pass review complete':
+            sess.status = 'review complete'
+        else:
+            sess.status = 'first pass review complete'
+            # dedupeCanon.delay(sess.id)
+        db_session.add(sess)
+        db_session.commit()
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
