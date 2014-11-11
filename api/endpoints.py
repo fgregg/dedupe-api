@@ -189,7 +189,7 @@ def training_data(session_id):
         training_data = data.training_data
         resp = make_response(training_data, 200)
         resp.headers['Content-Type'] = 'text/plain'
-        resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.uuid
+        resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.id
     return resp
 
 @endpoints.route('/settings-file/<session_id>/')
@@ -325,21 +325,19 @@ def get_cluster(session_id):
        #review_remainder = db_session.query(entity_table.c.entity_id.distinct())\
        #    .filter(entity_table.c.clustered == False)\
        #    .count()
-        total_clusters = 100
-        review_remainder = 100
         cluster_list = []
-        if review_remainder > 0:
-            field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-            raw_table = Table('raw_%s' % sess.id, Base.metadata, 
-                autoload=True, autoload_with=engine, keep_existing=True)
-            entity_fields = ['record_id', 'entity_id', 'confidence']
-            entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
-            subq = db_session.query(entity_table.c.entity_id)\
-                .filter(entity_table.c.checked_out == False)\
-                .filter(entity_table.c.clustered == False)\
-                .order_by(entity_table.c.confidence).limit(1).subquery()
-            cluster = db_session.query(*entity_cols)\
-                .filter(entity_table.c.entity_id.in_(subq)).all()
+        field_defs = [f['field'] for f in json.loads(sess.field_defs)]
+        raw_table = Table('raw_%s' % sess.id, Base.metadata, 
+            autoload=True, autoload_with=engine, keep_existing=True)
+        entity_fields = ['record_id', 'entity_id', 'confidence']
+        entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
+        subq = db_session.query(entity_table.c.entity_id)\
+            .filter(entity_table.c.checked_out == False)\
+            .filter(entity_table.c.clustered == False)\
+            .order_by(entity_table.c.confidence).limit(1).subquery()
+        cluster = db_session.query(*entity_cols)\
+            .filter(entity_table.c.entity_id.in_(subq)).all()
+        if cluster:
             raw_ids = [c[0] for c in cluster]
             raw_cols = [getattr(raw_table.c, f) for f in field_defs]
             primary_key = [p.name for p in raw_table.primary_key][0]
@@ -365,12 +363,14 @@ def get_cluster(session_id):
                 sess.status = 'review complete'
             else:
                 sess.status = 'first pass review complete'
-                dedupeCanon.delay(sess.id)
+                # dedupeCanon.delay(sess.id)
             db_session.add(sess)
             db_session.commit()
         resp['objects'] = cluster_list
-        resp['total_clusters'] = total_clusters
-        resp['review_remainder'] = review_remainder
+        resp['total_clusters'] = 100
+        resp['review_remainder'] = 100
+       #resp['total_clusters'] = total_clusters
+       #resp['review_remainder'] = review_remainder
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
