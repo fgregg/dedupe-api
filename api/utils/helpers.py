@@ -1,14 +1,59 @@
 import re
 import os
+import json
 from dedupe.core import frozendict
 from dedupe import canonicalize
-from api.database import app_session, worker_session
+from api.database import app_session, worker_session, Base, engine
+from api.models import DedupeSession
 from sqlalchemy import Table, MetaData, distinct, and_, func, Column
 from unidecode import unidecode
 from unicodedata import normalize
 from itertools import count
 from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
+from datetime import datetime, timedelta
+
+def getCluster(session_id, entity_table_name, raw_table_name):
+    sess = app_session.query(DedupeSession).get(session_id)
+    entity_table = Table(entity_table_name, Base.metadata,
+        autoload=True, autoload_with=engine)
+    total_clusters = app_session.query(entity_table.c.entity_id.distinct()).count()
+    review_remainder = app_session.query(entity_table.c.entity_id.distinct())\
+        .filter(entity_table.c.clustered == False)\
+        .count()
+    cluster_list = []
+    field_defs = [f['field'] for f in json.loads(sess.field_defs)]
+    raw_table = Table(raw_table_name, Base.metadata, 
+        autoload=True, autoload_with=engine, keep_existing=True)
+    entity_fields = ['record_id', 'entity_id', 'confidence']
+    entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
+    subq = app_session.query(entity_table.c.entity_id)\
+        .filter(entity_table.c.checked_out == False)\
+        .filter(entity_table.c.clustered == False)\
+        .order_by(entity_table.c.confidence).limit(1).subquery()
+    cluster = app_session.query(*entity_cols)\
+        .filter(entity_table.c.entity_id.in_(subq)).all()
+    if cluster:
+        raw_ids = [c[0] for c in cluster]
+        raw_cols = [getattr(raw_table.c, f) for f in field_defs]
+        primary_key = [p.name for p in raw_table.primary_key][0]
+        pk_col = getattr(raw_table.c, primary_key)
+        records = app_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
+        raw_fields = [f['name'] for f in records.column_descriptions]
+        records = records.all()
+        one_minute = datetime.now() + timedelta(minutes=1)
+        upd = entity_table.update()\
+            .where(entity_table.c.entity_id.in_(subq))\
+            .values(checked_out=True, checkout_expire=one_minute)
+        engine.execute(upd)
+        confidence = cluster[0][2]
+        entity_id = cluster[0][1]
+        for thing in records:
+            d = {}
+            for k,v in zip(raw_fields, thing):
+                d[k] = v
+            cluster_list.append(d)
+        return confidence, entity_id, cluster_list
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):

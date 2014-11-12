@@ -40,6 +40,9 @@
                     } else if (object.status == 'dataset uploaded'){
                         rows += '<td><a href="/select-fields/?session_id=' + object.id + '">Start training</a></td>';
                         $('#review-header').append('<th></th>');
+                    }  else if (object.status == 'canon clustered'){
+                        rows += '<td><a href="/session-review/' + object.id + '/?second_review=true">Second Review</a></td>';
+                        $('#review-header').append('<th></th>');
                     }
                     rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
                     rows += '</tr>';

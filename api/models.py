@@ -5,6 +5,7 @@ from api.database import Base, app_session as session
 from flask_bcrypt import Bcrypt
 from uuid import uuid4
 from datetime import datetime, timedelta
+import json
 
 bcrypt = Bcrypt()
 
@@ -59,7 +60,14 @@ class DedupeSession(Base):
         return '<DedupeSession %r >' % (self.name)
     
     def as_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        d = {
+            'id': self.id,
+            'name': self.name,
+            'status': self.status,
+        }
+        if self.field_defs:
+            d['field_defs'] = json.loads(self.field_defs)
+        return d
 
 roles_users = Table('role_users', Base.metadata,
     Column('user_id', String(36), ForeignKey('dedupe_user.id')),

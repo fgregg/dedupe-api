@@ -99,8 +99,14 @@ def user_list():
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
 def session_review(session_id):
+    first_review = True
+    if request.args.get('second_review'):
+        first_review = False
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('session-review.html', session_id=session_id, user=user)
+    return render_template('session-review.html', 
+                            session_id=session_id, 
+                            user=user, 
+                            first_review=first_review)
 
 @manager.route('/match-demo/<session_id>/')
 @login_required

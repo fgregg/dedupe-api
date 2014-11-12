@@ -8,7 +8,7 @@ from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
 from api.utils.delayed_tasks import retrain, bulkMatchWorker, dedupeCanon
-from api.utils.helpers import preProcess
+from api.utils.helpers import preProcess, getCluster
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -281,12 +281,11 @@ def review():
             .filter(DedupeSession.id.in_(user_sessions))\
             .all()
         for sess in sessions:
-            d = {
-                'name': sess.name,
-                'id': sess.id,
-                'status': sess.status,
-            }
-            all_sessions.append(d)
+            all_sessions.append(sess.as_dict())
+    else:
+        if sess_id in user_sessions:
+            sess = db_session.query(DedupeSession).get(sess_id)
+            all_sessions.append(sess.as_dict())
     resp['objects'] = all_sessions
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
@@ -318,47 +317,46 @@ def get_cluster(session_id):
         status_code = 401
     else:
         checkin_sessions()
-        sess = db_session.query(DedupeSession).get(session_id)
-        entity_table = Table('entity_%s' % session_id, Base.metadata,
-            autoload=True, autoload_with=engine)
-       #total_clusters = db_session.query(entity_table.c.entity_id.distinct()).count()
-       #review_remainder = db_session.query(entity_table.c.entity_id.distinct())\
-       #    .filter(entity_table.c.clustered == False)\
-       #    .count()
-        cluster_list = []
-        field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-        raw_table = Table('raw_%s' % sess.id, Base.metadata, 
-            autoload=True, autoload_with=engine, keep_existing=True)
-        entity_fields = ['record_id', 'entity_id', 'confidence']
-        entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
-        subq = db_session.query(entity_table.c.entity_id)\
-            .filter(entity_table.c.checked_out == False)\
-            .filter(entity_table.c.clustered == False)\
-            .order_by(entity_table.c.confidence).limit(1).subquery()
-        cluster = db_session.query(*entity_cols)\
-            .filter(entity_table.c.entity_id.in_(subq)).all()
+        cluster = getCluster(session_id, 
+                             'entity_{0}'.format(session_id), 
+                             'raw_{0}'.format(session_id))
         if cluster:
-            raw_ids = [c[0] for c in cluster]
-            raw_cols = [getattr(raw_table.c, f) for f in field_defs]
-            primary_key = [p.name for p in raw_table.primary_key][0]
-            pk_col = getattr(raw_table.c, primary_key)
-            records = db_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
-            raw_fields = [f['name'] for f in records.column_descriptions]
-            records = records.all()
-            one_minute = datetime.now() + timedelta(minutes=1)
-            upd = entity_table.update()\
-                .where(entity_table.c.entity_id.in_(subq))\
-                .values(checked_out=True, checkout_expire=one_minute)
-            engine.execute(upd)
-            resp['confidence'] = cluster[0][2]
-            resp['entity_id'] = cluster[0][1]
-            for thing in records:
-                d = {}
-                for k,v in zip(raw_fields, thing):
-                    d[k] = v
-                cluster_list.append(d)
+            resp['confidence'], resp['entity_id'], cluster_list = cluster
         else:
             sess.status = 'first pass review complete'
+            dedupeCanon.delay(sess.id)
+            db_session.add(sess)
+            db_session.commit()
+        resp['objects'] = cluster_list
+        resp['total_clusters'] = 100
+        resp['review_remainder'] = 100
+       #resp['total_clusters'] = total_clusters
+       #resp['review_remainder'] = review_remainder
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+@endpoints.route('/get-canon-review-cluster/<session_id>/')
+@check_sessions()
+def get_canon_cluster(session_id):
+    resp = {
+        'status': 'ok',
+        'message': ''
+    }
+    status_code = 200
+    if session_id not in flask_session['user_sessions']:
+        resp['status'] = 'error'
+        resp['message'] = "You don't have access to session '%s'" % session_id
+        status_code = 401
+    else:
+        checkin_sessions()
+        cluster = getCluster(session_id, 
+                             'entity_{0}_cr'.format(session_id), 
+                             'cr_{0}'.format(session_id))
+        if cluster:
+            resp['confidence'], resp['entity_id'], cluster_list = cluster
+        else:
+            sess.status = 'review complete'
             dedupeCanon.delay(sess.id)
             db_session.add(sess)
             db_session.commit()
@@ -384,6 +382,7 @@ def mark_all_clusters(session_id):
         resp['message'] = "You don't have access to session '%s'" % session_id
         status_code = 401
     else:
+        # Need to update existing clusters with new entity_id here, too.
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
         upd = entity_table.update()\

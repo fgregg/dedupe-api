@@ -214,6 +214,9 @@ def dedupeCanon(session_id):
         session_id, 
         raw_table=canon_table_name, 
         entity_table=entity_table_name)
+    dd_session.status = 'canon clustered'
+    worker_session.add(dd_session)
+    worker_session.commit()
     return 'ok'
 
 @queuefunc
