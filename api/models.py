@@ -12,12 +12,12 @@ from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
-def entity_map(name, metadata):
+def entity_map(name, metadata, record_id_type=BigInteger):
     table = Table(name, metadata, 
         Column('entity_id', String, index=True),
         Column('former_entity_id', String),
-        Column('record_id', BigInteger, index=True),
-        Column('target_record_id', BigInteger),
+        Column('record_id', record_id_type, index=True),
+        Column('target_record_id', record_id_type),
         Column('canon_record_id', Integer), 
         Column('confidence', Float(precision=50)),
         Column('source_hash', String(32)),

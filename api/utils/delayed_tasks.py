@@ -10,7 +10,7 @@ from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
     makeSampleDict, windowed_query
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
-    writeRawTable, initializeEntityMap
+    writeRawTable, initializeEntityMap, writeProcessedTable
 from sqlalchemy import Table, MetaData, Column, String, func
 from sqlalchemy.sql import label
 from itertools import groupby
@@ -75,7 +75,7 @@ def trainDedupe(session_id):
     worker_session.commit()
     deduper.cleanupTraining()
 
-def blockDedupe(session_id, table_name=None, primary_key='record_id'):
+def blockDedupe(session_id, table_name=None, canonical=False):
     if not table_name:
         table_name = 'processed_{0}'.format(session_id)
     dd_session = worker_session.query(DedupeSession)\
@@ -93,10 +93,10 @@ def blockDedupe(session_id, table_name=None, primary_key='record_id'):
         del field_data
     proc_records = worker_session.query(proc_table)
     fields = proc_table.columns.keys()
-    full_data = ((getattr(row, primary_key), dict(zip(fields, row))) \
+    full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records.yield_per(50000))
     block_gen = deduper.blocker(full_data)
-    return block_gen
+    writeBlockingMap(session_id, block_gen, canonical=canonical)
 
 def clusterDedupe(session_id, canonical=False):
     dd_session = worker_session.query(DedupeSession)\
@@ -104,17 +104,22 @@ def clusterDedupe(session_id, canonical=False):
     deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
     engine = worker_session.bind
     metadata = MetaData()
+    sc_format = 'small_cov_{0}'
+    ent_format = 'entity_{0}'
+    proc_format = 'processed_{0}'
     if canonical:
-        session_id = '{0}_cr'.format(session_id)
-    small_cov = Table('small_cov_%s' % session_id, metadata,
+        sc_format = 'small_cov_{0}_cr'
+        proc_format = 'cr_{0}'
+    small_cov = Table(sc_format.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    proc = Table('processed_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-    entity = Table('entity_%s' % session_id, metadata,
+    proc = Table(proc_format.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     rows = worker_session.query(small_cov, proc)\
-        .join(proc, small_cov.c.record_id == proc.c.record_id)\
-        .join(entity, small_cov.c.record_id == entity.c.record_id)\
+        .join(proc, small_cov.c.record_id == proc.c.record_id)
+    if not canonical:
+        entity = Table(ent_format.format(session_id), metadata,
+            autoload=True, autoload_with=engine, keep_existing=True)
+        rows = rows.join(entity, small_cov.c.record_id == entity.c.record_id)\
         .filter(entity.c.target_record_id == None)
     fields = small_cov.columns.keys() + proc.columns.keys()
     clustered_dupes = deduper.matchBlocks(
@@ -148,9 +153,10 @@ def dedupeCanon(session_id):
     proc_table = Table('processed_{0}'.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
 
-    cr_cols = [Column('entity_id', String, primary_key=True)]
+    cr_cols = [Column('record_id', String, primary_key=True)]
     for col in proc_table.columns:
-        cr_cols.append(Column(col.name, col.type))
+        if col.name != 'record_id':
+            cr_cols.append(Column(col.name, col.type))
     cr = Table('cr_{0}'.format(session_id), metadata, *cr_cols)
     cr.create(bind=engine, checkfirst=True)
 
@@ -172,9 +178,10 @@ def dedupeCanon(session_id):
                 for name in col_names:
                     dicts[idx][name] = getattr(row, name)[idx]
             canon_form = dedupe.canonicalize(dicts)
-            r = [canon_form[k] for k in names if canon_form.get(k) is not None]
+            r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])
             writer.writerow(r)
-    copy_st = 'COPY "cr_{0}" ('.format(session_id)
+    canon_table_name = 'cr_{0}'.format(session_id)
+    copy_st = 'COPY "{0}" ('.format(canon_table_name)
     for idx, name in enumerate(names):
         if idx < len(names) - 1:
             copy_st += '"{0}", '.format(name)
@@ -187,17 +194,19 @@ def dedupeCanon(session_id):
     with open('/tmp/cr_{0}.csv'.format(session_id), 'rb') as f:
         cur.copy_expert(copy_st, f)
     conn.commit()
-    canon_table_name = 'cr_{0}'.format(session_id)
+    writeProcessedTable(session_id, 
+                        proc_table_format='processed_{0}_cr', 
+                        raw_table_format='cr_{0}')
     entity_table_name = 'entity_{0}_cr'.format(session_id)
-    block_gen = blockDedupe(session_id, 
-        table_name=canon_table_name, 
-        primary_key='entity_id')
+    entity_table = entity_map(entity_table_name, metadata, record_id_type=String)
+    entity_table.create(bind=engine, checkfirst=True)
+    blockDedupe(session_id, 
+        table_name='processed_{0}_cr'.format(session_id), 
+        canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True)
-    entity_table = entity_map(entity_table_name, metadata)
-    entity_table.create(bind=engine)
     cluster_count = updateEntityMap(clustered_dupes,
         session_id, 
-        raw_table=table_name, 
+        raw_table=canon_table_name, 
         entity_table=entity_table_name)
     return 'ok'
 

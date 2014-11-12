@@ -48,23 +48,28 @@ def writeRawTable(filename=None,
     writeProcessedTable(session_id)
     return fieldnames
 
-def writeProcessedTable(session_id):
+def writeProcessedTable(session_id, 
+                        raw_table_format='raw_{0}', 
+                        proc_table_format='processed_{0}'):
+
     engine = worker_session.bind
     metadata = MetaData()
-    raw_table = Table('raw_%s' % session_id, metadata, 
+    proc_table_name = proc_table_format.format(session_id)
+    raw_table_name = raw_table_format.format(session_id)
+    raw_table = Table(raw_table_name, metadata, 
         autoload=True, autoload_with=engine)
     raw_fields = [f for f in raw_table.columns.keys() if f != 'record_id']
-    create = 'CREATE TABLE "processed_%s" AS (SELECT record_id, ' % session_id
+    create = 'CREATE TABLE "{0}" AS (SELECT record_id, '.format(proc_table_name)
     for idx, field in enumerate(raw_fields):
         if idx < len(raw_fields) - 1:
-            create += 'TRIM(COALESCE(LOWER("%s"), \'\')) AS %s, ' % (field, field)
+            create += 'TRIM(COALESCE(LOWER("{0}"), \'\')) AS {0}, '.format(field)
         else:
-            create += 'TRIM(COALESCE(LOWER("%s"), \'\')) AS %s ' % (field, field)
+            create += 'TRIM(COALESCE(LOWER("{0}"), \'\')) AS {0} '.format(field)
     else:
-        create += 'FROM "raw_%s")' % session_id
+        create += 'FROM "{0}")'.format(raw_table_name)
     create_stmt = text(create)
     engine.execute(create_stmt)
-    engine.execute('ALTER TABLE "processed_%s" ADD PRIMARY KEY (record_id)' % session_id)
+    engine.execute('ALTER TABLE "{0}" ADD PRIMARY KEY (record_id)'.format(proc_table_name))
 
 def initializeEntityMap(session_id, fields):
     engine = worker_session.bind
@@ -118,10 +123,15 @@ def initializeEntityMap(session_id, fields):
     conn.commit()
 
 
-def updateEntityMap(clustered_dupes, session_id, raw_table=None, entity_table=None):
+def updateEntityMap(clustered_dupes,
+                    session_id,
+                    raw_table=None,
+                    entity_table=None):
+    
     """ 
     Add to entity map table after training
     """
+    
     engine = worker_session.bind
     metadata = MetaData()
     if not entity_table:
@@ -164,7 +174,7 @@ def updateEntityMap(clustered_dupes, session_id, raw_table=None, entity_table=No
                         vals.append(d)
                     engine.execute(entity.insert(), vals)
             else:
-                king = ids.pop(0)
+                king = ids[0]
                 vals = [{
                     'entity_id': new_ent,
                     'record_id': king,
@@ -173,7 +183,7 @@ def updateEntityMap(clustered_dupes, session_id, raw_table=None, entity_table=No
                     'checked_out': False,
                     'confidence': float(score),
                 }]
-                for i in ids:
+                for i in ids[1:]:
                     d = {
                         'entity_id': new_ent,
                         'record_id': i,
@@ -196,43 +206,12 @@ def updateEntityMap(clustered_dupes, session_id, raw_table=None, entity_table=No
             upd += '{0}))'.format(field)
     else:
         upd += 'AS source_hash, record_id FROM "{0}") AS s \
-            WHERE "{0}".record_id=s.record_id'.format(raw_table, entity_table)
+            WHERE "{1}".record_id=s.record_id'.format(raw_table, entity_table)
     engine.execute(upd)
     review_count = worker_session.query(distinct(entity.c.entity_id))\
         .filter(entity.c.clustered == False)\
         .count()
     return review_count
-
-# def rewriteEntityMap(clustered_dupes, session_id, data_d):
-#     sess = worker_session.query(DedupeSession).get(session_id)
-#     field_defs = json.loads(sess.field_defs)
-#     model_fields = [f['field'] for f in field_defs]
-#     engine = worker_session.bind
-#     metadata = MetaData()
-#     entity_table = Table('entity_%s' % session_id, metadata,
-#         autoload=True, autoload_with=engine)
-#     canon_table = Table('canon_%s' % session_id, metadata,
-#         autoload=True, autoload_with=engine)
-#     raw_table = Table('raw_%s' % session_id, metadata,
-#         autoload=True, autoload_with=engine)
-#     for cluster in clustered_dupes:
-#         id_set, confidence_score = cluster
-#         members = worker_session.query(raw_table.c.record_id, entity_table.c.entity_id)\
-#             .join(entity_table, raw_table.c.record_id == entity_table.c.record_id)\
-#             .join(canon_table, entity_table.c.entity_id == canon_table.c.entity_id)\
-#             .filter(canon_table.c.canon_record_id.in_(id_set))\
-#             .all()
-#         entity_id = members[0][1]
-#         for member in members:
-#             upd = entity_table.update()\
-#                 .where(entity_table.c.record_id == member[0])\
-#                 .values(entity_id=entity_id, clustered=False, 
-#                     former_entity_id=member[1])
-#             engine.execute(upd)
-#     review_count = worker_session.query(entity_table.c.entity_id)\
-#         .filter(entity_table.c.clustered == False)\
-#         .count()
-#     return review_count
 
 def writeBlockingMap(session_id, block_data, canonical=False):
     pk_type = Integer
