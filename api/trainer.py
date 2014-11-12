@@ -13,15 +13,15 @@ import copy
 import time
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
-from api.utils.delayed_tasks import dedupeRaw, initializeSession
+from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
+    initializeModel
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import getDistinct, slugify
 from api.models import DedupeSession, User, Group
 from api.database import app_session as db_session
 from api.auth import check_roles, csrf, login_required
-from api.database import app_session
 from sqlalchemy.exc import OperationalError, NoSuchTableError
-from sqlalchemy import Table
+from sqlalchemy import Table, MetaData
 from cStringIO import StringIO
 from redis import Redis
 from api.queue import DelayedResult
@@ -70,7 +70,7 @@ def upload():
     with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
         s.write(u.getvalue())
     del u
-    flask_session['init_key'] = initializeSession.delay(session_id, fieldnames).key
+    initializeSession.delay(session_id, fieldnames)
     return jsonify(ready=True)
 
 @trainer.route('/get-init-status/<init_key>/')
@@ -114,6 +114,14 @@ def select_fields():
     status_code = 200
     error = None
     fields = flask_session.get('fieldnames')
+    if request.args.get('session_id'):
+        session_id = request.args['session_id']
+        meta = MetaData()
+        engine = db_session.bind
+        raw = Table('raw_{0}'.format(session_id), meta, 
+            autoload=True, autoload_with=engine, keep_existing=True)
+        fields = [r for r in raw.columns.keys() if r != 'record_id']
+        flask_session['fieldnames'] = fields
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         flask_session['field_list'] = field_list
@@ -155,6 +163,7 @@ def select_field_types():
         sess.field_defs = json.dumps(field_defs)
         db_session.add(sess)
         db_session.commit()
+        flask_session['init_key'] = initializeModel.delay(sess.id).key
         return redirect(url_for('trainer.training_run'))
     return render_template('select_field_types.html', user=user, field_list=field_list)
 

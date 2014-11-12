@@ -190,7 +190,7 @@ def updateEntityMap(clustered_dupes,
                         'target_record_id': king,
                         'clustered': False,
                         'checked_out': False,
-                        'confidence': score
+                        'confidence': float(score)
                     }
                     vals.append(d)
                 engine.execute(entity.insert(), vals)

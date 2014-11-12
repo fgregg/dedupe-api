@@ -358,12 +358,8 @@ def get_cluster(session_id):
                     d[k] = v
                 cluster_list.append(d)
         else:
-            # This is where we run dedupeCanon 
-            if sess.status == 'first pass review complete':
-                sess.status = 'review complete'
-            else:
-                sess.status = 'first pass review complete'
-                # dedupeCanon.delay(sess.id)
+            sess.status = 'first pass review complete'
+            dedupeCanon.delay(sess.id)
             db_session.add(sess)
             db_session.commit()
         resp['objects'] = cluster_list
@@ -398,13 +394,10 @@ def mark_all_clusters(session_id):
         count = len(set([c.entity_id for c in entities]))
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
         sess = db_session.query(DedupeSession).get(session_id)
-        if sess.status == 'first pass review complete':
-            sess.status = 'review complete'
-        else:
-            sess.status = 'first pass review complete'
-            # dedupeCanon.delay(sess.id)
+        sess.status = 'first pass review complete'
         db_session.add(sess)
         db_session.commit()
+        dedupeCanon.delay(sess.id)
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response

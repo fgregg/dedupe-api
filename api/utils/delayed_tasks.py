@@ -46,16 +46,23 @@ def initializeSession(session_id, filename):
         'file_obj':file_obj
     }
     writeRawTable(**kwargs)
+    print 'session initialized'
     os.remove('/tmp/%s_raw.csv' % session_id)
+
+@queuefunc
+def initializeModel(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     while True:
         worker_session.refresh(sess, ['field_defs', 'sample'])
         if not sess.field_defs:
             time.sleep(3)
         else:
+            print 'found field_defs'
             fields = [f['field'] for f in json.loads(sess.field_defs)]
             initializeEntityMap(session_id, fields)
+            print 'made entity map'
             drawSample(session_id)
+            print 'got sample'
             break
     return 'woo'
 
@@ -119,8 +126,8 @@ def clusterDedupe(session_id, canonical=False):
     if not canonical:
         entity = Table(ent_format.format(session_id), metadata,
             autoload=True, autoload_with=engine, keep_existing=True)
-        rows = rows.join(entity, small_cov.c.record_id == entity.c.record_id)\
-        .filter(entity.c.target_record_id == None)
+        rows = rows.outerjoin(entity, small_cov.c.record_id == entity.c.record_id)\
+            .filter(entity.c.target_record_id == None)
     fields = small_cov.columns.keys() + proc.columns.keys()
     clustered_dupes = deduper.matchBlocks(
         clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
@@ -133,8 +140,7 @@ def dedupeRaw(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     trainDedupe(session_id)
-    block_gen = blockDedupe(session_id)
-    writeBlockingMap(session_id, block_gen)
+    blockDedupe(session_id)
     clustered_dupes = clusterDedupe(session_id)
     review_count = updateEntityMap(clustered_dupes, session_id)
     dd_session.status = 'entity map created'

@@ -37,6 +37,9 @@
                     if (object.status == 'entity map created'){
                         rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
                         $('#review-header').append('<th></th>');
+                    } else if (object.status == 'dataset uploaded'){
+                        rows += '<td><a href="/select-fields/?session_id=' + object.id + '">Start training</a></td>';
+                        $('#review-header').append('<th></th>');
                     }
                     rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
                     rows += '</tr>';
