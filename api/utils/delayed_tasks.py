@@ -143,15 +143,14 @@ def clusterDedupe(session_id, canonical=False):
     rows = worker_session.query(*cols)\
         .join(proc, small_cov.c.record_id == proc.c.record_id)
     fields = [c.name for c in cols]
-    clustered_dupes = deduper.matchBlocks(
-        clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
-        threshold=0.75
-    )
-    if not clustered_dupes:
+    clustered_dupes = []
+    threshold = 0.75
+    while not clustered_dupes:
         clustered_dupes = deduper.matchBlocks(
             clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
-            threshold=0.5
+            threshold=threshold
         )
+        threshold = threshold - 0.1
     return clustered_dupes
 
 @queuefunc
@@ -183,7 +182,8 @@ def dedupeCanon(session_id):
         if col.name != 'record_id':
             cr_cols.append(Column(col.name, col.type))
     cr = Table('cr_{0}'.format(session_id), metadata, *cr_cols)
-    cr.create(bind=engine, checkfirst=True)
+    cr.drop(bind=engine, checkfirst=True)
+    cr.create(bind=engine)
 
     cols = [entity.c.entity_id]
     col_names = [c for c in proc_table.columns.keys() if c != 'record_id']
@@ -227,6 +227,7 @@ def dedupeCanon(session_id):
     entity_table.create(bind=engine, checkfirst=True)
     blockDedupe(session_id, 
         table_name='processed_{0}_cr'.format(session_id), 
+        entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True)
     cluster_count = updateEntityMap(clustered_dupes,

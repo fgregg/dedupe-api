@@ -11,6 +11,7 @@ from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
     create_engine, Float, Boolean, BigInteger, distinct, text, select, \
     Text, func, Index
+from sqlalchemy.exc import ProgrammingError
 from unidecode import unidecode
 from uuid import uuid4
 from csvkit.unicsv import UnicodeCSVWriter
@@ -68,6 +69,7 @@ def writeProcessedTable(session_id,
     else:
         create += 'FROM "{0}")'.format(raw_table_name)
     create_stmt = text(create)
+    engine.execute('DROP TABLE IF EXISTS "{0}"'.format(proc_table_name))
     engine.execute(create_stmt)
     engine.execute('ALTER TABLE "{0}" ADD PRIMARY KEY (record_id)'.format(proc_table_name))
 
