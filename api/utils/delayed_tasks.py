@@ -82,9 +82,15 @@ def trainDedupe(session_id):
     worker_session.commit()
     deduper.cleanupTraining()
 
-def blockDedupe(session_id, table_name=None, canonical=False):
+def blockDedupe(session_id, 
+                table_name=None, 
+                entity_table_name=None, 
+                canonical=False):
+
     if not table_name:
         table_name = 'processed_{0}'.format(session_id)
+    if not entity_table_name:
+        entity_table_name = 'entity_{0}'.format(session_id)
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
@@ -92,13 +98,24 @@ def blockDedupe(session_id, table_name=None, canonical=False):
     metadata = MetaData()
     proc_table = Table(table_name, metadata,
         autoload=True, autoload_with=engine)
+    entity_table = Table(entity_table_name, metadata,
+        autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
         fd = worker_session.query(proc_table.c.record_id, 
             getattr(proc_table.c, field))
         field_data = (row for row in fd.yield_per(50000))
         deduper.blocker.tfIdfBlock(field_data, field)
         del field_data
-    proc_records = worker_session.query(proc_table)
+    """ 
+    SELECT p.* <-- need the fields that we trained on at least
+        FROM processed as p
+        LEFT OUTER JOIN entity_map as e
+           ON s.record_id = e.record_id
+        WHERE e.target_record_id IS NULL
+    """
+    proc_records = worker_session.query(proc_table)\
+        .outerjoin(entity_table, proc_table.c.record_id == entity_table.c.record_id)\
+        .filter(entity_table.c.target_record_id == None)
     fields = proc_table.columns.keys()
     full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records.yield_per(50000))
@@ -112,7 +129,6 @@ def clusterDedupe(session_id, canonical=False):
     engine = worker_session.bind
     metadata = MetaData()
     sc_format = 'small_cov_{0}'
-    ent_format = 'entity_{0}'
     proc_format = 'processed_{0}'
     if canonical:
         sc_format = 'small_cov_{0}_cr'
@@ -121,18 +137,21 @@ def clusterDedupe(session_id, canonical=False):
         autoload=True, autoload_with=engine, keep_existing=True)
     proc = Table(proc_format.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    rows = worker_session.query(small_cov, proc)\
+    trained_fields = [f['field'] for f in json.loads(dd_session.field_defs)]
+    proc_cols = [getattr(proc.c, f) for f in trained_fields]
+    cols = [c for c in small_cov.columns] + proc_cols
+    rows = worker_session.query(*cols)\
         .join(proc, small_cov.c.record_id == proc.c.record_id)
-    if not canonical:
-        entity = Table(ent_format.format(session_id), metadata,
-            autoload=True, autoload_with=engine, keep_existing=True)
-        rows = rows.outerjoin(entity, small_cov.c.record_id == entity.c.record_id)\
-            .filter(entity.c.target_record_id == None)
-    fields = small_cov.columns.keys() + proc.columns.keys()
+    fields = [c.name for c in cols]
     clustered_dupes = deduper.matchBlocks(
         clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
         threshold=0.75
     )
+    if not clustered_dupes:
+        clustered_dupes = deduper.matchBlocks(
+            clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
+            threshold=0.5
+        )
     return clustered_dupes
 
 @queuefunc

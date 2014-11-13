@@ -173,124 +173,6 @@ def train():
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@endpoints.route('/training-data/<session_id>/')
-@check_sessions()
-def training_data(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        resp = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(resp, 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        training_data = data.training_data
-        resp = make_response(training_data, 200)
-        resp.headers['Content-Type'] = 'text/plain'
-        resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.id
-    return resp
-
-@endpoints.route('/settings-file/<session_id>/')
-@check_sessions()
-def settings_file(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        resp = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(resp, 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        settings_file = data.settings_file
-        resp = make_response(settings_file, 200)
-        resp.headers['Content-Disposition'] = 'attachment; filename=%s.dedupe_settings' % data.uuid
-    return resp
-
-@endpoints.route('/field-definitions/<session_id>/')
-@check_sessions()
-def field_definitions(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        resp = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(resp, 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        field_defs = data.field_defs
-        resp = make_response(field_defs, 200)
-        resp.headers['Content-Type'] = 'application/json'
-    return resp
-
-@endpoints.route('/delete-session/<session_id>/')
-@check_sessions()
-def delete_session(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        resp = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(resp, 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        db_session.delete(data)
-        db_session.commit()
-        tables = [
-            'entity',
-            'raw',
-            'processed',
-            'block',
-            'plural_block',
-            'canon',
-            'covered',
-            'plural_key',
-            'small_cov',
-        ]
-        for table in tables:
-            try:
-                data_table = Table('%s_%s' % (table,session_id), 
-                    Base.metadata, autoload=True, autoload_with=engine)
-                data_table.drop(engine)
-            except NoSuchTableError:
-                pass
-        resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
-        resp.headers['Content-Type'] = 'application/json'
-    return resp
-
-@endpoints.route('/session-list/')
-@check_sessions()
-def review():
-    user_sessions = flask_session['user_sessions']
-    resp = {
-        'status': 'ok',
-        'message': ''
-    }
-    status_code = 200
-    sess_id = request.args.get('session_id')
-    all_sessions = []
-    if not sess_id:
-        sessions = db_session.query(DedupeSession)\
-            .filter(DedupeSession.id.in_(user_sessions))\
-            .all()
-        for sess in sessions:
-            all_sessions.append(sess.as_dict())
-    else:
-        if sess_id in user_sessions:
-            sess = db_session.query(DedupeSession).get(sess_id)
-            all_sessions.append(sess.as_dict())
-    resp['objects'] = all_sessions
-    response = make_response(json.dumps(resp), status_code)
-    response.headers['Content-Type'] = 'application/json'
-    return response
-
 def checkin_sessions():
     now = datetime.now()
     all_sessions = [i.id for i in db_session.query(DedupeSession.id).all()]
@@ -499,32 +381,123 @@ status_lookup = {
     'review complete': '',
 }
 
-@endpoints.route('/session-status/<session_id>/')
+@endpoints.route('/training-data/<session_id>/')
 @check_sessions()
-def session_status(session_id):
+def training_data(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        resp = make_response(resp, 401)
+        resp.headers['Content-Type'] = 'application/json'
+    else:
+        data = db_session.query(DedupeSession).get(session_id)
+        training_data = data.training_data
+        resp = make_response(training_data, 200)
+        resp.headers['Content-Type'] = 'text/plain'
+        resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.id
+    return resp
+
+@endpoints.route('/settings-file/<session_id>/')
+@check_sessions()
+def settings_file(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        resp = make_response(resp, 401)
+        resp.headers['Content-Type'] = 'application/json'
+    else:
+        data = db_session.query(DedupeSession).get(session_id)
+        settings_file = data.settings_file
+        resp = make_response(settings_file, 200)
+        resp.headers['Content-Disposition'] = 'attachment; filename=%s.dedupe_settings' % data.uuid
+    return resp
+
+@endpoints.route('/field-definitions/<session_id>/')
+@check_sessions()
+def field_definitions(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        resp = make_response(resp, 401)
+        resp.headers['Content-Type'] = 'application/json'
+    else:
+        data = db_session.query(DedupeSession).get(session_id)
+        field_defs = data.field_defs
+        resp = make_response(field_defs, 200)
+        resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+@endpoints.route('/delete-session/<session_id>/')
+@check_sessions()
+def delete_session(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        resp = make_response(resp, 401)
+        resp.headers['Content-Type'] = 'application/json'
+    else:
+        data = db_session.query(DedupeSession).get(session_id)
+        db_session.delete(data)
+        db_session.commit()
+        tables = [
+            'entity',
+            'raw',
+            'processed',
+            'block',
+            'plural_block',
+            'canon',
+            'covered',
+            'plural_key',
+            'small_cov',
+        ]
+        for table in tables:
+            try:
+                data_table = Table('%s_%s' % (table,session_id), 
+                    Base.metadata, autoload=True, autoload_with=engine)
+                data_table.drop(engine)
+            except NoSuchTableError:
+                pass
+        resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
+        resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+@endpoints.route('/session-list/')
+@check_sessions()
+def review():
+    user_sessions = flask_session['user_sessions']
     resp = {
         'status': 'ok',
-        'message': '',
+        'message': ''
     }
     status_code = 200
-    api_key = request.args.get('api_key')
-    if not api_key:
-        api_key = flask_session['user_id']
-    user = db_session.query(User).get(api_key)
-    sess = db_session.query(DedupeSession)\
-        .filter(DedupeSession.group.has(
-            Group.id.in_([i.id for i in user.groups])))\
-        .filter(DedupeSession.id == session_id)\
-        .first()
-    if not sess:
-        resp['status'] = 'error'
-        resp['message'] = "You don't have access to session '%s'" % session_id
-        status_code = 401
+    sess_id = request.args.get('session_id')
+    all_sessions = []
+    if not sess_id:
+        sessions = db_session.query(DedupeSession)\
+            .filter(DedupeSession.id.in_(user_sessions))\
+            .all()
+        for sess in sessions:
+            all_sessions.append(sess.as_dict())
     else:
-        resp['session_status'] = sess.status
-    resp = make_response(json.dumps(resp), status_code)
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
+        if sess_id in user_sessions:
+            sess = db_session.query(DedupeSession).get(sess_id)
+            all_sessions.append(sess.as_dict())
+    resp['objects'] = all_sessions
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
 
 @csrf.exempt
 @endpoints.route('/bulk-match/<session_id>/', methods=['POST'])

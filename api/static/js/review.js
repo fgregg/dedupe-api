@@ -29,13 +29,17 @@
                     if (i == 0){
                         head += '<tr>';
                         $.each(item, function(k,v){
-                            head += '<th>' + k + '</th>';
+                            if (k != 'record_id'){
+                                head += '<th>' + k + '</th>';
+                            }
                         });
                         head += '</tr>';
                     }
-                    body += '<tr>';
+                    body += '<tr data-record_id="' + item.record_id + '">';
                     $.each(item, function(k,v){
-                        body += '<td>' + v + '</td>';
+                        if (k != 'record_id'){
+                            body += '<td>' + v + '</td>';
+                        }
                     });
                     body += '</tr>';
                 });

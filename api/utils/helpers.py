@@ -36,6 +36,7 @@ def getCluster(session_id, entity_table_name, raw_table_name):
     if cluster:
         raw_ids = [c[0] for c in cluster]
         raw_cols = [getattr(raw_table.c, f) for f in field_defs]
+        raw_cols.append(raw_table.c.record_id)
         primary_key = [p.name for p in raw_table.primary_key][0]
         pk_col = getattr(raw_table.c, primary_key)
         records = app_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
