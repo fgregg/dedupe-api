@@ -116,6 +116,7 @@ def select_fields():
     fields = flask_session.get('fieldnames')
     if request.args.get('session_id'):
         session_id = request.args['session_id']
+        flask_session['session_id'] = session_id
         meta = MetaData()
         engine = db_session.bind
         raw = Table('raw_{0}'.format(session_id), meta, 
