@@ -12,6 +12,7 @@
                 <tr id="review-header">
                     <th>Name</th>
                     <th></th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="session-list"></tbody>
@@ -28,38 +29,58 @@
 {% endblock %}
 {% block extra_javascript %}
 <script type='text/javascript'>
+    function make_display(resp){
+        var rows = ''
+        $.each(resp.objects, function(i, object){
+            rows += '<tr><td>' + object.name + '</td>';
+            if (object.status == 'entity map created'){
+                rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
+                $('#review-header').append('<th></th>');
+            } else if (object.status == 'dataset uploaded'){
+                rows += '<td><a href="/select-fields/?session_id=' + object.id + '">Start training</a></td>';
+                $('#review-header').append('<th></th>');
+            }  else if (object.status == 'canon clustered'){
+                rows += '<td><a href="/session-review/' + object.id + '/?second_review=true">Second Review</a></td>';
+                $('#review-header').append('<th></th>');
+            }
+            rows += '<td><a class="delete-model" href="javascript://" data-session_id="' + object.id + '">Delete Data Model</a></td>';
+            rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
+            rows += '</tr>';
+        });
+        $('#session-list').html(rows);
+        $('.delete-session').on('click', function(e){
+            e.preventDefault();
+            var sess_id = $(this).data('session_id');
+            console.log(sess_id);
+            var row = $(this).parent().parent()
+            $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
+                function(data){
+                    $(row).remove();
+                }
+            )
+        })
+        $('.delete-model').on('click', function(e){
+            e.preventDefault();
+            var sess_id = $(this).data('session_id');
+            console.log(sess_id);
+            var row = $(this).parent()
+            $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
+                function(data){
+                    $.when($.getJSON('/session-list/')).then(
+                      function(resp){
+                          make_display(resp)
+                      }
+                    )
+                }
+            )
+        })
+
+    }
     $(document).ready(function(){
         $.when($.getJSON('/session-list/')).then(
           function(resp){
-                var rows = ''
-                $.each(resp.objects, function(i, object){
-                    rows += '<tr><td>' + object.name + '</td>';
-                    if (object.status == 'entity map created'){
-                        rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
-                        $('#review-header').append('<th></th>');
-                    } else if (object.status == 'dataset uploaded'){
-                        rows += '<td><a href="/select-fields/?session_id=' + object.id + '">Start training</a></td>';
-                        $('#review-header').append('<th></th>');
-                    }  else if (object.status == 'canon clustered'){
-                        rows += '<td><a href="/session-review/' + object.id + '/?second_review=true">Second Review</a></td>';
-                        $('#review-header').append('<th></th>');
-                    }
-                    rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
-                    rows += '</tr>';
-                });
-                $('#session-list').html(rows);
-                $('.delete-session').on('click', function(e){
-                    e.preventDefault();
-                    var sess_id = $(this).data('session_id');
-                    console.log(sess_id);
-                    var row = $(this).parent().parent()
-                    $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
-                        function(data){
-                            $(row).remove();
-                        }
-                    )
-                })
-            }
+              make_display(resp)
+          }
         )
     })
 </script>

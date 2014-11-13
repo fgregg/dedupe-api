@@ -81,7 +81,8 @@ def initializeEntityMap(session_id, fields):
         .group_by(*gb_cols)\
         .having(func.array_length(func.array_agg(proc_table.c.record_id),1) > 1)
     entity_table = entity_map('entity_%s' % session_id, metadata)
-    entity_table.create(engine, checkfirst=True)
+    entity_table.drop(engine, checkfirst=True)
+    entity_table.create(engine)
     s = StringIO()
     writer = UnicodeCSVWriter(s)
     for row in rows:
@@ -225,7 +226,8 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         Column('block_key', Text),
         Column('record_id', pk_type)
     )
-    bkm.create(engine, checkfirst=True)
+    bkm.drop(engine, checkfirst=True)
+    bkm.create(engine)
     with open('/tmp/{0}.csv'.format(session_id), 'wb') as s:
         writer = UnicodeCSVWriter(s)
         writer.writerows(block_data)
@@ -244,7 +246,8 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         Column('block_key', Text),
         Column('block_id', Integer, primary_key=True)
     )
-    plural_key.create(engine, checkfirst=True)
+    plural_key.drop(engine, checkfirst=True)
+    plural_key.create(engine)
     bkm_sel = select([bkm.c.block_key], from_obj=bkm)\
         .group_by(bkm.c.block_key)\
         .having(func.count(bkm.c.block_key) > 1)
@@ -255,6 +258,7 @@ def writeBlockingMap(session_id, block_data, canonical=False):
     pl_key_idx = Index('pk_{0}_idx'.format(session_id), plural_key.c.block_key)
     pl_key_idx.create(engine)
 
+    engine.execute('DROP TABLE IF EXISTS "plural_block_{0}"'.format(session_id))
     pl_bk_stmt = '''
         CREATE TABLE "plural_block_{0}" AS (
             SELECT p.block_id, b.record_id 
@@ -267,6 +271,7 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         CREATE INDEX "pl_bk_idx_{0}" 
         ON "plural_block_{0}" (record_id)'''.format(session_id)
     )
+    engine.execute('DROP INDEX IF EXISTS "pl_bk_id_idx_{0}"'.format(session_id))
     engine.execute(''' 
         CREATE UNIQUE INDEX "pl_bk_id_idx_{0}" on "plural_block_{0}" 
         (block_id, record_id) '''.format(session_id)
@@ -281,12 +286,14 @@ def writeBlockingMap(session_id, block_data, canonical=False):
             GROUP BY record_id
         )
     '''.format(session_id)
+    engine.execute('DROP TABLE IF EXISTS "covered_{0}"'.format(session_id))
     engine.execute(cov_bks_stmt)
     engine.execute(''' 
         CREATE UNIQUE INDEX "cov_bks_id_idx_{0}" ON "covered_{0}" (record_id)
         '''.format(session_id)
     )
 
+    engine.execute('DROP TABLE IF EXISTS "small_cov_{0}"'.format(session_id))
     small_cov = ''' 
         CREATE TABLE "small_cov_{0}" AS (
             SELECT record_id, 

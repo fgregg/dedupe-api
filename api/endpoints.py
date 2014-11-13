@@ -455,6 +455,31 @@ def field_definitions(session_id):
         resp.headers['Content-Type'] = 'application/json'
     return resp
 
+@endpoints.route('/delete-data-model/<session_id>/')
+@check_sessions()
+def delete_data_model(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        status_code = 401
+    else:
+        sess = db_session.query(DedupeSession).get(session_id)
+        sess.field_defs = None
+        sess.status = 'dataset uploaded'
+        db_session.add(sess)
+        db_session.commit()
+        resp = {
+            'status': 'ok',
+            'message': 'Data model for session {0} deleted'.format(session_id)
+        }
+        status_code = 200
+    resp = make_response(json.dumps(resp), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
 @endpoints.route('/delete-session/<session_id>/')
 @check_sessions()
 def delete_session(session_id):
