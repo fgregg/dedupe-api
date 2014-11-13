@@ -163,15 +163,16 @@ def updateEntityMap(clustered_dupes,
                     king = existing_ids[0]
                     vals = []
                     for i in new_ids:
-                        d = {
-                            'entity_id': new_ent,
-                            'record_id': i,
-                            'target_record_id': king,
-                            'clustered': False,
-                            'checked_out': False,
-                            'confidence': float(score),
-                        }
-                        vals.append(d)
+                        if unicode(i) != unicode(king):
+                            d = {
+                                'entity_id': new_ent,
+                                'record_id': i,
+                                'target_record_id': king,
+                                'clustered': False,
+                                'checked_out': False,
+                                'confidence': float(score),
+                            }
+                            vals.append(d)
                     engine.execute(entity.insert(), vals)
             else:
                 king = ids[0]

@@ -265,6 +265,25 @@ def mark_all_clusters(session_id):
         status_code = 401
     else:
         # Need to update existing clusters with new entity_id here, too.
+        upd = ''' 
+            UPDATE "entity_{0}" SET 
+                entity_id=subq.entity_id,
+                clustered=TRUE 
+            FROM (
+                    SELECT 
+                        s.entity_id AS entity_id,
+                        e.record_id 
+                    FROM "entity_{0}" AS e
+                    JOIN (
+                        SELECT 
+                            record_id, 
+                            entity_id
+                        FROM "entity_{0}"
+                    ) AS s
+                        ON e.target_record_id = s.record_id
+                ) as subq 
+            WHERE "entity_{0}".record_id=subq.record_id
+            '''.format(session_id)
         entity_table = Table('entity_%s' % session_id, Base.metadata,
             autoload=True, autoload_with=engine)
         upd = entity_table.update()\
