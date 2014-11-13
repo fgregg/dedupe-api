@@ -36,7 +36,7 @@ Base = declarative_base()
 
 def init_db():
     import api.models
-    Base.metadata.create_all(bind=app_engine)
+    Base.metadata.create_all(bind=engine)
     for role in DEFAULT_ROLES:
         app_session.add(api.models.Role(**role))
     
