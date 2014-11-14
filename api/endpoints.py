@@ -3,7 +3,7 @@ import json
 from flask import Flask, make_response, request, Blueprint, \
     session as flask_session, make_response, send_from_directory, jsonify
 from api.models import DedupeSession, User, Group
-from api.app_config import DOWNLOAD_FOLDER
+from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
@@ -245,10 +245,9 @@ def get_canon_cluster(session_id):
             resp['objects'] = cluster_list
         else:
             sess.status = 'review complete'
-            dedupeCanon.delay(sess.id)
+            # dedupeCanon.delay(sess.id)
             db_session.add(sess)
             db_session.commit()
-        resp['objects'] = cluster_list
         resp['total_clusters'] = 100
         resp['review_remainder'] = 100
        #resp['total_clusters'] = total_clusters
@@ -272,12 +271,19 @@ def mark_all_clusters(session_id):
     else:
         # Need to update existing clusters with new entity_id here, too.
         user = db_session.query(User).get(flask_session['api_key'])
+        upd_vals = {
+            'user_name': user.name, 
+            'match_type': 'bulk accepted', 
+            'clustered': True,
+            'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+        }
         upd = text(''' 
             UPDATE "entity_{0}" SET 
                 entity_id=subq.entity_id,
                 clustered=TRUE,
                 reviewer = :user_name,
-                match_type = :match_type
+                match_type = :match_type,
+                last_update = :last_update
             FROM (
                     SELECT 
                         s.entity_id AS entity_id,
@@ -295,17 +301,17 @@ def mark_all_clusters(session_id):
             RETURNING "entity_{0}".entity_id
             '''.format(session_id))
         with engine.begin() as c:
-            child_entities = c.execute(upd, 
-                                        user_name=user.name,
-                                        match_type='bulk accepted')
-        upd = ''' 
+            child_entities = c.execute(upd, **upd_vals)
+        upd = text(''' 
             UPDATE "entity_{0}" SET
-                clustered=TRUE 
+                clustered = :clustered,
+                reviewer = :user_name,
+                last_update = :last_update
             WHERE target_record_id IS NULL
             RETURNING entity_id;
-        '''.format(session_id)
+        '''.format(session_id))
         with engine.begin() as c:
-            parent_entities = c.execute(upd)
+            parent_entities = c.execute(upd, **upd_vals)
         count = len(set([c.entity_id for c in child_entities])\
             .union([c.entity_id for c in parent_entities]))
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
@@ -341,15 +347,27 @@ def mark_cluster(session_id):
         if action == 'yes':
             upd = entity_table.update()\
                 .where(entity_table.c.entity_id == entity_id)\
-                .values(clustered=True, checked_out=False, checkout_expire=None)
+                .values(clustered=True, 
+                        checked_out=False, 
+                        checkout_expire=None,
+                        last_update=datetime.now().replace(tzinfo=TIME_ZONE),
+                        reviewer=user.name)
             with engine.begin() as c:
                 c.execute(upd)
+            upd_vals = {
+                'entity_id': entity_id,
+                'user_name': user.name, 
+                'match_type': 'clerical review', 
+                'clustered': True,
+                'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+            }
             update_existing = text('''
                 UPDATE "entity_{0}" SET 
                     entity_id = :entity_id, 
                     clustered = TRUE,
                     reviewer = :user_name,
-                    match_type = :match_type
+                    match_type = :match_type,
+                    last_update = :last_update
                     FROM (
                         SELECT e.record_id 
                             FROM "entity_{0}" AS e 
@@ -363,10 +381,7 @@ def mark_cluster(session_id):
                 WHERE "entity_{0}".record_id = subq.record_id
                 '''.format(sess.id))
             with engine.begin() as c:
-                c.execute(update_existing, 
-                          entity_id=entity_id,
-                          user_name=user.name,
-                          match_type='clerical review')
+                c.execute(update_existing,**upd_vals)
             # training_data['match'].extend(pairs)
         elif action == 'no':
             update_existing = text(''' 

@@ -1,11 +1,12 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
-    Column, Table, Float, DateTime, Text, BigInteger
+    Column, Table, Float, DateTime, Text, BigInteger, text
 from sqlalchemy.orm import relationship, backref, synonym
 from api.database import Base, app_session as session
 from flask_bcrypt import Bcrypt
 from uuid import uuid4
 from datetime import datetime, timedelta
 import json
+from api.app_config import TIME_ZONE
 
 bcrypt = Bcrypt()
 
@@ -13,10 +14,16 @@ from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
+def get_time():
+    return datetime.now().replace(tzinfo=TIME_ZONE)
+
 def entity_map(name, metadata, record_id_type=BigInteger):
     table = Table(name, metadata, 
         Column('entity_id', String, index=True),
         Column('reviewer', String),
+        Column('date_added', DateTime(timezone=True), 
+                server_default=text('CURRENT_TIMESTAMP')),
+        Column('last_update', DateTime(timezone=True)),
         Column('match_type', String),
         Column('record_id', record_id_type, index=True),
         Column('target_record_id', record_id_type),

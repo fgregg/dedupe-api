@@ -17,10 +17,10 @@ def getCluster(session_id, entity_table_name, raw_table_name):
     sess = app_session.query(DedupeSession).get(session_id)
     entity_table = Table(entity_table_name, Base.metadata,
         autoload=True, autoload_with=engine)
-    total_clusters = app_session.query(entity_table.c.entity_id.distinct()).count()
-    review_remainder = app_session.query(entity_table.c.entity_id.distinct())\
-        .filter(entity_table.c.clustered == False)\
-        .count()
+   #total_clusters = app_session.query(entity_table.c.entity_id.distinct()).count()
+   #review_remainder = app_session.query(entity_table.c.entity_id.distinct())\
+   #    .filter(entity_table.c.clustered == False)\
+   #    .count()
     cluster_list = []
     field_defs = [f['field'] for f in json.loads(sess.field_defs)]
     raw_table = Table(raw_table_name, Base.metadata, 

@@ -6,6 +6,7 @@ from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
 from api.utils.helpers import preProcess, slugify
+from api.app_config import TIME_ZONE
 from csvkit import convert
 from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
@@ -15,6 +16,7 @@ from sqlalchemy.exc import ProgrammingError
 from unidecode import unidecode
 from uuid import uuid4
 from csvkit.unicsv import UnicodeCSVWriter
+from datetime import datetime
 
 def writeRawTable(filename=None,
               session_id=None,
@@ -175,25 +177,36 @@ def updateEntityMap(clustered_dupes,
             ) 
             FROM STDIN CSV'''.format(session_id), f)
         conn.commit()
+    # Need a different query for updating Entity map
+    # from canonical dedupe
     upd = text(''' 
         WITH upd AS (
-          UPDATE "entity_{0}" AS e 
+          UPDATE "{0}" AS e 
             SET entity_id=temp.entity_id, 
               confidence=temp.confidence, 
-              clustered=FALSE 
-            FROM "temp_{0}" temp 
+              clustered=FALSE,
+              checked_out=FALSE,
+              last_update= :last_update
+            FROM "temp_{1}" temp 
           WHERE e.record_id = temp.record_id 
           RETURNING temp.record_id
         ) 
-        INSERT INTO "entity_{0}" (record_id, entity_id, confidence, clustered) 
-          SELECT record_id, entity_id, confidence, FALSE AS clustered 
-            FROM "temp_{0}" temp 
-            LEFT JOIN upd USING(record_id) 
+        INSERT INTO "{0}" (record_id, entity_id, confidence, clustered, checked_out) 
+          SELECT 
+            record_id, 
+            entity_id, 
+            confidence, 
+            FALSE AS clustered, 
+            FALSE AS checked_out 
+          FROM "temp_{1}" temp 
+          LEFT JOIN upd USING(record_id) 
           WHERE upd.record_id IS NULL
           RETURNING record_id
-    '''.format(session_id))
+    '''.format(entity_table, session_id))
     with engine.begin() as c:
-        ids = c.execute(upd)
+        ids = c.execute(upd, last_update=datetime.now().replace(tzinfo=TIME_ZONE))
+    temp_table.drop(bind=engine)
+    os.remove(fname)
 
 def writeBlockingMap(session_id, block_data, canonical=False):
     pk_type = Integer

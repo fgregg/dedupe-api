@@ -1,4 +1,7 @@
 from os.path import join, abspath, dirname
+from pytz import timezone
+
+TIME_ZONE = timezone('America/Chicago')
 
 DB_CONN='postgresql://localhost:5432/dedupeapi'
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024
