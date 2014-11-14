@@ -7,7 +7,7 @@ If we had two records, 123 and 124, which referred to separate entities, entity_
 +=============+===========+
 |1            | 123       |
 +-------------+-----------+
-|2             | 124      |
+|2            | 124       |
 +-------------+-----------+
 
 If we changed our mind, and decided that the records referred to the same entity the table could look like this:
