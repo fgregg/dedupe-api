@@ -69,9 +69,12 @@ def writeProcessedTable(session_id,
     else:
         create += 'FROM "{0}")'.format(raw_table_name)
     create_stmt = text(create)
-    engine.execute('DROP TABLE IF EXISTS "{0}"'.format(proc_table_name))
-    engine.execute(create_stmt)
-    engine.execute('ALTER TABLE "{0}" ADD PRIMARY KEY (record_id)'.format(proc_table_name))
+    with engine.begin() as c:
+        c.execute('DROP TABLE IF EXISTS "{0}"'.format(proc_table_name))
+    with engine.begin() as c:
+        c.execute(create_stmt)
+    with engine.begin() as c:
+        c.execute('ALTER TABLE "{0}" ADD PRIMARY KEY (record_id)'.format(proc_table_name))
 
 def initializeEntityMap(session_id, fields):
     engine = worker_session.bind
@@ -94,20 +97,22 @@ def initializeEntityMap(session_id, fields):
             king, 
             None, 
             entity_id, 
-            100.0,
+            1.0,
             'raw_%s' % session_id,
             'TRUE',
             'FALSE',
+            'exact',
         ])
         for member in members:
             writer.writerow([
                 member,
                 king,
                 entity_id,
-                100.0,
+                1.0,
                 'raw_%s' % session_id,
                 'TRUE',
                 'FALSE',
+                'exact',
             ])
     s.seek(0)
     conn = engine.raw_connection()
@@ -120,7 +125,8 @@ def initializeEntityMap(session_id, fields):
             confidence,
             source,
             clustered,
-            checked_out
+            checked_out,
+            match_type
         ) 
         FROM STDIN CSV''' % session_id, s)
     conn.commit()
@@ -134,88 +140,60 @@ def updateEntityMap(clustered_dupes,
     """ 
     Add to entity map table after training
     """
-    
+    fname = '/tmp/clusters_{0}.csv'.format(session_id)
+    with open(fname, 'wb') as f:
+        writer = UnicodeCSVWriter(f)
+        for ids, scores in clustered_dupes:
+            new_ent = unicode(uuid4())
+            for id, score in zip(ids, scores):
+                writer.writerow([
+                    new_ent,
+                    id,
+                    score,
+                ])
     engine = worker_session.bind
     metadata = MetaData()
     if not entity_table:
         entity_table = 'entity_{0}'.format(session_id)
-    if not raw_table:
-        raw_table = 'raw_{0}'.format(session_id)
     entity = Table(entity_table, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    for ids, score in clustered_dupes:
-        # leaving out low confidence clusters
-        # This is a non-scientificly proven threshold
-        if score > 0.2:
-            new_ent = unicode(uuid4())
-            existing = worker_session.query(entity.c.record_id)\
-                .filter(entity.c.record_id.in_(ids))\
-                .all()
-            if existing:
-                existing_ids = [unicode(i[0]) for i in existing]
-                new_ids = list(set(ids).difference(set(existing_ids)))
-                upd = {
-                    'entity_id': new_ent,
-                    'clustered': False,
-                    'confidence': float(score),
-                }
-                engine.execute(entity.update()\
-                    .where(entity.c.record_id.in_(existing_ids))\
-                    .values(**upd))
-                if new_ids:
-                    king = existing_ids[0]
-                    vals = []
-                    for i in new_ids:
-                        if unicode(i) != unicode(king):
-                            d = {
-                                'entity_id': new_ent,
-                                'record_id': i,
-                                'target_record_id': king,
-                                'clustered': False,
-                                'checked_out': False,
-                                'confidence': float(score),
-                            }
-                            vals.append(d)
-                    engine.execute(entity.insert(), vals)
-            else:
-                king = ids[0]
-                vals = [{
-                    'entity_id': new_ent,
-                    'record_id': king,
-                    'target_record_id': None,
-                    'clustered': False,
-                    'checked_out': False,
-                    'confidence': float(score),
-                }]
-                for i in ids[1:]:
-                    d = {
-                        'entity_id': new_ent,
-                        'record_id': i,
-                        'target_record_id': king,
-                        'clustered': False,
-                        'checked_out': False,
-                        'confidence': float(score)
-                    }
-                    vals.append(d)
-                engine.execute(entity.insert(), vals)
-
-    dd = worker_session.query(DedupeSession).get(session_id)
-    fields = [f['field'] for f in json.loads(dd.field_defs)]
-    upd = 'UPDATE "{0}" SET source_hash=s.source_hash \
-        FROM (SELECT MD5(CONCAT('.format(entity_table)
-    for idx, field in enumerate(fields):
-        if idx < len(fields) - 1:
-            upd += '{0},'.format(field)
-        else:
-            upd += '{0}))'.format(field)
-    else:
-        upd += 'AS source_hash, record_id FROM "{0}") AS s \
-            WHERE "{1}".record_id=s.record_id'.format(raw_table, entity_table)
-    engine.execute(upd)
-    review_count = worker_session.query(distinct(entity.c.entity_id))\
-        .filter(entity.c.clustered == False)\
-        .count()
-    return review_count
+    record_id_type = entity.c.record_id.type
+    temp_table = Table('temp_{0}'.format(session_id), metadata,
+                       Column('entity_id', String),
+                       Column('record_id', record_id_type),
+                       Column('confidence', Float))
+    temp_table.drop(bind=engine, checkfirst=True)
+    temp_table.create(bind=engine)
+    with open(fname, 'rb') as f:
+        conn = engine.raw_connection()
+        cur = conn.cursor()
+        cur.copy_expert(''' 
+            COPY "temp_{0}" (
+                entity_id,
+                record_id,
+                confidence
+            ) 
+            FROM STDIN CSV'''.format(session_id), f)
+        conn.commit()
+    upd = text(''' 
+        WITH upd AS (
+          UPDATE "entity_{0}" AS e 
+            SET entity_id=temp.entity_id, 
+              confidence=temp.confidence, 
+              clustered=FALSE 
+            FROM "temp_{0}" temp 
+          WHERE e.record_id = temp.record_id 
+          RETURNING temp.record_id
+        ) 
+        INSERT INTO "entity_{0}" (record_id, entity_id, confidence, clustered) 
+          SELECT record_id, entity_id, confidence, FALSE AS clustered 
+            FROM "temp_{0}" temp 
+            LEFT JOIN upd USING(record_id) 
+          WHERE upd.record_id IS NULL
+          RETURNING record_id
+    '''.format(session_id))
+    with engine.begin() as c:
+        ids = c.execute(upd)
 
 def writeBlockingMap(session_id, block_data, canonical=False):
     pk_type = Integer
@@ -255,12 +233,14 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         .having(func.count(bkm.c.block_key) > 1)
     pl_ins = plural_key.insert()\
         .from_select([plural_key.c.block_key], bkm_sel)
-    engine.execute(pl_ins)
+    with engine.begin() as c:
+        c.execute(pl_ins)
     
     pl_key_idx = Index('pk_{0}_idx'.format(session_id), plural_key.c.block_key)
     pl_key_idx.create(engine)
 
-    engine.execute('DROP TABLE IF EXISTS "plural_block_{0}"'.format(session_id))
+    with engine.begin() as c:
+        c.execute('DROP TABLE IF EXISTS "plural_block_{0}"'.format(session_id))
     pl_bk_stmt = '''
         CREATE TABLE "plural_block_{0}" AS (
             SELECT p.block_id, b.record_id 
@@ -268,16 +248,20 @@ def writeBlockingMap(session_id, block_data, canonical=False):
                 INNER JOIN "plural_key_{0}" AS p
                 USING (block_key)
             )'''.format(session_id)
-    engine.execute(pl_bk_stmt)
-    engine.execute('''
-        CREATE INDEX "pl_bk_idx_{0}" 
-        ON "plural_block_{0}" (record_id)'''.format(session_id)
-    )
-    engine.execute('DROP INDEX IF EXISTS "pl_bk_id_idx_{0}"'.format(session_id))
-    engine.execute(''' 
-        CREATE UNIQUE INDEX "pl_bk_id_idx_{0}" on "plural_block_{0}" 
-        (block_id, record_id) '''.format(session_id)
-    )
+    with engine.begin() as c:
+        c.execute(pl_bk_stmt)
+    with engine.begin() as c:
+        c.execute('''
+            CREATE INDEX "pl_bk_idx_{0}" 
+            ON "plural_block_{0}" (record_id)'''.format(session_id)
+        )
+    with engine.begin() as c:
+        c.execute('DROP INDEX IF EXISTS "pl_bk_id_idx_{0}"'.format(session_id))
+    with engine.begin() as c:
+        c.execute(''' 
+            CREATE UNIQUE INDEX "pl_bk_id_idx_{0}" on "plural_block_{0}" 
+            (block_id, record_id) '''.format(session_id)
+        )
 
     cov_bks_stmt = ''' 
         CREATE TABLE "covered_{0}" AS (
@@ -288,14 +272,18 @@ def writeBlockingMap(session_id, block_data, canonical=False):
             GROUP BY record_id
         )
     '''.format(session_id)
-    engine.execute('DROP TABLE IF EXISTS "covered_{0}"'.format(session_id))
-    engine.execute(cov_bks_stmt)
-    engine.execute(''' 
-        CREATE UNIQUE INDEX "cov_bks_id_idx_{0}" ON "covered_{0}" (record_id)
-        '''.format(session_id)
-    )
+    with engine.begin() as c:
+        c.execute('DROP TABLE IF EXISTS "covered_{0}"'.format(session_id))
+    with engine.begin() as c:
+        c.execute(cov_bks_stmt)
+    with engine.begin() as c:
+        c.execute(''' 
+            CREATE UNIQUE INDEX "cov_bks_id_idx_{0}" ON "covered_{0}" (record_id)
+            '''.format(session_id)
+        )
 
-    engine.execute('DROP TABLE IF EXISTS "small_cov_{0}"'.format(session_id))
+    with engine.begin() as c:
+        c.execute('DROP TABLE IF EXISTS "small_cov_{0}"'.format(session_id))
     small_cov = ''' 
         CREATE TABLE "small_cov_{0}" AS (
             SELECT record_id, 
@@ -307,14 +295,17 @@ def writeBlockingMap(session_id, block_data, canonical=False):
             USING (record_id)
         )
     '''.format(session_id)
-    engine.execute(small_cov)
-    engine.execute('''
-        CREATE INDEX "sc_idx_{0}" 
-        ON "small_cov_{0}" (record_id)'''.format(session_id)
-    )
-    engine.execute('''
-        CREATE INDEX "sc_bk_idx_{0}" 
-        ON "small_cov_{0}" (block_id)'''.format(session_id)
-    )
+    with engine.begin() as c:
+        c.execute(small_cov)
+    with engine.begin() as c:
+        c.execute('''
+            CREATE INDEX "sc_idx_{0}" 
+            ON "small_cov_{0}" (record_id)'''.format(session_id)
+        )
+    with engine.begin() as c:
+        c.execute('''
+            CREATE INDEX "sc_bk_idx_{0}" 
+            ON "small_cov_{0}" (block_id)'''.format(session_id)
+        )
 
 

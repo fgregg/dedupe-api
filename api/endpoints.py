@@ -182,7 +182,8 @@ def checkin_sessions():
         upd = table.update().where(table.c.checkout_expire <= now)\
             .where(table.c.clustered == False)\
             .values(checked_out = False, checkout_expire = None)
-        engine.execute(upd)
+        with engine.begin() as c:
+            c.execute(upd)
     return None
 
 @endpoints.route('/get-review-cluster/<session_id>/')
@@ -270,10 +271,13 @@ def mark_all_clusters(session_id):
         status_code = 401
     else:
         # Need to update existing clusters with new entity_id here, too.
-        upd = ''' 
+        user = db_session.query(User).get(flask_session['api_key'])
+        upd = text(''' 
             UPDATE "entity_{0}" SET 
                 entity_id=subq.entity_id,
-                clustered=TRUE 
+                clustered=TRUE,
+                reviewer = :user_name,
+                match_type = :match_type
             FROM (
                     SELECT 
                         s.entity_id AS entity_id,
@@ -289,15 +293,19 @@ def mark_all_clusters(session_id):
                 ) as subq 
             WHERE "entity_{0}".record_id=subq.record_id 
             RETURNING "entity_{0}".entity_id
-            '''.format(session_id)
-        child_entities = engine.execute(upd)
+            '''.format(session_id))
+        with engine.begin() as c:
+            child_entities = c.execute(upd, 
+                                        user_name=user.name,
+                                        match_type='bulk accepted')
         upd = ''' 
             UPDATE "entity_{0}" SET
                 clustered=TRUE 
             WHERE target_record_id IS NULL
             RETURNING entity_id;
         '''.format(session_id)
-        parent_entities = engine.execute(upd)
+        with engine.begin() as c:
+            parent_entities = c.execute(upd)
         count = len(set([c.entity_id for c in child_entities])\
             .union([c.entity_id for c in parent_entities]))
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
@@ -323,6 +331,8 @@ def mark_cluster(session_id):
         resp['message'] = "You don't have access to session '%s'" % session_id
         status_code = 401
     else:
+        sess = db_session.query(DedupeSession).get(session_id)
+        user = db_session.query(User).get(flask_session['api_key'])
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
         entity_id = request.args.get('entity_id')
@@ -332,11 +342,14 @@ def mark_cluster(session_id):
             upd = entity_table.update()\
                 .where(entity_table.c.entity_id == entity_id)\
                 .values(clustered=True, checked_out=False, checkout_expire=None)
-            engine.execute(upd)
+            with engine.begin() as c:
+                c.execute(upd)
             update_existing = text('''
                 UPDATE "entity_{0}" SET 
                     entity_id = :entity_id, 
-                    clustered = TRUE 
+                    clustered = TRUE,
+                    reviewer = :user_name,
+                    match_type = :match_type
                     FROM (
                         SELECT e.record_id 
                             FROM "entity_{0}" AS e 
@@ -349,7 +362,11 @@ def mark_cluster(session_id):
                     ) AS subq 
                 WHERE "entity_{0}".record_id = subq.record_id
                 '''.format(sess.id))
-            engine.execute(update_existing, entity_id=entity_id)
+            with engine.begin() as c:
+                c.execute(update_existing, 
+                          entity_id=entity_id,
+                          user_name=user.name,
+                          match_type='clerical review')
             # training_data['match'].extend(pairs)
         elif action == 'no':
             update_existing = text(''' 
@@ -368,10 +385,12 @@ def mark_cluster(session_id):
                     ) as subq
                 WHERE "entity_{0}".record_id = subq.record_id
                 '''.format(sess.id))
-            engine.execute(update_existing, entity_id=entity_id, clustered=True)
+            with engine.begin() as c:
+                c.execute(update_existing, entity_id=entity_id, clustered=True)
             delete = entity_table.delete()\
                 .where(entity_table.c.entity_id == entity_id)
-            engine.execute(delete)
+            with engine.begin() as c:
+                c.execute(delete)
             #training_data['distinct'].append(pairs)
        #sess.training_data = json.dumps(training_data)
        #db_session.add(sess)
@@ -509,19 +528,26 @@ def delete_session(session_id):
         db_session.delete(data)
         db_session.commit()
         tables = [
-            'entity',
-            'raw',
-            'processed',
-            'block',
-            'plural_block',
-            'canon',
-            'covered',
-            'plural_key',
-            'small_cov',
+            'entity_{0}',
+            'entity_{0}_cr',
+            'raw_{0}',
+            'processed_{0}',
+            'processed_{0}_cr',
+            'block_{0}',
+            'block_{0}_cr',
+            'plural_block_{0}',
+            'plural_block_{0}_cr',
+            'cr_{0}',
+            'covered_{0}',
+            'covered_{0}_cr',
+            'plural_key_{0}',
+            'plural_key_{0}_cr',
+            'small_cov_{0}',
+            'small_cov_{0}_cr',
         ]
         for table in tables:
             try:
-                data_table = Table('%s_%s' % (table,session_id), 
+                data_table = Table(table.format(session_id), 
                     Base.metadata, autoload=True, autoload_with=engine)
                 data_table.drop(engine)
             except NoSuchTableError:

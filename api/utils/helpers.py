@@ -46,7 +46,8 @@ def getCluster(session_id, entity_table_name, raw_table_name):
         upd = entity_table.update()\
             .where(entity_table.c.entity_id.in_(subq))\
             .values(checked_out=True, checkout_expire=one_minute)
-        engine.execute(upd)
+        with engine.begin() as c:
+            c.execute(upd)
         confidence = cluster[0][2]
         entity_id = cluster[0][1]
         for thing in records:

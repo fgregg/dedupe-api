@@ -101,6 +101,7 @@ def check_sessions():
                         Group.id.in_([i.id for i in user.groups])))\
                     .all()
                 flask_session['user_sessions'] = [s.id for s in sess]
+                flask_session['api_key'] = api_key
             return f(*args, **kwargs)
         return decorated
     return decorator
