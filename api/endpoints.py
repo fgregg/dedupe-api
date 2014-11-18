@@ -273,14 +273,14 @@ def mark_all_clusters(session_id):
         user = db_session.query(User).get(flask_session['api_key'])
         upd_vals = {
             'user_name': user.name, 
-            'match_type': 'bulk accepted', 
             'clustered': True,
+            'match_type': 'bulk accepted',
             'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
         }
         upd = text(''' 
             UPDATE "entity_{0}" SET 
                 entity_id=subq.entity_id,
-                clustered=TRUE,
+                clustered= :clustered,
                 reviewer = :user_name,
                 match_type = :match_type,
                 last_update = :last_update
@@ -357,14 +357,14 @@ def mark_cluster(session_id):
             upd_vals = {
                 'entity_id': entity_id,
                 'user_name': user.name, 
-                'match_type': 'clerical review', 
                 'clustered': True,
+                'match_type': 'clerical review',
                 'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
             }
             update_existing = text('''
                 UPDATE "entity_{0}" SET 
                     entity_id = :entity_id, 
-                    clustered = TRUE,
+                    clustered = :clustered,
                     reviewer = :user_name,
                     match_type = :match_type,
                     last_update = :last_update
@@ -432,11 +432,54 @@ def mark_canon_cluster(session_id):
             'message': "You don't have access to session %s" % session_id
         }
         status_code = 401
+    elif not request.args.get('entity_id'):
+        resp = {
+            'status': 'error',
+            'message': '"entity_id" is a required parameter'
+        }
+        status_code = 401
     else:
-        resp = {}
+        entity_id = request.args['entity_id']
+        action = request.args.get('action')
+        user = db_session.query(User).get(flask_session['api_key'])
+        if action == 'yes':
+            upd = text('''
+                UPDATE "entity_{0}" SET 
+                    entity_id = :entity_id,
+                    clustered = TRUE,
+                    checked_out = FALSE,
+                    last_update = :last_update,
+                    reviewer = :user_name
+                WHERE entity_id in (
+                    SELECT record_id 
+                        FROM "entity_{0}_cr"
+                    WHERE entity_id = :entity_id
+                )
+                '''.format(session_id))
+            last_update = datetime.now().replace(tzinfo=TIME_ZONE)
+            with engine.begin() as c:
+                c.execute(upd, 
+                          entity_id=entity_id, 
+                          last_update=last_update,
+                          user_name=user.name)
+        elif action == 'no':
+            delete = text(''' 
+                DELETE FROM "entity_{0}_cr"
+                WHERE entity_id = :entity_id
+            '''.format(session_id))
+            with engine.begin() as c:
+                c.execute(delete, entity_id=entity_id)
+        resp = {
+            'session_id': session_id, 
+            'entity_id': entity_id, 
+            'status': 'ok', 
+            'action': action,
+            'message': ''
+        }
         status_code = 200
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
+    return resp
 
 status_lookup = {
     'dataset uploaded': 'training started',

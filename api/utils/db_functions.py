@@ -133,7 +133,6 @@ def initializeEntityMap(session_id, fields):
         FROM STDIN CSV''' % session_id, s)
     conn.commit()
 
-
 def updateEntityMap(clustered_dupes,
                     session_id,
                     raw_table=None,
@@ -147,11 +146,18 @@ def updateEntityMap(clustered_dupes,
         writer = UnicodeCSVWriter(f)
         for ids, scores in clustered_dupes:
             new_ent = unicode(uuid4())
+            writer.writerow([
+                new_ent,
+                ids[0],
+                scores[0],
+                None,
+            ])
             for id, score in zip(ids, scores):
                 writer.writerow([
                     new_ent,
                     id,
                     score,
+                    ids[0],
                 ])
     engine = worker_session.bind
     metadata = MetaData()
@@ -163,6 +169,7 @@ def updateEntityMap(clustered_dupes,
     temp_table = Table('temp_{0}'.format(session_id), metadata,
                        Column('entity_id', String),
                        Column('record_id', record_id_type),
+                       Column('target_record_id', record_id_type),
                        Column('confidence', Float))
     temp_table.drop(bind=engine, checkfirst=True)
     temp_table.create(bind=engine)
@@ -173,7 +180,8 @@ def updateEntityMap(clustered_dupes,
             COPY "temp_{0}" (
                 entity_id,
                 record_id,
-                confidence
+                confidence,
+                target_record_id
             ) 
             FROM STDIN CSV'''.format(session_id), f)
         conn.commit()
@@ -182,22 +190,24 @@ def updateEntityMap(clustered_dupes,
     upd = text(''' 
         WITH upd AS (
           UPDATE "{0}" AS e 
-            SET entity_id=temp.entity_id, 
-              confidence=temp.confidence, 
-              clustered=FALSE,
-              checked_out=FALSE,
-              last_update= :last_update
+            SET entity_id = temp.entity_id, 
+              confidence = temp.confidence, 
+              clustered = FALSE,
+              checked_out = FALSE,
+              last_update = :last_update,
+              target_record_id = temp.target_record_id
             FROM "temp_{1}" temp 
           WHERE e.record_id = temp.record_id 
           RETURNING temp.record_id
         ) 
-        INSERT INTO "{0}" (record_id, entity_id, confidence, clustered, checked_out) 
+        INSERT INTO "{0}" (record_id, entity_id, confidence, clustered, checked_out, target_record_id) 
           SELECT 
             record_id, 
             entity_id, 
             confidence, 
             FALSE AS clustered, 
-            FALSE AS checked_out 
+            FALSE AS checked_out,
+            target_record_id
           FROM "temp_{1}" temp 
           LEFT JOIN upd USING(record_id) 
           WHERE upd.record_id IS NULL

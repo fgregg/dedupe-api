@@ -21,6 +21,7 @@ from csvkit.unicsv import UnicodeCSVDictReader, UnicodeCSVReader, \
 from os.path import join, dirname, abspath
 from datetime import datetime
 import cPickle
+from uuid import uuid4
 
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
@@ -230,10 +231,43 @@ def dedupeCanon(session_id):
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True)
-    cluster_count = updateEntityMap(clustered_dupes,
-        session_id, 
-        raw_table=canon_table_name, 
-        entity_table=entity_table_name)
+    fname = '/tmp/clusters_{0}.csv'.format(session_id)
+    with open(fname, 'wb') as f:
+        writer = UnicodeCSVWriter(f)
+        for ids, scores in clustered_dupes:
+            new_ent = unicode(uuid4())
+            writer.writerow([
+                new_ent,
+                ids[0],
+                scores[0],
+                None,
+                False,
+                False,
+            ])
+            for id, score in zip(ids[1:], scores):
+                writer.writerow([
+                    new_ent,
+                    id,
+                    score,
+                    ids[0],
+                    False,
+                    False,
+                ])
+    with open(fname, 'rb') as f:
+        conn = engine.raw_connection()
+        cur = conn.cursor()
+        cur.copy_expert(''' 
+            COPY "entity_{0}_cr" (
+                entity_id,
+                record_id,
+                confidence,
+                target_record_id,
+                clustered,
+                checked_out
+            ) 
+            FROM STDIN CSV'''.format(session_id), f)
+        conn.commit()
+    os.remove(fname)
     dd_session.status = 'canon clustered'
     worker_session.add(dd_session)
     worker_session.commit()
