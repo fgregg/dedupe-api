@@ -235,19 +235,18 @@ def get_pair():
 def mark_pair():
     action = request.args['action']
     flask_session['last_interaction'] = datetime.now()
-    if flask_session.get('counter'):
-        counter = flask_session['counter']
-    else:
-        counter = {'yes': 0, 'no': 0, 'unsure': 0}
-        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
-        sess.status = 'training started'
-        db_session.add(sess)
-        db_session.commit()
-    if flask_session.get('training_data'):
-        labels = flask_session['training_data']
+    counter = {'yes': 0, 'no': 0, 'unsure': 0}
+    sess = db_session.query(DedupeSession).get(flask_session['session_id'])
+    sess.status = 'training started'
+    db_session.add(sess)
+    db_session.commit()
+    deduper = flask_session['deduper']
+    if sess.training_data:
+        labels = json.loads(sess.training_data)
+        counter['yes'] = len(labels['match'])
+        counter['no'] = len(labels['distinct'])
     else:
         labels = {'distinct' : [], 'match' : []}
-    deduper = flask_session['deduper']
     if action == 'yes':
         current_pair = flask_session['current_pair']
         labels['match'].append(current_pair)
@@ -259,18 +258,7 @@ def mark_pair():
         counter['no'] += 1
         resp = {'counter': counter}
     elif action == 'finish':
-        training_data = flask_session['training_data']
-        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
-        if sess.training_data:
-            td = json.loads(sess.training_data)
-            td['distinct'].extend(training_data['distinct'])
-            td['match'].extend(training_data['match'])
-            sess.training_data = json.dumps(td, default=_to_json)
-        else:
-            sess.training_data = json.dumps(training_data, default=_to_json)
         sess.status = 'training complete'
-        db_session.add(sess)
-        db_session.commit()
         rv = dedupeRaw.delay(flask_session['session_id'])
         flask_session['deduper_key'] = rv.key
         resp = {'finished': True}
@@ -279,9 +267,10 @@ def mark_pair():
         counter['unsure'] += 1
         flask_session['counter'] = counter
         resp = {'counter': counter}
+    sess.training_data = json.dumps(labels, default=_to_json)
+    db_session.add(sess)
+    db_session.commit()
     deduper.markPairs(labels)
-    flask_session['training_data'] = labels
-    flask_session['counter'] = counter
     if resp.get('finished'):
         del flask_session['deduper']
     resp = make_response(json.dumps(resp))
