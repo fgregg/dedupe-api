@@ -100,7 +100,7 @@ def initializeEntityMap(session_id, fields):
             None, 
             entity_id, 
             1.0,
-            'raw_%s' % session_id,
+            'raw_{0}'.format(session_id),
             'TRUE',
             'FALSE',
             'exact',
@@ -111,7 +111,7 @@ def initializeEntityMap(session_id, fields):
                 king,
                 entity_id,
                 1.0,
-                'raw_%s' % session_id,
+                'raw_{0}'.format(session_id),
                 'TRUE',
                 'FALSE',
                 'exact',
@@ -152,7 +152,7 @@ def updateEntityMap(clustered_dupes,
                 scores[0],
                 None,
             ])
-            for id, score in zip(ids, scores):
+            for id, score in zip(ids[1:], scores[1:]):
                 writer.writerow([
                     new_ent,
                     id,

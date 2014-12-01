@@ -17,16 +17,32 @@ def getCluster(session_id, entity_table_name, raw_table_name):
     sess = app_session.query(DedupeSession).get(session_id)
     entity_table = Table(entity_table_name, Base.metadata,
         autoload=True, autoload_with=engine)
-   #total_clusters = app_session.query(entity_table.c.entity_id.distinct()).count()
-   #review_remainder = app_session.query(entity_table.c.entity_id.distinct())\
-   #    .filter(entity_table.c.clustered == False)\
-   #    .count()
+
+    # TODO: Need a good way of getting cluster count and review remainder
+    # This way is totally slow
+    # total_clusters = app_session.query(entity_table.c.entity_id.distinct()).count()
+    # review_remainder = app_session.query(entity_table.c.entity_id.distinct())\
+    #     .filter(entity_table.c.clustered == False)\
+    #     .count()
+
     cluster_list = []
     field_defs = [f['field'] for f in json.loads(sess.field_defs)]
     raw_table = Table(raw_table_name, Base.metadata, 
         autoload=True, autoload_with=engine, keep_existing=True)
     entity_fields = ['record_id', 'entity_id', 'confidence']
     entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
+    ''' 
+    SELECT e.record_id, e.entity_id, e.confidence
+        FROM entity AS e
+    WHERE e.entity_id IN (
+        SELECT e.entity_id
+            FROM entity as e
+        WHERE e.checked_out = FALSE
+            AND e.clustered = FALSE
+        ORDER BY e.confidence
+        LIMIT 1
+    )
+    '''
     subq = app_session.query(entity_table.c.entity_id)\
         .filter(entity_table.c.checked_out == False)\
         .filter(entity_table.c.clustered == False)\
@@ -39,6 +55,19 @@ def getCluster(session_id, entity_table_name, raw_table_name):
         raw_cols.append(raw_table.c.record_id)
         primary_key = [p.name for p in raw_table.primary_key][0]
         pk_col = getattr(raw_table.c, primary_key)
+        '''
+        SELECT 
+            r.phone, <-- List of fields that we care about
+            r.site_name, 
+            r.zip, 
+            r.address, 
+            r.record_id <-- plus record_id
+            FROM raw_table as r
+        WHERE r.record_id IN (1,2,3,4,5, ...etc...)
+        
+        The list of record IDs in the cluster come from the result 
+        of the query above.
+        '''
         records = app_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
         raw_fields = [f['name'] for f in records.column_descriptions]
         records = records.all()
@@ -88,7 +117,10 @@ def column_windows(session, column, windowsize):
         yield int_for_range(start, end)
 
 def windowed_query(q, column, windowsize):
-    
+    ''' 
+    Details on how this works can be found here:
+    https://bitbucket.org/zzzeek/sqlalchemy/wiki/UsageRecipes/WindowedRangeQuery
+    '''
     for whereclause in column_windows(q.session, 
                                         column, windowsize):
         for row in q.filter(whereclause).order_by(column):

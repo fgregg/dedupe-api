@@ -481,6 +481,64 @@ def mark_canon_cluster(session_id):
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
+@endpoints.route('/mark-all-canon-clusters/<session_id>/')
+@check_sessions()
+def mark_all_canon_cluster(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        status_code = 401
+    else:
+        status_code = 200
+        user = db_session.query(User).get(flask_session['api_key'])
+        upd_vals = {
+            'user_name': user.name, 
+            'clustered': True,
+            'match_type': 'bulk accepted - canon',
+            'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+        }
+        upd = text(''' 
+            UPDATE "entity_{0}" SET 
+                entity_id=subq.entity_id,
+                clustered= :clustered,
+                reviewer = :user_name,
+                match_type = :match_type,
+                last_update = :last_update
+            FROM (
+                SELECT 
+                    c.entity_id, 
+                    e.record_id 
+                FROM "entity_{0}" as e
+                JOIN "entity_{0}_cr" as c 
+                    ON e.entity_id = c.record_id 
+                LEFT JOIN (
+                    SELECT record_id, target_record_id FROM "entity_{0}"
+                    ) AS s 
+                    ON e.record_id = s.target_record_id
+                ) as subq 
+            WHERE "entity_{0}".record_id=subq.record_id 
+            RETURNING "entity_{0}".entity_id
+            '''.format(session_id))
+        with engine.begin() as c:
+            updated = c.execute(upd,**upd_vals)
+        resp = {
+            'session_id': session_id,
+            'status': 'ok',
+            'message': '',
+        }
+        count = len(set([c.entity_id for c in updated]))
+        resp['message'] = 'Marked {0} entities as clusters'.format(count)
+        sess = db_session.query(DedupeSession).get(session_id)
+        sess.status = 'review complete'
+        db_session.add(sess)
+        db_session.commit()
+    resp = make_response(json.dumps(resp), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
 status_lookup = {
     'dataset uploaded': 'training started',
     'training started': 'training completed',
