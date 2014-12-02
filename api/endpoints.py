@@ -237,12 +237,12 @@ def get_canon_cluster(session_id):
     else:
         checkin_sessions()
         sess = db_session.query(DedupeSession).get(session_id)
-        cluster = getCluster(session_id, 
+        entity_id, cluster = getCluster(session_id, 
                              'entity_{0}_cr'.format(session_id), 
                              'cr_{0}'.format(session_id))
         if cluster:
-            resp['confidence'], resp['entity_id'], cluster_list = cluster
-            resp['objects'] = cluster_list
+            resp['entity_id'] = entity_id
+            resp['objects'] = cluster
         else:
             sess.status = 'review complete'
             # dedupeCanon.delay(sess.id)
@@ -298,6 +298,7 @@ def mark_all_clusters(session_id):
                         ON e.target_record_id = s.record_id
                 ) as subq 
             WHERE "entity_{0}".record_id=subq.record_id 
+                AND "entity_{0}".clustered=FALSE
             RETURNING "entity_{0}".entity_id
             '''.format(session_id))
         with engine.begin() as c:
@@ -308,6 +309,7 @@ def mark_all_clusters(session_id):
                 reviewer = :user_name,
                 last_update = :last_update
             WHERE target_record_id IS NULL
+                AND clustered=FALSE
             RETURNING entity_id;
         '''.format(session_id))
         with engine.begin() as c:
@@ -345,7 +347,6 @@ def mark_cluster(session_id):
         entity_id = request.args.get('entity_id')
         match_ids = request.args.get('match_ids')
         distinct_ids = request.args.get('distinct_ids')
-        action = request.args.get('action')
         training_data = json.loads(sess.training_data)
         if match_ids:
             match_ids = tuple([int(m) for m in match_ids.split(',')])
@@ -426,8 +427,9 @@ def mark_cluster(session_id):
         resp = {
             'session_id': session_id, 
             'entity_id': entity_id, 
+            'match_ids': match_ids,
+            'distinct_ids': distinct_ids,
             'status': 'ok', 
-            'action': action,
             'message': ''
         }
         status_code = 200
@@ -452,10 +454,12 @@ def mark_canon_cluster(session_id):
         }
         status_code = 401
     else:
-        entity_id = request.args['entity_id']
-        action = request.args.get('action')
+        entity_id = request.args.get('entity_id')
+        match_ids = request.args.get('match_ids')
+        distinct_ids = request.args.get('distinct_ids')
         user = db_session.query(User).get(flask_session['api_key'])
-        if action == 'yes':
+        if match_ids:
+            match_ids = tuple([d for d in match_ids.split(',')])
             upd = text('''
                 UPDATE "entity_{0}" SET 
                     entity_id = :entity_id,
@@ -467,6 +471,7 @@ def mark_canon_cluster(session_id):
                     SELECT record_id 
                         FROM "entity_{0}_cr"
                     WHERE entity_id = :entity_id
+                        AND record_id IN :record_ids
                 )
                 '''.format(session_id))
             last_update = datetime.now().replace(tzinfo=TIME_ZONE)
@@ -474,19 +479,23 @@ def mark_canon_cluster(session_id):
                 c.execute(upd, 
                           entity_id=entity_id, 
                           last_update=last_update,
-                          user_name=user.name)
-        elif action == 'no':
+                          user_name=user.name,
+                          record_ids=match_ids)
+        if distinct_ids == 'no':
+            distinct_ids = tuple([d for d in distinct_ids.split(',')])
             delete = text(''' 
                 DELETE FROM "entity_{0}_cr"
                 WHERE entity_id = :entity_id
+                    AND record_id IN :record_ids
             '''.format(session_id))
             with engine.begin() as c:
-                c.execute(delete, entity_id=entity_id)
+                c.execute(delete, entity_id=entity_id, record_ids=distinct_ids)
         resp = {
             'session_id': session_id, 
-            'entity_id': entity_id, 
+            'entity_id': entity_id,
+            'match_ids': match_ids,
+            'distinct_ids': distinct_ids,
             'status': 'ok', 
-            'action': action,
             'message': ''
         }
         status_code = 200
