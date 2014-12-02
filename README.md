@@ -15,8 +15,8 @@ Repository for Enterprise Dedupe API
 ```bash
 git clone git@github.com:datamade/dedupe-api.git
 cd dedupe-api
-$ pip install "numpy>=1.6"
-$ pip install -r requirements.txt
+pip install "numpy>=1.6"
+pip install -r requirements.txt
 ```
 
 Create a PostgreSQL database for dedupeapi. (If you aren't
@@ -43,21 +43,19 @@ You will want to change, at the minimum, the following `app_config.py` fields:
 Before running the server, [Redis](http://redis.io/).
 
 * To start Redis locally (in the background):
-```
+```bash
 redis-server &
 ```
 
 Initialize the dedupe-api database: 
 
-```
-python
->>> from api import database
->>> database.init_db()
+```bash
+python init_db.py
 ```
 
 Finally, run the queue and server:
 
-```
+```bash
 nohup python run_queue.py &
 python runserver.py
 ```
