@@ -8,7 +8,7 @@ from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
 from api.utils.delayed_tasks import retrain, bulkMatchWorker, dedupeCanon
-from api.utils.helpers import preProcess, getCluster
+from api.utils.helpers import preProcess, getCluster, updateTraining
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -202,12 +202,12 @@ def get_cluster(session_id):
     else:
         sess = db_session.query(DedupeSession).get(session_id)
         checkin_sessions()
-        cluster = getCluster(session_id, 
+        entity_id, cluster = getCluster(session_id, 
                              'entity_{0}'.format(session_id), 
                              'raw_{0}'.format(session_id))
         if cluster:
-            resp['confidence'], resp['entity_id'], cluster_list = cluster
-            resp['objects'] = cluster_list
+            resp['entity_id'] = entity_id 
+            resp['objects'] = cluster
         else:
             sess.status = 'first pass review complete'
             dedupeCanon.delay(sess.id)
@@ -341,12 +341,17 @@ def mark_cluster(session_id):
         user = db_session.query(User).get(flask_session['api_key'])
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
+        # TODO: Return an error if these args are not present.
         entity_id = request.args.get('entity_id')
+        match_ids = request.args.get('match_ids')
+        distinct_ids = request.args.get('distinct_ids')
         action = request.args.get('action')
         training_data = json.loads(sess.training_data)
-        if action == 'yes':
+        if match_ids:
+            match_ids = tuple([int(m) for m in match_ids.split(',')])
             upd = entity_table.update()\
                 .where(entity_table.c.entity_id == entity_id)\
+                .where(entity_table.c.record_id.in_(match_ids))\
                 .values(clustered=True, 
                         checked_out=False, 
                         checkout_expire=None,
@@ -356,6 +361,7 @@ def mark_cluster(session_id):
                 c.execute(upd)
             upd_vals = {
                 'entity_id': entity_id,
+                'record_ids': match_ids,
                 'user_name': user.name, 
                 'clustered': True,
                 'match_type': 'clerical review',
@@ -375,6 +381,7 @@ def mark_cluster(session_id):
                                 SELECT record_id 
                                     FROM "entity_{0}"
                                     WHERE entity_id = :entity_id
+                                        AND record_id IN :record_ids
                             ) AS s 
                             ON e.target_record_id = s.record_id
                     ) AS subq 
@@ -383,7 +390,8 @@ def mark_cluster(session_id):
             with engine.begin() as c:
                 c.execute(update_existing,**upd_vals)
             # training_data['match'].extend(pairs)
-        elif action == 'no':
+        if distinct_ids:
+            distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
             update_existing = text(''' 
                 UPDATE "entity_{0}" SET
                     entity_id = subq.entity_id,
@@ -395,15 +403,20 @@ def mark_cluster(session_id):
                                 SELECT record_id 
                                     FROM "entity_{0}"
                                     WHERE entity_id = :entity_id
+                                        AND record_id in :record_ids
                             ) AS s
                             ON e.target_record_id = s.record_id
                     ) as subq
                 WHERE "entity_{0}".record_id = subq.record_id
                 '''.format(sess.id))
             with engine.begin() as c:
-                c.execute(update_existing, entity_id=entity_id, clustered=True)
+                c.execute(update_existing, 
+                          entity_id=entity_id, 
+                          clustered=True, 
+                          record_ids=distinct_ids)
             delete = entity_table.delete()\
-                .where(entity_table.c.entity_id == entity_id)
+                .where(entity_table.c.entity_id == entity_id)\
+                .where(entity_table.c.record_id.in_(distinct_ids))
             with engine.begin() as c:
                 c.execute(delete)
             #training_data['distinct'].append(pairs)

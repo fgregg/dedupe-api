@@ -13,6 +13,12 @@ from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 
+def updateTraining(session_id, record_ids, distinct=False):
+    ''' 
+    Update the sessions training data with the given record_ids
+    '''
+    return None
+
 def getCluster(session_id, entity_table_name, raw_table_name):
     sess = app_session.query(DedupeSession).get(session_id)
     entity_table = Table(entity_table_name, Base.metadata,
@@ -32,59 +38,55 @@ def getCluster(session_id, entity_table_name, raw_table_name):
     entity_fields = ['record_id', 'entity_id', 'confidence']
     entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
     ''' 
-    SELECT e.record_id, e.entity_id, e.confidence
+    SELECT e.entity_id 
         FROM entity AS e
-    WHERE e.entity_id IN (
-        SELECT e.entity_id
-            FROM entity as e
-        WHERE e.checked_out = FALSE
-            AND e.clustered = FALSE
-        ORDER BY e.confidence
-        LIMIT 1
-    )
+    WHERE e.checked_out = FALSE
+        AND e.clustered = FALSE
+    ORDER BY e.confidence
+    LIMIT 1
     '''
-    subq = app_session.query(entity_table.c.entity_id)\
+    ent = app_session.query(entity_table.c.entity_id)\
         .filter(entity_table.c.checked_out == False)\
         .filter(entity_table.c.clustered == False)\
-        .order_by(entity_table.c.confidence).limit(1).subquery()
-    cluster = app_session.query(*entity_cols)\
-        .filter(entity_table.c.entity_id.in_(subq)).all()
-    if cluster:
-        raw_ids = [c[0] for c in cluster]
+        .order_by(entity_table.c.confidence)\
+        .limit(1)
+    entity_id = ent.first()[0]
+    if entity_id:
         raw_cols = [getattr(raw_table.c, f) for f in field_defs]
         raw_cols.append(raw_table.c.record_id)
-        primary_key = [p.name for p in raw_table.primary_key][0]
-        pk_col = getattr(raw_table.c, primary_key)
+        raw_cols.append(entity_table.c.confidence)
         '''
         SELECT 
+            e.confidence,
             r.phone, <-- List of fields that we care about
             r.site_name, 
             r.zip, 
             r.address, 
             r.record_id <-- plus record_id
-            FROM raw_table as r
-        WHERE r.record_id IN (1,2,3,4,5, ...etc...)
-        
-        The list of record IDs in the cluster come from the result 
-        of the query above.
+        FROM raw_table AS r
+        JOIN entity_table as e 
+            ON r.record_id = e.record_id
+        WHERE e.entity_id = :entity_id
+
+        The entity ID comes from the result of the query above.
         '''
-        records = app_session.query(*raw_cols).filter(pk_col.in_(raw_ids))
+        records = app_session.query(*raw_cols)\
+            .join(entity_table, raw_table.c.record_id == entity_table.c.record_id)\
+            .filter(entity_table.c.entity_id == entity_id)
         raw_fields = [f['name'] for f in records.column_descriptions]
         records = records.all()
         one_minute = datetime.now() + timedelta(minutes=1)
         upd = entity_table.update()\
-            .where(entity_table.c.entity_id.in_(subq))\
+            .where(entity_table.c.entity_id == entity_id)\
             .values(checked_out=True, checkout_expire=one_minute)
         with engine.begin() as c:
             c.execute(upd)
-        confidence = cluster[0][2]
-        entity_id = cluster[0][1]
         for thing in records:
             d = {}
             for k,v in zip(raw_fields, thing):
                 d[k] = v
             cluster_list.append(d)
-        return confidence, entity_id, cluster_list
+        return entity_id, cluster_list
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
