@@ -62,9 +62,9 @@
                         table_body += '</table>';
                         table_body += '<h4>Does this entity match your lookup? <span id="confidence"></span></h4>';
                         table_body += '<button class="btn btn-success mark-entity" id="yes" data-entity_id="' + match.entity_id + '">';
-                        table_body += '<i class="icon-ok"></i>Yes</button>';
+                        table_body += '<i class="fa fa-check"></i>Yes</button>';
                         table_body += '<button class="btn btn-danger mark-entity" id="no" data-entity_id="' + match.entity_id + '">';
-                        table_body += '<i class="icon-remove"></i>No</button><hr />';
+                        table_body += '<i class="fa fa-remove"></i>No</button><hr />';
                     })
                 } else {
                     table_body += '<p><strong>No matches found</strong></p>';
