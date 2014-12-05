@@ -12,6 +12,7 @@ from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
     create_engine, Float, Boolean, BigInteger, distinct, text, select, \
     Text, func, Index
+from sqlalchemy.sql import label
 from sqlalchemy.exc import ProgrammingError
 from unidecode import unidecode
 from uuid import uuid4
@@ -217,6 +218,57 @@ def updateEntityMap(clustered_dupes,
         ids = c.execute(upd, last_update=datetime.now().replace(tzinfo=TIME_ZONE))
     temp_table.drop(bind=engine)
     os.remove(fname)
+
+def writeCanonRep(session_id, name_pattern='cr_{0}'):
+    engine = worker_session.bind
+    metadata = MetaData()
+    entity = Table('entity_{0}'.format(session_id), metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+    proc_table = Table('processed_{0}'.format(session_id), metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+
+    cr_cols = [Column('record_id', String, primary_key=True)]
+    for col in proc_table.columns:
+        if col.name != 'record_id':
+            cr_cols.append(Column(col.name, col.type))
+    cr = Table(name_pattern.format(session_id), metadata, *cr_cols)
+    cr.drop(bind=engine, checkfirst=True)
+    cr.create(bind=engine)
+
+    cols = [entity.c.entity_id]
+    col_names = [c for c in proc_table.columns.keys() if c != 'record_id']
+    for name in col_names:
+        cols.append(label(name, func.array_agg(getattr(proc_table.c, name))))
+    rows = worker_session.query(*cols)\
+        .filter(entity.c.record_id == proc_table.c.record_id)\
+        .group_by(entity.c.entity_id)
+    names = cr.columns.keys()
+    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'wb') as f:
+        writer = UnicodeCSVWriter(f)
+        writer.writerow(names)
+        for row in rows:
+            r = [row.entity_id]
+            dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
+            for idx, dct in enumerate(dicts):
+                for name in col_names:
+                    dicts[idx][name] = getattr(row, name)[idx]
+            canon_form = dedupe.canonicalize(dicts)
+            r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])
+            writer.writerow(r)
+    canon_table_name = name_pattern.format(session_id)
+    copy_st = 'COPY "{0}" ('.format(canon_table_name)
+    for idx, name in enumerate(names):
+        if idx < len(names) - 1:
+            copy_st += '"{0}", '.format(name)
+        else:
+            copy_st += '"{0}")'.format(name)
+    else:
+        copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',', NULL ' ')"
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'rb') as f:
+        cur.copy_expert(copy_st, f)
+    conn.commit()
 
 def writeBlockingMap(session_id, block_data, canonical=False):
     pk_type = Integer

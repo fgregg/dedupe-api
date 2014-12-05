@@ -7,7 +7,7 @@ from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
-from api.utils.delayed_tasks import retrain, bulkMatchWorker, dedupeCanon
+from api.utils.delayed_tasks import bulkMatchWorker, dedupeCanon
 from api.utils.helpers import preProcess, getCluster, updateTraining
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
@@ -168,7 +168,7 @@ def train():
             sess.training_data = json.dumps(training_data)
             db_session.add(sess)
             db_session.commit()
-            retrain.delay(session_id)
+            #retrain.delay(session_id)
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -244,8 +244,9 @@ def get_canon_cluster(session_id):
             resp['entity_id'] = entity_id
             resp['objects'] = cluster
         else:
-            sess.status = 'review complete'
-            # dedupeCanon.delay(sess.id)
+            sess.status = 'second review complete'
+            # Need to write canon table and
+            # match unclustered records now
             db_session.add(sess)
             db_session.commit()
         resp['total_clusters'] = 100
@@ -561,15 +562,6 @@ def mark_all_canon_cluster(session_id):
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-status_lookup = {
-    'dataset uploaded': 'training started',
-    'training started': 'training completed',
-    'training completed': 'dedupe started',
-    'dedupe started': 'review queue ready',
-    'review queue ready': 'review complete',
-    'review complete': '',
-}
-
 @endpoints.route('/training-data/<session_id>/')
 @check_sessions()
 def training_data(session_id):
@@ -682,6 +674,7 @@ def delete_session(session_id):
             'plural_key_{0}_cr',
             'small_cov_{0}',
             'small_cov_{0}_cr',
+            'canon_{0}',
         ]
         for table in tables:
             try:
@@ -710,11 +703,13 @@ def review():
             .filter(DedupeSession.id.in_(user_sessions))\
             .all()
         for sess in sessions:
-            all_sessions.append(sess.as_dict())
+            s = sess.as_dict()
+            all_sessions.append(s)
     else:
         if sess_id in user_sessions:
             sess = db_session.query(DedupeSession).get(sess_id)
-            all_sessions.append(sess.as_dict())
+            s = sess.as_dict()
+            all_sessions.append(s)
     resp['objects'] = all_sessions
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'

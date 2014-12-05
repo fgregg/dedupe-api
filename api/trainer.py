@@ -16,7 +16,8 @@ import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable
-from api.utils.helpers import getDistinct, slugify
+from api.utils.helpers import getDistinct, slugify, updateSessionStatus, \
+    STATUS_LIST
 from api.models import DedupeSession, User, Group
 from api.database import app_session as db_session
 from api.auth import check_roles, csrf, login_required
@@ -63,7 +64,7 @@ def upload():
         id=session_id, 
         name=f.filename,
         group=group,
-        status='dataset uploaded')
+        status=STATUS_LIST[0])
     db_session.add(sess)
     db_session.commit()
     u.seek(0)
@@ -164,6 +165,7 @@ def select_field_types():
         sess.field_defs = json.dumps(field_defs)
         db_session.add(sess)
         db_session.commit()
+        updateSessionStatus(sess.id)
         flask_session['init_key'] = initializeModel.delay(sess.id).key
         return redirect(url_for('trainer.training_run'))
     return render_template('select_field_types.html', user=user, field_list=field_list)
@@ -201,6 +203,7 @@ def training_run():
             deduper = dedupe.Dedupe(field_defs, data_sample=sample)
             flask_session['deduper'] = deduper
             init_status = 'finished'
+            updateSessionStatus(flask_session['session_id'])
     return make_response(render_template(
                             'training_run.html', 
                             user=user, error=error, 
@@ -237,9 +240,6 @@ def mark_pair():
     flask_session['last_interaction'] = datetime.now()
     counter = {'yes': 0, 'no': 0, 'unsure': 0}
     sess = db_session.query(DedupeSession).get(flask_session['session_id'])
-    sess.status = 'training started'
-    db_session.add(sess)
-    db_session.commit()
     deduper = flask_session['deduper']
     if sess.training_data:
         labels = json.loads(sess.training_data)
@@ -258,7 +258,7 @@ def mark_pair():
         counter['no'] += 1
         resp = {'counter': counter}
     elif action == 'finish':
-        sess.status = 'training complete'
+        updateSessionStatus(flask_session['session_id'])
         rv = dedupeRaw.delay(flask_session['session_id'])
         flask_session['deduper_key'] = rv.key
         resp = {'finished': True}

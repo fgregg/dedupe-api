@@ -13,11 +13,42 @@ from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 
+STATUS_LIST = [
+    'dataset uploaded',       # File stored, waiting for raw tables to be written
+    'session initialized',    # Raw and processed tables written
+    'model defined',          # User gave us a model
+    'entity map initialized', # Looked for exact duplicates and made entity map from that
+    'training started',       # User started training
+    'clustering started',     # User finished training and clustering process is running
+    'entity map updated',     # Entity map updated with results of clustering
+    'canon clustered',        # First cluster review complete and results of canonical dedupe are ready
+    'unmatched clustered',    # Results of matching unmatched records ready for review
+]
+
 def updateTraining(session_id, record_ids, distinct=False):
     ''' 
     Update the sessions training data with the given record_ids
     '''
     return None
+
+def updateSessionStatus(session_id, increment=True):
+    ''' 
+    Advance or reverse the status of a session by one step
+    '''
+    dd = worker_session.query(DedupeSession).get(session_id)
+    try:
+        current = STATUS_LIST.index(dd.status)
+    except ValueError:
+        current = 0
+    print 'CURRENT STATUS {0}'.format(STATUS_LIST[current])
+    if increment:
+        dd.status = STATUS_LIST[current + 1]
+        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
+    else:
+        dd.status = STATUS_LIST[current - 1]
+        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
+    worker_session.add(dd)
+    worker_session.commit()
 
 def getCluster(session_id, entity_table_name, raw_table_name):
     sess = app_session.query(DedupeSession).get(session_id)
@@ -189,11 +220,11 @@ def makeSampleDict(session_id, fields):
                             for i, row in enumerate(curs))
     return result
 
-def makeDataDict(session_id, fields=None):
+def makeDataDict(session_id, fields=None, name_pattern='processed_{0}'):
     session = worker_session
     engine = session.bind
     metadata = MetaData()
-    table_name = 'processed_%s' % session_id
+    table_name = name_pattern.format(session_id)
     table = Table(table_name, metadata, 
         autoload=True, autoload_with=engine)
     if not fields:
@@ -205,7 +236,10 @@ def makeDataDict(session_id, fields=None):
     cols.append(getattr(table.c, primary_key))
     curs = session.query(*cols)
     for row in curs:
-        result[int(getattr(row, primary_key))] = frozendict(zip(fields, row))
+        try:
+            result[int(getattr(row, primary_key))] = frozendict(zip(fields, row))
+        except ValueError:
+            result[getattr(row, primary_key)] = frozendict(zip(fields, row))
     return result
 
 def getDistinct(field_name, session_id):
@@ -213,7 +247,8 @@ def getDistinct(field_name, session_id):
     metadata = MetaData()
     table = Table('raw_%s' % session_id, metadata,
         autoload=True, autoload_with=engine)
-    q = app_session.query(distinct(getattr(table.c, field_name)))
+    col = getattr(table.c, field_name)
+    q = app_session.query(distinct(col)).filter(col != None)
     distinct_values = [preProcess(unicode(v[0])) for v in q.all()]
     return distinct_values
 

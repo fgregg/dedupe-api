@@ -8,11 +8,12 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
-    makeSampleDict, windowed_query
+    makeSampleDict, windowed_query, updateSessionStatus
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
-    writeRawTable, initializeEntityMap, writeProcessedTable
+    writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep
 from sqlalchemy import Table, MetaData, Column, String, func
 from sqlalchemy.sql import label
+from sqlalchemy.exc import NoSuchTableError
 from itertools import groupby
 from operator import itemgetter
 from csvkit import convert
@@ -22,6 +23,7 @@ from os.path import join, dirname, abspath
 from datetime import datetime
 import cPickle
 from uuid import uuid4
+from api.app_config import TIME_ZONE
 
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
@@ -47,6 +49,7 @@ def initializeSession(session_id, filename):
         'file_obj':file_obj
     }
     writeRawTable(**kwargs)
+    updateSessionStatus(session_id)
     print 'session initialized'
     os.remove('/tmp/%s_raw.csv' % session_id)
 
@@ -58,10 +61,9 @@ def initializeModel(session_id):
         if not sess.field_defs:
             time.sleep(3)
         else:
-            print 'found field_defs'
             fields = [f['field'] for f in json.loads(sess.field_defs)]
             initializeEntityMap(session_id, fields)
-            print 'made entity map'
+            updateSessionStatus(session_id)
             drawSample(session_id)
             print 'got sample'
             break
@@ -156,70 +158,44 @@ def clusterDedupe(session_id, canonical=False):
 
 @queuefunc
 def dedupeRaw(session_id):
-    dd_session = worker_session.query(DedupeSession)\
-        .get(session_id)
     trainDedupe(session_id)
     blockDedupe(session_id)
     clustered_dupes = clusterDedupe(session_id)
     review_count = updateEntityMap(clustered_dupes, session_id)
-    dd_session.status = 'entity map created'
-    worker_session.add(dd_session)
-    worker_session.commit()
+    updateSessionStatus(session_id)
+    return 'ok'
+
+@queuefunc
+def makeCanonTable(session_id):
+    ''' 
+    Once canonical forms are deduplicated, make a table to store them
+    '''
+    engine = worker_session.bind
+    metadata = MetaData()
+    tables = [
+        'entity_{0}_cr',
+        'processed_{0}_cr',
+        'block_{0}_cr',
+        'plural_block_{0}_cr',
+        'covered_{0}_cr',
+        'plural_key_{0}_cr',
+        'small_cov_{0}_cr',
+    ]
+    for table in tables:
+        try:
+            data_table = Table(table.format(session_id), 
+                metadata, autoload=True, autoload_with=engine)
+            data_table.drop(engine)
+        except NoSuchTableError:
+            pass
+    writeCanonRep(session_id, name_pattern='canon_{0}')
     return 'ok'
 
 @queuefunc
 def dedupeCanon(session_id):
-    dd_session = worker_session.query(DedupeSession)\
-        .get(session_id)
     engine = worker_session.bind
     metadata = MetaData()
-    entity = Table('entity_{0}'.format(session_id), metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-    proc_table = Table('processed_{0}'.format(session_id), metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-
-    cr_cols = [Column('record_id', String, primary_key=True)]
-    for col in proc_table.columns:
-        if col.name != 'record_id':
-            cr_cols.append(Column(col.name, col.type))
-    cr = Table('cr_{0}'.format(session_id), metadata, *cr_cols)
-    cr.drop(bind=engine, checkfirst=True)
-    cr.create(bind=engine)
-
-    cols = [entity.c.entity_id]
-    col_names = [c for c in proc_table.columns.keys() if c != 'record_id']
-    for name in col_names:
-        cols.append(label(name, func.array_agg(getattr(proc_table.c, name))))
-    rows = worker_session.query(*cols)\
-        .filter(entity.c.record_id == proc_table.c.record_id)\
-        .group_by(entity.c.entity_id)
-    names = cr.columns.keys()
-    with open('/tmp/cr_{0}.csv'.format(session_id), 'wb') as f:
-        writer = UnicodeCSVWriter(f)
-        writer.writerow(names)
-        for row in rows:
-            r = [row.entity_id]
-            dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
-            for idx, dct in enumerate(dicts):
-                for name in col_names:
-                    dicts[idx][name] = getattr(row, name)[idx]
-            canon_form = dedupe.canonicalize(dicts)
-            r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])
-            writer.writerow(r)
-    canon_table_name = 'cr_{0}'.format(session_id)
-    copy_st = 'COPY "{0}" ('.format(canon_table_name)
-    for idx, name in enumerate(names):
-        if idx < len(names) - 1:
-            copy_st += '"{0}", '.format(name)
-        else:
-            copy_st += '"{0}")'.format(name)
-    else:
-        copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',')"
-    conn = engine.raw_connection()
-    cur = conn.cursor()
-    with open('/tmp/cr_{0}.csv'.format(session_id), 'rb') as f:
-        cur.copy_expert(copy_st, f)
-    conn.commit()
+    writeCanonRep(session_id)
     writeProcessedTable(session_id, 
                         proc_table_format='processed_{0}_cr', 
                         raw_table_format='cr_{0}')
@@ -268,70 +244,45 @@ def dedupeCanon(session_id):
             FROM STDIN CSV'''.format(session_id), f)
         conn.commit()
     os.remove(fname)
-    dd_session.status = 'canon clustered'
-    worker_session.add(dd_session)
-    worker_session.commit()
+    updateSessionStatus(session_id)
     return 'ok'
 
 @queuefunc
-def retrain(session_id):
-    sess = worker_session.query(DedupeSession).get(session_id)
-    gaz = dedupe.Gazetteer(json.loads(sess.field_defs))
-    gaz.readTraining(StringIO(sess.training_data))
-    gaz.train()
-    gaz_set = StringIO()
-    gaz.writeSettings(gaz_set)
-    s = gaz_set.getvalue()
-    sess.gaz_settings_file = s
-    worker_session.add(sess)
-    worker_session.commit()
+def matchUnmatched(session_id):
+    dd_session = worker_session.query(DedupeSession).get(session_id)
+    dd = makeDataDict(session_id, name_pattern='canon_{0}')
+    field_defs = json.loads(dd_session.field_defs)
+    d = dedupe.Gazetteer(field_defs)
+    d.readTraining(StringIO(dd_session.training_data))
+    d.train()
+    d.index(dd)
+    sel = ''' 
+        SELECT p.* 
+            FROM "processed_{0}" AS p
+            LEFT JOIN "entity_{0}" AS e
+                ON p.record_id = e.record_id
+            WHERE e.entity_id IS NULL
+    '''.format(session_id)
+    engine = worker_session.bind
+    messy_dd = {}
+    with engine.begin() as c:
+        messy = c.execute(sel)
+        for row in messy:
+            messy_dd[row.record_id] = {k:v for k,v in row.items()}
+    clusters = d.match(messy_dd, n_matches=5)
+    match_list = []
+    for cluster in clusters:
+        for matches, confidence in cluster:
+            matches = list(matches)
+            matches.extend([
+                confidence,
+                datetime.now().replace(tzinfo=TIME_ZONE)
+            ])
+            match_list.append(matches)
+    ''' 
+    record_id, entity_id, confidence, last_update
+    '''
     return None
-
-# @queuefunc
-# def makeCanonicalTable(session_id):
-#     engine = worker_session.bind
-#     metadata = MetaData()
-#     entity_table = Table('entity_%s' % session_id, metadata,
-#         autoload=True, autoload_with=engine, extend_existing=True)
-#     clusters = worker_session.query(entity_table.c.group_id, 
-#             entity_table.c.record_id)\
-#             .filter(entity_table.c.clustered == True)\
-#             .order_by(entity_table.c.group_id)\
-#             .all()
-#     groups = {}
-#     for k,g in groupby(clusters, key=itemgetter(0)):
-#         groups[k] = [i[1] for i in list(g)]
-#     dd_sess = worker_session.query(DedupeSession).get(session_id)
-#     gaz = dedupe.Gazetteer(json.loads(dd_sess.field_defs))
-#     gaz.readTraining(StringIO(dd_sess.training_data))
-#     gaz.train()
-#     gaz_set = StringIO()
-#     gaz.writeTraining(gaz_set)
-#     dd_sess.gaz_settings_file = gaz_set.getvalue()
-#     worker_session.add(dd_sess)
-#     worker_session.commit()
-#     raw_table = Table('raw_%s' % session_id, metadata,
-#         autoload=True, autoload_with=engine, extend_existing=True)
-#     raw_fields = [c for c in raw_table.columns.keys()]
-#     primary_key = [p.name for p in raw_table.primary_key][0]
-#     canonical_rows = []
-#     for key,value in groups.items():
-#         cluster_rows = worker_session.query(raw_table)\
-#             .filter(getattr(raw_table.c, primary_key).in_(value)).all()
-#         rows_d = []
-#         for row in cluster_rows:
-#             d = {}
-#             for k,v in zip(raw_fields, row):
-#                 if k != 'record_id':
-#                     d[k] = preProcess(unicode(v))
-#             rows_d.append(d)
-#         canonical_form = dedupe.canonicalize(rows_d)
-#         canonical_form['entity_id'] = key
-#         canonical_rows.append(canonical_form)
-#     makeCanonTable(session_id)
-#     canon_table = Table('canon_%s' % session_id, metadata,
-#         autoload=True, autoload_with=engine, extend_existing=True)
-#     engine.execute(canon_table.insert(), canonical_rows)
 
 @queuefunc
 def bulkMatchWorker(session_id, file_contents, field_map, filename):
