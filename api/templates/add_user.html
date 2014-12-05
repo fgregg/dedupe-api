@@ -1,84 +1,100 @@
 {% extends "base.html" %}
 {% block title %} | Add API User {% endblock %}
 {% block content %}
-    <div class="well col-md-6 col-md-offset-3">
-        <form role="form" method="POST">
+    <div class="well col-md-10 col-offset-sm-1">
+        <p><a href="{{ url_for('manager.user_list') }}">&laquo; User list</a></p>
+        <h1>Add user</h1>
+        <hr />
+        <form role="form" method="POST" class='form-horizontal'>
           {{ form.csrf_token }}
             {% if form.name.errors %}
                 <div class="form-group has-error has-feedback">
             {% else %}
                 <div class="form-group">
             {% endif %}
-                <label for="id_name">Username:</label>
-                <input type="text" class="form-control" id="id_name" name="name" placeholder="Enter username">
+                <label for="id_name" class="col-sm-2 control-label">Username</label>
+                <div class="col-sm-10">
+                    <input type="text" class="form-control" id="id_name" name="name" placeholder="Enter username">
                 {% if form.name.errors %}
                     {% for error in form.name.errors %}
                     <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
                     {% endfor %}
                 {% endif %}
+                </div>
             </div>
             {% if form.email.errors %}
                 <div class="form-group has-error has-feedback">
             {% else %}
                 <div class="form-group">
             {% endif %}
-                <label for="id_email">Email</label>
-                <input type="text" class="form-control" id="id_email" name="email" placeholder="Email">
-                {% if form.email.errors %}
-                    {% for error in form.email.errors %}
-                    <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
-                    {% endfor %}
-                {% endif %}
+                <label for="id_email" class="col-sm-2 control-label">Email</label>
+                <div class='col-sm-10'>
+                    <input type="text" class="form-control" id="id_email" name="email" placeholder="Email">
+                    {% if form.email.errors %}
+                        {% for error in form.email.errors %}
+                        <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
+                        {% endfor %}
+                    {% endif %}
+                </div>
             </div>
             {% if form.password.errors %}
                 <div class="form-group has-error has-feedback">
             {% else %}
                 <div class="form-group">
             {% endif %}
-                <label for="id_password">Password</label>
-                <input type="password" class="form-control" id="id_password" name="password" placeholder="Password">
-                {% if form.password.errors %}
-                    {% for error in form.password.errors %}
-                    <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
-                    {% endfor %}
-                {% endif %}
+                <label for="id_password" class="col-sm-2 control-label">Password</label>
+                <div class='col-sm-10'>
+                    <input type="password" class="form-control" id="id_password" name="password" placeholder="Password">
+                    {% if form.password.errors %}
+                        {% for error in form.password.errors %}
+                        <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
+                        {% endfor %}
+                    {% endif %}
+                </div>
             </div>
             {% if form.roles.errors %}
                 <div class="form-group has-error has-feedback">
             {% else %}
                 <div class="form-group">
             {% endif %}
-                <label for="id_roles">Roles</label>
-                <select multiple class="form-control" id="id_roles" name="roles">
-                    {% for id, role, chosen in form.roles.iter_choices() %}
-                        <option value="{{ id }}">{{ role.description }}</option>
-                    {% endfor %}
-                </select>
-                {% if form.roles.errors %}
-                    {% for error in form.roles.errors %}
-                    <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
-                    {% endfor %}
-                {% endif %}
+                <label for="id_roles" class="col-sm-2 control-label">Roles</label>
+                <div class='col-sm-10'>
+                    <select multiple class="form-control" id="id_roles" name="roles">
+                        {% for id, role, chosen in form.roles.iter_choices() %}
+                            <option value="{{ id }}">{{ role.description }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if form.roles.errors %}
+                        {% for error in form.roles.errors %}
+                        <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
+                        {% endfor %}
+                    {% endif %}
+                </div>
             </div>
             {% if form.groups.errors %}
                 <div class="form-group has-error has-feedback">
             {% else %}
                 <div class="form-group">
             {% endif %}
-                <label for="id_groups">Groups</label>
-                <select multiple class="form-control" id="id_groups" name="groups">
-                    {% for id, group, chosen in form.groups.iter_choices() %}
-                        <option value="{{ id }}">{{ group.description }}</option>
-                    {% endfor %}
-                </select>
-                {% if form.groups.errors %}
-                    {% for error in form.groups.errors %}
-                    <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
-                    {% endfor %}
-                {% endif %}
+                <label for="id_groups" class="col-sm-2 control-label">Groups</label>
+                <div class='col-sm-10'>
+                    <select multiple class="form-control" id="id_groups" name="groups">
+                        {% for id, group, chosen in form.groups.iter_choices() %}
+                            <option value="{{ id }}">{{ group.description }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if form.groups.errors %}
+                        {% for error in form.groups.errors %}
+                        <span class="help-block"><i class="fa fa-remove"> </i> {{error}}</span>
+                        {% endfor %}
+                    {% endif %}
+                </div>
             </div>
-
-            <button type="submit" class="btn btn-default">Submit</button>
+            <div class="form-group">
+                <div class='col-sm-10 col-sm-offset-2'>
+                    <button type="submit" class="btn btn-success">Submit</button>
+                </div>
+            </div>
         </form>
     </div>
 {% endblock %}
