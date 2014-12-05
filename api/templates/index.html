@@ -36,8 +36,11 @@
             if (object.status == 'entity map updated'){
                 rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
                 $('#review-header').append('<th></th>');
-            } else if (object.status == 'dataset uploaded'){
-                rows += '<td><a href="/select-fields/?session_id=' + object.id + '">Start training</a></td>';
+            } else if (object.status == 'session initialized'){
+                rows += '<td><a href="/select-fields/?session_id=' + object.id + '">Define Model</a></td>';
+                $('#review-header').append('<th></th>');
+            } else if (object.status == 'training started' || object.status == 'entity map initialized'){
+                rows += '<td><a href="/training-run/?session_id=' + object.id + '">Start training</a></td>';
                 $('#review-header').append('<th></th>');
             }  else if (object.status == 'canon clustered'){
                 rows += '<td><a href="/session-review/' + object.id + '/?second_review=true">Second Review</a></td>';

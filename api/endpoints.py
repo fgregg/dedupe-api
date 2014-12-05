@@ -8,13 +8,14 @@ from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
 from api.utils.delayed_tasks import bulkMatchWorker, dedupeCanon
-from api.utils.helpers import preProcess, getCluster, updateTraining
+from api.utils.helpers import preProcess, getCluster, updateTraining, \
+    updateSessionStatus
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
 from cPickle import loads
 from cStringIO import StringIO
-from sqlalchemy.exc import NoSuchTableError
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from sqlalchemy import Table, select, and_, func, distinct, text
 from sqlalchemy.ext.declarative import declarative_base
 from itertools import groupby
@@ -318,11 +319,8 @@ def mark_all_clusters(session_id):
         count = len(set([c.entity_id for c in child_entities])\
             .union([c.entity_id for c in parent_entities]))
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
-        sess = db_session.query(DedupeSession).get(session_id)
-        sess.status = 'first pass review complete'
-        db_session.add(sess)
-        db_session.commit()
-        dedupeCanon.delay(sess.id)
+        updateSessionStatus(session_id)
+        dedupeCanon.delay(session_id)
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
@@ -630,9 +628,28 @@ def delete_data_model(session_id):
     else:
         sess = db_session.query(DedupeSession).get(session_id)
         sess.field_defs = None
-        sess.status = 'dataset uploaded'
+        sess.training_data = None
+        sess.sample = None
+        sess.status = 'session initialized'
         db_session.add(sess)
         db_session.commit()
+        tables = [
+            'entity_{0}',
+            'block_{0}',
+            'plural_block_{0}',
+            'covered_{0}',
+            'plural_key_{0}',
+            'small_cov_{0}',
+        ]
+        for table in tables:
+            try:
+                data_table = Table(table.format(session_id), 
+                    Base.metadata, autoload=True, autoload_with=engine)
+                data_table.drop(engine)
+            except NoSuchTableError:
+                pass
+            except ProgrammingError:
+                pass
         resp = {
             'status': 'ok',
             'message': 'Data model for session {0} deleted'.format(session_id)

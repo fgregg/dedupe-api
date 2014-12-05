@@ -170,7 +170,7 @@ def select_field_types():
         return redirect(url_for('trainer.training_run'))
     return render_template('select_field_types.html', user=user, field_list=field_list)
 
-@trainer.route('/training_run/')
+@trainer.route('/training-run/')
 @login_required
 @check_roles(roles=['admin'])
 def training_run():
@@ -203,7 +203,6 @@ def training_run():
             deduper = dedupe.Dedupe(field_defs, data_sample=sample)
             flask_session['deduper'] = deduper
             init_status = 'finished'
-            updateSessionStatus(flask_session['session_id'])
     return make_response(render_template(
                             'training_run.html', 
                             user=user, error=error, 
@@ -247,6 +246,8 @@ def mark_pair():
         counter['no'] = len(labels['distinct'])
     else:
         labels = {'distinct' : [], 'match' : []}
+    if sess.status != 'training started':
+        sess.status = 'training started'
     if action == 'yes':
         current_pair = flask_session['current_pair']
         labels['match'].append(current_pair)

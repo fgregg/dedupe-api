@@ -174,9 +174,6 @@ def slugify(text, delim=u'_'):
 def preProcess(column):
     if not column:
         column = u''
-    if column == 'None':
-        column = u''
-    # column = unidecode(column)
     column = re.sub('  +', ' ', column)
     column = re.sub('\n', ' ', column)
     column = column.strip().strip('"').strip("'").lower().strip()
@@ -245,10 +242,10 @@ def makeDataDict(session_id, fields=None, name_pattern='processed_{0}'):
 def getDistinct(field_name, session_id):
     engine = app_session.bind
     metadata = MetaData()
-    table = Table('raw_%s' % session_id, metadata,
+    table = Table('processed_%s' % session_id, metadata,
         autoload=True, autoload_with=engine)
     col = getattr(table.c, field_name)
     q = app_session.query(distinct(col)).filter(col != None)
-    distinct_values = [preProcess(unicode(v[0])) for v in q.all()]
+    distinct_values = list(set([unicode(v[0]) for v in q.all()]))
     return distinct_values
 

@@ -63,8 +63,8 @@ def initializeModel(session_id):
         else:
             fields = [f['field'] for f in json.loads(sess.field_defs)]
             initializeEntityMap(session_id, fields)
-            updateSessionStatus(session_id)
             drawSample(session_id)
+            updateSessionStatus(session_id)
             print 'got sample'
             break
     return 'woo'
