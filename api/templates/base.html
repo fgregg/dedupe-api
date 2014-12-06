@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" style="height: 100%;">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,7 +24,7 @@
     <![endif]-->
   </head>
 
-  <body style="height: 100%">
+  <body>
       <div class="navbar navbar-default navbar-static-top" role="navigation">
         <div class="navbar-header">
           <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
@@ -61,7 +61,7 @@
           </ul>
         </div><!--/.nav-collapse -->
       </div>
-      <div class="container">
+      <div class="container" id="main-container">
         <div class="row">
           {% with messages = get_flashed_messages() %}
               {% if messages %}
@@ -78,10 +78,10 @@
           {% endwith %}
         </div>
         {% block content %}{% endblock %}
-        <br />
-        <div class='clearfix'></div>
+      </div>
 
-        <div class="footer">
+      <div class="footer">
+        <div class='container'>
           <p class='pull-right'><a href='http://datamade.us/contact-us/'>Contact us</a> | &copy; <a href='http://datamade.us'>DataMade</a></p>
         </div>
       </div>

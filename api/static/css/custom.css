@@ -1,7 +1,11 @@
 /* Space out content a bit */
 body {
-  padding-bottom: 20px;
   font-size: 17px;
+}
+
+#main-container { 
+  min-height: 500px; 
+  padding-bottom: 20px;
 }
 
 .label:hover { text-decoration: none; }
