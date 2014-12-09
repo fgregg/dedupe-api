@@ -11,6 +11,7 @@
                 <tr id="review-header">
                     <th>Name</th>
                     <th>Actions</th>
+                    <th>Entity count</th>
                     <th></th>
                 </tr>
             </thead>
@@ -39,6 +40,7 @@
                 $('#review-header').append('<th></th>');
             }
             rows += '<td><a class="delete-model" href="javascript://" data-session_id="' + object.id + '">Delete Data Model</a></td>';
+            rows += '<td>' + object.entity_count + '</td>';
             rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
             rows += '</tr>';
         });

@@ -60,6 +60,9 @@ class DedupeSession(Base):
     conn_string = Column(String)
     table_name = Column(String)
     status = Column(String)
+    record_count = Column(Integer)
+    entity_count = Column(Integer)
+    review_count = Column(Integer)
     group_id = Column(String(36), ForeignKey('dedupe_group.id'))
     group = relationship('Group', backref=backref('sessions'))
 
@@ -71,6 +74,9 @@ class DedupeSession(Base):
             'id': self.id,
             'name': self.name,
             'status': self.status,
+            'record_count': self.record_count,
+            'entity_count': self.entity_count,
+            'review_count': self.review_count,
         }
         if self.field_defs:
             d['field_defs'] = json.loads(self.field_defs)

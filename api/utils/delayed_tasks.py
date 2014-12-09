@@ -50,6 +50,12 @@ def initializeSession(session_id, filename):
     }
     writeRawTable(**kwargs)
     updateSessionStatus(session_id)
+    sess = worker_session.query(DedupeSession).get(session_id)
+    engine = worker_session.bind
+    metadata = MetaData()
+    raw_table = Table('raw_{0}'.format(session_id), metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+    sess.record_count = worker_session(raw_table).count()
     print 'session initialized'
     os.remove('/tmp/%s_raw.csv' % session_id)
 
@@ -161,8 +167,21 @@ def dedupeRaw(session_id):
     trainDedupe(session_id)
     blockDedupe(session_id)
     clustered_dupes = clusterDedupe(session_id)
-    review_count = updateEntityMap(clustered_dupes, session_id)
+    updateEntityMap(clustered_dupes, session_id)
     updateSessionStatus(session_id)
+    engine = worker_session.bind
+    metadata = MetaData()
+    entity_table = Table('entity_{0}'.format(session_id), metadata,
+        autoload=True, autoload_with=engine, keep_existing=True)
+    entity_count = worker_session.query(entity_table.c.entity_id.distinct()).count()
+    review_count = worker_session.query(entity_table.c.entity_id.distinct())\
+        .filter(entity_table.c.clustered == False)\
+        .count()
+    dd = worker_session.query(DedupeSession).get(session_id)
+    dd.entity_count = entity_count
+    dd.review_count = review_count
+    worker_session.add(dd)
+    worker_session.commit()
     return 'ok'
 
 @queuefunc

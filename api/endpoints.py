@@ -214,8 +214,8 @@ def get_cluster(session_id):
             dedupeCanon.delay(sess.id)
             db_session.add(sess)
             db_session.commit()
-        resp['total_clusters'] = 100
-        resp['review_remainder'] = 100
+        resp['total_clusters'] = sess.entity_count
+        resp['review_remainder'] = sess.review_count
        #resp['total_clusters'] = total_clusters
        #resp['review_remainder'] = review_remainder
     response = make_response(json.dumps(resp), status_code)
@@ -250,8 +250,8 @@ def get_canon_cluster(session_id):
             # match unclustered records now
             db_session.add(sess)
             db_session.commit()
-        resp['total_clusters'] = 100
-        resp['review_remainder'] = 100
+        resp['total_clusters'] = sess.entity_count
+        resp['review_remainder'] = sess.review_count
        #resp['total_clusters'] = total_clusters
        #resp['review_remainder'] = review_remainder
     response = make_response(json.dumps(resp), status_code)
@@ -318,6 +318,11 @@ def mark_all_clusters(session_id):
             parent_entities = c.execute(upd, **upd_vals)
         count = len(set([c.entity_id for c in child_entities])\
             .union([c.entity_id for c in parent_entities]))
+        sess = db_session.query(DedupeSession).get(session_id)
+        sess.review_count = 0
+        sess.entity_count = count
+        db_session.add(sess)
+        db_session.commit()
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
         updateSessionStatus(session_id)
         dedupeCanon.delay(session_id)
@@ -392,37 +397,37 @@ def mark_cluster(session_id):
             # training_data['match'].extend(pairs)
         if distinct_ids:
             distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
-            update_existing = text(''' 
-                UPDATE "entity_{0}" SET
-                    entity_id = subq.entity_id,
-                    clustered = :clustered
-                    FROM (
-                        SELECT DISTINCT e.entity_id, s.record_id
-                            FROM "entity_{0}" AS e
-                            JOIN (
-                                SELECT record_id 
-                                    FROM "entity_{0}"
-                                    WHERE entity_id = :entity_id
-                                        AND record_id in :record_ids
-                            ) AS s
-                            ON e.target_record_id = s.record_id
-                    ) as subq
-                WHERE "entity_{0}".record_id = subq.record_id
-                '''.format(sess.id))
-            with engine.begin() as c:
-                c.execute(update_existing, 
-                          entity_id=entity_id, 
-                          clustered=True, 
-                          record_ids=distinct_ids)
+           #update_existing = text(''' 
+           #    UPDATE "entity_{0}" SET
+           #        entity_id = subq.entity_id,
+           #        clustered = :clustered
+           #        FROM (
+           #            SELECT DISTINCT e.entity_id, s.record_id
+           #                FROM "entity_{0}" AS e
+           #                JOIN (
+           #                    SELECT record_id 
+           #                        FROM "entity_{0}"
+           #                        WHERE entity_id = :entity_id
+           #                            AND record_id in :record_ids
+           #                ) AS s
+           #                ON e.target_record_id = s.record_id
+           #        ) as subq
+           #    WHERE "entity_{0}".record_id = subq.record_id
+           #    '''.format(sess.id))
+           #with engine.begin() as c:
+           #    c.execute(update_existing, 
+           #              entity_id=entity_id, 
+           #              clustered=True, 
+           #              record_ids=distinct_ids)
             delete = entity_table.delete()\
                 .where(entity_table.c.entity_id == entity_id)\
                 .where(entity_table.c.record_id.in_(distinct_ids))
             with engine.begin() as c:
                 c.execute(delete)
             #training_data['distinct'].append(pairs)
-       #sess.training_data = json.dumps(training_data)
-       #db_session.add(sess)
-       #db_session.commit()
+        sess.review_count = sess.review_count - 1
+        db_session.add(sess)
+        db_session.commit()
         resp = {
             'session_id': session_id, 
             'entity_id': entity_id, 

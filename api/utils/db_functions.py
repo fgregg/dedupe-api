@@ -186,8 +186,7 @@ def updateEntityMap(clustered_dupes,
             ) 
             FROM STDIN CSV'''.format(session_id), f)
         conn.commit()
-    # Need a different query for updating Entity map
-    # from canonical dedupe
+
     upd = text(''' 
         WITH upd AS (
           UPDATE "{0}" AS e 
