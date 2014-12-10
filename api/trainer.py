@@ -176,6 +176,7 @@ def select_field_types():
 def training_run():
     if request.args.get('session_id'):
         session_id = request.args['session_id']
+        flask_session['session_id'] = request.args['session_id']
         try:
             del flask_session['counter']
         except KeyError:

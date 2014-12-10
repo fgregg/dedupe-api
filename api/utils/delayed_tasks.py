@@ -55,7 +55,7 @@ def initializeSession(session_id, filename):
     metadata = MetaData()
     raw_table = Table('raw_{0}'.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    sess.record_count = worker_session(raw_table).count()
+    sess.record_count = worker_session.query(raw_table).count()
     print 'session initialized'
     os.remove('/tmp/%s_raw.csv' % session_id)
 
