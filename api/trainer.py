@@ -96,7 +96,6 @@ def train():
         'session_name',
         'training_data',
         'current_pair',
-        'field_defs',
         'counter',
         'deduper',
     ]
@@ -241,6 +240,26 @@ def mark_pair():
     counter = {'yes': 0, 'no': 0, 'unsure': 0}
     sess = db_session.query(DedupeSession).get(flask_session['session_id'])
     deduper = flask_session['deduper']
+
+    # Attempt to cast the training input appropriately
+    # TODO: Figure out LatLong type
+    field_defs = json.loads(sess.field_defs)
+    field_defs = {d['field']:d['type'] for d in field_defs}
+    current_pair = flask_session['current_pair']
+    left, right = current_pair
+    l_d = {}
+    r_d = {}
+    for k,v in left.items():
+        if field_defs[k] == 'Price':
+            l_d[k] = float(v)
+        else:
+            l_d[k] = v
+    for k,v in right.items():
+        if field_defs[k] == 'Price':
+            r_d[k] = float(v)
+        else:
+            r_d[k] = v
+    current_pair = [l_d, r_d]
     if sess.training_data:
         labels = json.loads(sess.training_data)
         counter['yes'] = len(labels['match'])
@@ -250,12 +269,10 @@ def mark_pair():
     if sess.status != 'training started':
         sess.status = 'training started'
     if action == 'yes':
-        current_pair = flask_session['current_pair']
         labels['match'].append(current_pair)
         counter['yes'] += 1
         resp = {'counter': counter}
     elif action == 'no':
-        current_pair = flask_session['current_pair']
         labels['distinct'].append(current_pair)
         counter['no'] += 1
         resp = {'counter': counter}

@@ -55,7 +55,9 @@ def writeRawTable(filename=None,
 def writeProcessedTable(session_id, 
                         raw_table_format='raw_{0}', 
                         proc_table_format='processed_{0}'):
-
+    dd = worker_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(dd.field_defs)
+    field_defs = {d['field']:d['type'] for d in field_defs}
     engine = worker_session.bind
     metadata = MetaData()
     proc_table_name = proc_table_format.format(session_id)
@@ -65,10 +67,19 @@ def writeProcessedTable(session_id,
     raw_fields = [f for f in raw_table.columns.keys() if f != 'record_id']
     create = 'CREATE TABLE "{0}" AS (SELECT record_id, '.format(proc_table_name)
     for idx, field in enumerate(raw_fields):
-        if idx < len(raw_fields) - 1:
-            create += 'TRIM(COALESCE(LOWER("{0}"), \'\')) AS {0}, '.format(field)
+        try:
+            field_type = field_defs[field]
+        except KeyError:
+            field_type = 'String'
+        # TODO: Need to figure out how to parse a LatLong field type
+        if field_type == 'Price':
+            col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
         else:
-            create += 'TRIM(COALESCE(LOWER("{0}"), \'\')) AS {0} '.format(field)
+            col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
+        if idx < len(raw_fields) - 1:
+            create += '{0}, '.format(col_def)
+        else:
+            create += '{0} '.format(col_def)
     else:
         create += 'FROM "{0}")'.format(raw_table_name)
     create_stmt = text(create)
@@ -250,7 +261,7 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
             dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
             for idx, dct in enumerate(dicts):
                 for name in col_names:
-                    dicts[idx][name] = getattr(row, name)[idx]
+                    dicts[idx][name] = unicode(getattr(row, name)[idx])
             canon_form = dedupe.canonicalize(dicts)
             r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])
             writer.writerow(r)
