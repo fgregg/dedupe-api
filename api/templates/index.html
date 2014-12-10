@@ -26,20 +26,18 @@
         var rows = ''
         $.each(resp.objects, function(i, object){
             rows += '<tr><td>' + object.name + '</td>';
+            rows += '<td>';
             if (object.status == 'entity map updated'){
-                rows += '<td><a href="/session-review/' + object.id + '/">Review Queue</a></td>';
-                $('#review-header').append('<th></th>');
+                rows += '<a href="/session-review/' + object.id + '/">Review Queue</a><br />';
             } else if (object.status == 'session initialized'){
-                rows += '<td><a href="/select-fields/?session_id=' + object.id + '">Define Model</a></td>';
-                $('#review-header').append('<th></th>');
+                rows += '<a href="/select-fields/?session_id=' + object.id + '">Define Model</a><br />';
             } else if (object.status == 'training started' || object.status == 'entity map initialized'){
-                rows += '<td><a href="/training-run/?session_id=' + object.id + '">Start training</a></td>';
-                $('#review-header').append('<th></th>');
+                rows += '<a href="/training-run/?session_id=' + object.id + '">Start training</a><br />';
             }  else if (object.status == 'canon clustered'){
-                rows += '<td><a href="/session-review/' + object.id + '/?second_review=true">Second Review</a></td>';
-                $('#review-header').append('<th></th>');
+                rows += '<a href="/session-review/' + object.id + '/?second_review=true">Second Review</a><br />';
             }
-            rows += '<td><a class="delete-model" href="javascript://" data-session_id="' + object.id + '">Delete Data Model</a></td>';
+            rows += '<a class="delete-model" href="javascript://" data-session_id="' + object.id + '">Delete Data Model</a><br/>';
+            rows += '</td>';
             rows += '<td>' + object.entity_count + '</td>';
             rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
             rows += '</tr>';
