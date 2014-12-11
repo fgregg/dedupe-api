@@ -42,7 +42,8 @@ def drawSample(session_id):
 
 @queuefunc
 def initializeSession(session_id, filename):
-    file_obj = open('/tmp/%s_raw.csv' % session_id, 'rb')
+    print session_id
+    file_obj = open('/tmp/{0}_raw.csv'.format(session_id), 'rb')
     kwargs = {
         'session_id':session_id,
         'filename': filename,
@@ -57,7 +58,7 @@ def initializeSession(session_id, filename):
         autoload=True, autoload_with=engine, keep_existing=True)
     sess.record_count = worker_session.query(raw_table).count()
     print 'session initialized'
-    os.remove('/tmp/%s_raw.csv' % session_id)
+    os.remove('/tmp/{0}_raw.csv'.format(session_id))
 
 @queuefunc
 def initializeModel(session_id):
@@ -68,6 +69,7 @@ def initializeModel(session_id):
             time.sleep(3)
         else:
             fields = [f['field'] for f in json.loads(sess.field_defs)]
+            writeProcessedTable(session_id)
             initializeEntityMap(session_id, fields)
             drawSample(session_id)
             updateSessionStatus(session_id)
@@ -225,43 +227,47 @@ def dedupeCanon(session_id):
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True)
-    fname = '/tmp/clusters_{0}.csv'.format(session_id)
-    with open(fname, 'wb') as f:
-        writer = UnicodeCSVWriter(f)
-        for ids, scores in clustered_dupes:
-            new_ent = unicode(uuid4())
-            writer.writerow([
-                new_ent,
-                ids[0],
-                scores[0],
-                None,
-                False,
-                False,
-            ])
-            for id, score in zip(ids[1:], scores):
+    if clustered_dupes:
+        print 'found {0} clusters'.format(len(clustered_dupes))
+        fname = '/tmp/clusters_{0}.csv'.format(session_id)
+        with open(fname, 'wb') as f:
+            writer = UnicodeCSVWriter(f)
+            for ids, scores in clustered_dupes:
+                new_ent = unicode(uuid4())
                 writer.writerow([
                     new_ent,
-                    id,
-                    score,
                     ids[0],
+                    scores[0],
+                    None,
                     False,
                     False,
                 ])
-    with open(fname, 'rb') as f:
-        conn = engine.raw_connection()
-        cur = conn.cursor()
-        cur.copy_expert(''' 
-            COPY "entity_{0}_cr" (
-                entity_id,
-                record_id,
-                confidence,
-                target_record_id,
-                clustered,
-                checked_out
-            ) 
-            FROM STDIN CSV'''.format(session_id), f)
-        conn.commit()
-    os.remove(fname)
+                for id, score in zip(ids[1:], scores):
+                    writer.writerow([
+                        new_ent,
+                        id,
+                        score,
+                        ids[0],
+                        False,
+                        False,
+                    ])
+        with open(fname, 'rb') as f:
+            conn = engine.raw_connection()
+            cur = conn.cursor()
+            cur.copy_expert(''' 
+                COPY "entity_{0}_cr" (
+                    entity_id,
+                    record_id,
+                    confidence,
+                    target_record_id,
+                    clustered,
+                    checked_out
+                ) 
+                FROM STDIN CSV'''.format(session_id), f)
+            conn.commit()
+        os.remove(fname)
+    else:
+        print 'did not find clusters'
     updateSessionStatus(session_id)
     return 'ok'
 

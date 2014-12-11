@@ -71,7 +71,7 @@ def upload():
     with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
         s.write(u.getvalue())
     del u
-    initializeSession.delay(session_id, fieldnames)
+    flask_session['init_key'] = initializeSession.delay(session_id, fieldnames)
     return jsonify(ready=True)
 
 @trainer.route('/get-init-status/<init_key>/')

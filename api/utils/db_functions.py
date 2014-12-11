@@ -49,7 +49,6 @@ def writeRawTable(filename=None,
     cur = conn.cursor()
     cur.copy_expert(copy_st, file_obj)
     conn.commit()
-    writeProcessedTable(session_id)
     return fieldnames
 
 def writeProcessedTable(session_id, 

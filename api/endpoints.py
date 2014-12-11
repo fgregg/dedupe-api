@@ -324,7 +324,6 @@ def mark_all_clusters(session_id):
         db_session.add(sess)
         db_session.commit()
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
-        updateSessionStatus(session_id)
         dedupeCanon.delay(session_id)
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
@@ -485,7 +484,7 @@ def mark_canon_cluster(session_id):
                           last_update=last_update,
                           user_name=user.name,
                           record_ids=match_ids)
-        if distinct_ids == 'no':
+        if distinct_ids:
             distinct_ids = tuple([d for d in distinct_ids.split(',')])
             delete = text(''' 
                 DELETE FROM "entity_{0}_cr"
