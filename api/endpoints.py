@@ -599,7 +599,7 @@ def settings_file(session_id):
         data = db_session.query(DedupeSession).get(session_id)
         settings_file = data.settings_file
         resp = make_response(settings_file, 200)
-        resp.headers['Content-Disposition'] = 'attachment; filename=%s.dedupe_settings' % data.uuid
+        resp.headers['Content-Disposition'] = 'attachment; filename=%s.dedupe_settings' % data.id
     return resp
 
 @endpoints.route('/field-definitions/<session_id>/')
