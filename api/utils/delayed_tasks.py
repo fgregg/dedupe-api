@@ -131,7 +131,7 @@ def blockDedupe(session_id,
     block_gen = deduper.blocker(full_data)
     writeBlockingMap(session_id, block_gen, canonical=canonical)
 
-def clusterDedupe(session_id, canonical=False):
+def clusterDedupe(session_id, canonical=False, threshold=0.75):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
@@ -153,7 +153,6 @@ def clusterDedupe(session_id, canonical=False):
         .join(proc, small_cov.c.record_id == proc.c.record_id)
     fields = [c.name for c in cols]
     clustered_dupes = []
-    threshold = 0.75
     while not clustered_dupes:
         clustered_dupes = deduper.matchBlocks(
             clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
@@ -163,7 +162,7 @@ def clusterDedupe(session_id, canonical=False):
     return clustered_dupes
 
 @queuefunc
-def dedupeRaw(session_id):
+def dedupeRaw(session_id, threshold=0.75):
     trainDedupe(session_id)
     blockDedupe(session_id)
     clustered_dupes = clusterDedupe(session_id)
