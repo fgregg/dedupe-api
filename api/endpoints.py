@@ -705,6 +705,8 @@ def delete_session(session_id):
                 data_table.drop(engine)
             except NoSuchTableError:
                 pass
+            except ProgrammingError:
+                pass
         resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
         resp.headers['Content-Type'] = 'application/json'
     return resp
