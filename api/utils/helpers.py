@@ -25,6 +25,34 @@ STATUS_LIST = [
     'unmatched clustered',    # Results of matching unmatched records ready for review
 ]
 
+def cleanupTables(session_id):
+    ''' 
+    Once canonical forms are deduplicated, cleanup tables
+    '''
+    engine = worker_session.bind
+    metadata = MetaData()
+    tables = [
+        'entity_{0}_cr',
+        'processed_{0}_cr',
+        'block_{0}_cr',
+        'plural_block_{0}_cr',
+        'covered_{0}_cr',
+        'plural_key_{0}_cr',
+        'small_cov_{0}_cr',
+        'cr_{0}',
+        'block_{0}',
+        'plural_block_{0}',
+        'covered_{0}',
+        'plural_key_{0}',
+    ]
+    for table in tables:
+        try:
+            data_table = Table(table.format(session_id), 
+                metadata, autoload=True, autoload_with=engine)
+            data_table.drop(engine)
+        except NoSuchTableError:
+            pass
+
 def updateTraining(session_id, record_ids, distinct=False):
     ''' 
     Update the sessions training data with the given record_ids
@@ -209,6 +237,16 @@ def makeSampleDict(session_id, fields):
         autoload=True, autoload_with=engine)
     result = {}
     cols = [getattr(proc_table.c, f) for f in fields]
+    '''
+    Get one record from each cluster of exact duplicates that are 
+    already in entity map + all records that don't have entries in 
+    the entity_map
+    
+    SELECT p.<fields from model>
+      FROM processed as p
+      LEFT JOIN entity as e
+      WHERE e.target_record_id IS NULL
+    '''
     curs = session.query(*cols)\
         .outerjoin(entity_table, 
             proc_table.c.record_id == entity_table.c.record_id)\

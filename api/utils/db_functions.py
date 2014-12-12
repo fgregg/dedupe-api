@@ -89,22 +89,54 @@ def writeProcessedTable(session_id,
     with engine.begin() as c:
         c.execute('ALTER TABLE "{0}" ADD PRIMARY KEY (record_id)'.format(proc_table_name))
 
+def addRowHash(session_id, fields):
+    engine = worker_session.bind
+    fields = ["COALESCE(r.{0}, '')".format(f) for f in fields]
+    fields = " || ';' || ".join(fields)
+    upd = ''' 
+      UPDATE "entity_{0}" SET
+        source_hash=s.source_hash 
+        FROM (
+          SELECT 
+            MD5({1}) as source_hash,
+            r.record_id
+          FROM "entity_{0}" as e
+          JOIN "raw_{0}" as r
+            ON e.record_id = r.record_id
+        ) AS s
+        WHERE "entity_{0}".record_id = s.record_id
+    '''.format(session_id, fields)
+    with engine.begin() as conn:
+        conn.execute(upd)
+
 def initializeEntityMap(session_id, fields):
     engine = worker_session.bind
     metadata = MetaData()
-    proc_table = Table('processed_%s' % session_id, metadata, 
-        autoload=True, autoload_with=engine)
-    gb_cols = [getattr(proc_table.c, f) for f in fields]
-    rows = worker_session.query(func.array_agg(proc_table.c.record_id))\
-        .group_by(*gb_cols)\
-        .having(func.array_length(func.array_agg(proc_table.c.record_id),1) > 1)
+    create = '''
+        CREATE TABLE "exact_match_{0}" AS (
+          SELECT 
+            MIN(record_id) AS record_id, 
+            (array_agg(record_id ORDER BY record_id))
+              [2:array_upper(array_agg(record_id), 1)] AS member_ids
+          FROM "processed_{0}" 
+          GROUP BY {1} 
+          HAVING (array_length(array_agg(record_id), 1) > 1)
+        )
+        '''.format(session_id, ', '.join(fields))
+    with engine.begin() as conn:
+        conn.execute('DROP TABLE IF EXISTS "exact_match_{0}"'.format(session_id))
+        conn.execute(create)
+    exact_table = Table('exact_match_{0}'.format(session_id), metadata,
+                  autoload=True, autoload_with=engine, keep_existing=True)
+    rows = worker_session.query(exact_table)
     entity_table = entity_map('entity_%s' % session_id, metadata)
     entity_table.drop(engine, checkfirst=True)
     entity_table.create(engine)
     s = StringIO()
     writer = UnicodeCSVWriter(s)
+    now = datetime.now().replace(tzinfo=TIME_ZONE).isoformat()
     for row in rows:
-        king, members = row[0][0], row[0][1:]
+        king, members = row[0], row[1]
         entity_id = unicode(uuid4())
         writer.writerow([
             king, 
@@ -115,6 +147,7 @@ def initializeEntityMap(session_id, fields):
             'TRUE',
             'FALSE',
             'exact',
+            now,
         ])
         for member in members:
             writer.writerow([
@@ -126,12 +159,13 @@ def initializeEntityMap(session_id, fields):
                 'TRUE',
                 'FALSE',
                 'exact',
+                now,
             ])
     s.seek(0)
     conn = engine.raw_connection()
     cur = conn.cursor()
     cur.copy_expert('''
-        COPY "entity_%s" (
+        COPY "entity_{0}" (
             record_id, 
             target_record_id, 
             entity_id, 
@@ -139,9 +173,10 @@ def initializeEntityMap(session_id, fields):
             source,
             clustered,
             checked_out,
-            match_type
+            match_type,
+            last_update
         ) 
-        FROM STDIN CSV''' % session_id, s)
+        FROM STDIN CSV'''.format(session_id), s)
     conn.commit()
 
 def updateEntityMap(clustered_dupes,

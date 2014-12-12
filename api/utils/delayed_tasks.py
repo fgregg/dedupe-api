@@ -8,7 +8,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
-    makeSampleDict, windowed_query, updateSessionStatus
+    makeSampleDict, windowed_query, updateSessionStatus, cleanupTables
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep
 from sqlalchemy import Table, MetaData, Column, String, func
@@ -42,7 +42,6 @@ def drawSample(session_id):
 
 @queuefunc
 def initializeSession(session_id, filename):
-    print session_id
     file_obj = open('/tmp/{0}_raw.csv'.format(session_id), 'rb')
     kwargs = {
         'session_id':session_id,
@@ -186,32 +185,6 @@ def dedupeRaw(session_id, threshold=0.75):
     return 'ok'
 
 @queuefunc
-def makeCanonTable(session_id):
-    ''' 
-    Once canonical forms are deduplicated, make a table to store them
-    '''
-    engine = worker_session.bind
-    metadata = MetaData()
-    tables = [
-        'entity_{0}_cr',
-        'processed_{0}_cr',
-        'block_{0}_cr',
-        'plural_block_{0}_cr',
-        'covered_{0}_cr',
-        'plural_key_{0}_cr',
-        'small_cov_{0}_cr',
-    ]
-    for table in tables:
-        try:
-            data_table = Table(table.format(session_id), 
-                metadata, autoload=True, autoload_with=engine)
-            data_table.drop(engine)
-        except NoSuchTableError:
-            pass
-    writeCanonRep(session_id, name_pattern='canon_{0}')
-    return 'ok'
-
-@queuefunc
 def dedupeCanon(session_id):
     engine = worker_session.bind
     metadata = MetaData()
@@ -228,7 +201,6 @@ def dedupeCanon(session_id):
         canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True)
     if clustered_dupes:
-        print 'found {0} clusters'.format(len(clustered_dupes))
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
         with open(fname, 'wb') as f:
             writer = UnicodeCSVWriter(f)
@@ -254,25 +226,31 @@ def dedupeCanon(session_id):
         with open(fname, 'rb') as f:
             conn = engine.raw_connection()
             cur = conn.cursor()
-            cur.copy_expert(''' 
-                COPY "entity_{0}_cr" (
-                    entity_id,
-                    record_id,
-                    confidence,
-                    target_record_id,
-                    clustered,
-                    checked_out
-                ) 
-                FROM STDIN CSV'''.format(session_id), f)
-            conn.commit()
-        os.remove(fname)
+            try:
+                cur.copy_expert(''' 
+                    COPY "entity_{0}_cr" (
+                        entity_id,
+                        record_id,
+                        confidence,
+                        target_record_id,
+                        clustered,
+                        checked_out
+                    ) 
+                    FROM STDIN CSV'''.format(session_id), f)
+                conn.commit()
+                os.remove(fname)
+            except Exception, e:
+                conn.rollback()
+                raise e
     else:
         print 'did not find clusters'
+        updateSessionStatus(session_id)
     updateSessionStatus(session_id)
     return 'ok'
 
 @queuefunc
 def matchUnmatched(session_id):
+    cleanupTables(session_id)
     dd_session = worker_session.query(DedupeSession).get(session_id)
     dd = makeDataDict(session_id, name_pattern='canon_{0}')
     field_defs = json.loads(dd_session.field_defs)
@@ -300,64 +278,51 @@ def matchUnmatched(session_id):
             matches = list(matches)
             matches.extend([
                 confidence,
-                datetime.now().replace(tzinfo=TIME_ZONE)
+                datetime.now().replace(tzinfo=TIME_ZONE).isoformat(),
+                'canonical',
             ])
             match_list.append(matches)
-    ''' 
-    record_id, entity_id, confidence, last_update
-    '''
+    match_fobj = StringIO()
+    writer = UnicodeCSVWriter(match_fobj)
+    writer.writerow([
+        'record_id', 
+        'entity_id', 
+        'confidence', 
+        'last_update', 
+        'match_type'
+    ])
+    writer.writerows(match_list)
+    with engine.begin() as conn:
+        create = ''' 
+            CREATE TABLE "temp_{0}" (
+                record_id INTEGER, 
+                entity_id VARCHAR, 
+                confidence DOUBLE PRECISION, 
+                last_update TIMESTAMP,
+                match_type VARCHAR
+            )
+            '''.format(session_id)
+        conn.execute(create)
+    match_fobj.seek(0)
+    conn = engine.raw_connection()
+    curs = conn.cursor()
+    copy_st = '''
+        COPY "temp_{0}" (
+            record_id,
+            entity_id,
+            confidence,
+            last_update,
+            match_type
+        ) FROM STDIN CSV
+        '''.format(session_id)
+    try:
+        curs.copy_expert(copy_st, match_fobj)
+        conn.commit()
+        del match_fobj
+    except Exception, e:
+        conn.rollback()
+        raise e
+    with engine.begin() as conn:
+        conn.execute('DROP TABLE "temp_{0}"')
     return None
 
-@queuefunc
-def bulkMatchWorker(session_id, file_contents, field_map, filename):
-    ftype = convert.guess_format(filename)
-    s = StringIO(file_contents)
-    result = {
-        'status': 'ok',
-        'result': '',
-        'message': ''
-    }
-    try:
-        converted = convert.convert(s, ftype)
-    except UnicodeDecodeError:
-        result['status'] = 'error'
-        result['message'] = 'Problem decoding file'
-        return result
-    sess = worker_session.query(DedupeSession).get(session_id)
-    model_fields = [f.get('field') for f in json.loads(sess.field_defs)]
-    s = StringIO(converted)
-    reader = UnicodeCSVDictReader(s)
-    rows = []
-    for row in reader:
-        r = {k: row.get(k, '') for k in field_map.values() if k}
-        e = {k: '' for k in model_fields}
-        for k,v in field_map.items():
-            e[k] = r.get(v, '')
-        rows.append(e)
-    # Need a thing that will make a data_d without a DB
-    data_d = iterDataDict(rows)
-    deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
-    trained_data_d = makeDataDict(session_id, worker=True)
-    deduper.index(trained_data_d)
-    linked = deduper.match(messy_data_d, threshold=0, n_matches=5)
-    s.seek(0)
-    reader = UnicodeCSVReader(s)
-    raw_header = reader.next()
-    raw_header.extend([f for f in field_map.keys()])
-    raw_rows = list(reader)
-    fname = '%s_%s' % (datetime.now().isoformat(), filename)
-    fpath = join(DOWNLOAD_FOLDER, fname)
-    with open(fpath, 'wb') as outp:
-        writer = UnicodeCSVWriter(outp)
-        writer.writerow(raw_header)
-        for link in linked:
-            for l in link:
-                id_set, conf = l
-                messy_id, trained_id = id_set
-                messy_row = raw_rows[int(messy_id)]
-                trained_row = trained_data_d[trained_id]
-                for k in field_map.keys():
-                    messy_row.append(trained_row.get(k))
-                writer.writerow(messy_row)
-    result['result'] = fname
-    return result

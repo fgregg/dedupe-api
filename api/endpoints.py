@@ -7,7 +7,7 @@ from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
-from api.utils.delayed_tasks import bulkMatchWorker, dedupeCanon
+from api.utils.delayed_tasks import dedupeCanon
 from api.utils.helpers import preProcess, getCluster, updateTraining, \
     updateSessionStatus
 import dedupe
@@ -174,6 +174,39 @@ def train():
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
+@endpoints.route('/get-unmatched-record/<session_id>/')
+@check_sessions()
+def get_unmatched(session_id):
+    resp = {
+        'status': 'ok',
+        'message': '',
+        'objects': [],
+    }
+    status_code = 200
+    if session_id not in flask_session['user_sessions']:
+        resp['status'] = 'error'
+        resp['message'] = "You don't have access to session '{0}'".format(session_id)
+        status_code = 401
+    else:
+        sess = db_session.query(DedupeSession).get(session_id)
+        raw_fields = [f['field'] for f in json.loads(sess.field_defs)]
+        raw_fields.append('record_id')
+        fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
+        sel = ''' 
+          SELECT {0}
+          FROM "raw_{1}" as r
+          LEFT JOIN "entity_{1}" as e
+            ON r.record_id = e.record_id
+          WHERE e.record_id IS NULL
+          LIMIT 1
+        '''.format(fields, session_id)
+        with engine.begin() as conn:
+            rows = [dict(zip(raw_fields, r)) for r in conn.execute(sel)]
+        resp['objects'] = rows
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
 def checkin_sessions():
     now = datetime.now()
     all_sessions = [i.id for i in db_session.query(DedupeSession.id).all()]
@@ -246,8 +279,7 @@ def get_canon_cluster(session_id):
             resp['objects'] = cluster
         else:
             sess.status = 'second review complete'
-            # Need to write canon table and
-            # match unclustered records now
+            makeCanonTable.delay(session_id)
             db_session.add(sess)
             db_session.commit()
         resp['total_clusters'] = sess.entity_count
@@ -272,12 +304,13 @@ def mark_all_clusters(session_id):
         status_code = 401
     else:
         # Need to update existing clusters with new entity_id here, too.
-        user = db_session.query(User).get(flask_session['api_key'])
+        user = db_session.query(User).get(flask_session['api_key']) 
+        now =  datetime.now().replace(tzinfo=TIME_ZONE)
         upd_vals = {
             'user_name': user.name, 
             'clustered': True,
             'match_type': 'bulk accepted',
-            'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+            'last_update': now,
         }
         upd = text(''' 
             UPDATE "entity_{0}" SET 
@@ -300,7 +333,8 @@ def mark_all_clusters(session_id):
                         ON e.target_record_id = s.record_id
                 ) as subq 
             WHERE "entity_{0}".record_id=subq.record_id 
-                AND "entity_{0}".clustered=FALSE
+                AND ( "entity_{0}".clustered=FALSE 
+                      OR "entity_{0}".match_type != 'clerical review' )
             RETURNING "entity_{0}".entity_id
             '''.format(session_id))
         with engine.begin() as c:
@@ -309,15 +343,17 @@ def mark_all_clusters(session_id):
             UPDATE "entity_{0}" SET
                 clustered = :clustered,
                 reviewer = :user_name,
-                last_update = :last_update
+                last_update = :last_update,
+                match_type = :match_type
             WHERE target_record_id IS NULL
                 AND clustered=FALSE
             RETURNING entity_id;
         '''.format(session_id))
         with engine.begin() as c:
             parent_entities = c.execute(upd, **upd_vals)
-        count = len(set([c.entity_id for c in child_entities])\
-            .union([c.entity_id for c in parent_entities]))
+        child_entities = set([c.entity_id for c in child_entities])
+        parent_entities = set([p.entity_id for p in parent_entities])
+        count = len(child_entities.union(parent_entities))
         sess = db_session.query(DedupeSession).get(session_id)
         sess.review_count = 0
         sess.entity_count = count
@@ -696,6 +732,7 @@ def delete_session(session_id):
             'small_cov_{0}',
             'small_cov_{0}_cr',
             'canon_{0}',
+            'exact_match_{0}',
         ]
         for table in tables:
             try:
