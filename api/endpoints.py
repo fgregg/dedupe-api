@@ -7,9 +7,9 @@ from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
-from api.utils.delayed_tasks import dedupeCanon, getMatchingReady
+from api.utils.delayed_tasks import dedupeCanon, getMatchingReady, cleanupTables
 from api.utils.helpers import preProcess, getCluster, updateTraining, \
-    updateSessionStatus
+    updateSessionStatus, getMatchingDataDict
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -57,6 +57,7 @@ def validate_post(post, user_sessions):
 @endpoints.route('/match/', methods=['POST'])
 @check_sessions()
 def match():
+    print request.form
     try:
         post = json.loads(request.data)
     except ValueError:
@@ -70,19 +71,15 @@ def match():
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
         model_fields = [f['field'] for f in field_defs]
+        fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
-        raw_table = Table(sess.table_name, Base.metadata, 
-            autoload=True, autoload_with=engine, keep_existing=True)
-        raw_cols = [getattr(raw_table.c, f) for f in model_fields]
-        pk_col = [p for p in raw_table.primary_key][0]
         hash_me = ';'.join([preProcess(unicode(obj[i])) for i in model_fields])
         md5_hash = md5(unidecode(hash_me)).hexdigest()
         exact_match = db_session.query(entity_table)\
             .filter(entity_table.c.source_hash == md5_hash).first()
         match_list = []
         if exact_match:
-            fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
             sel = text(''' 
                   SELECT {0} 
                   FROM "raw_{1}" AS r
@@ -115,13 +112,21 @@ def match():
                     id_set, confidence = l
                     ids.extend([i for i in id_set if i != 'blob'])
                     confs[id_set[1]] = confidence
-                ids = list(set(ids))
-                matches = db_session.query(*raw_cols)\
-                    .filter(pk_col.in_(ids)).all()
+                ids = tuple(set(ids))
+                sel = text(''' 
+                      SELECT {0}, r.record_id, e.entity_id
+                      FROM "raw_{1}" as r
+                      JOIN "entity_{1}" as e
+                        ON r.record_id = e.record_id
+                      WHERE r.record_id IN :ids
+                    '''.format(fields, session_id))
+                matches = []
+                with engine.begin() as conn:
+                    matches = list(conn.execute(sel, ids=ids))
                 for match in matches:
                     m = {f: getattr(match, f) for f in model_fields}
-                    m['entity_id'] = getattr(match, pk_col.name)
-                    m['match_confidence'] = float(confs[str(m['entity_id'])])
+                    m['entity_id'] = getattr(match, 'entity_id')
+                    # m['match_confidence'] = float(confs[str(m['entity_id'])])
                     match_list.append(m)
         r['matches'] = match_list
 
@@ -183,7 +188,7 @@ def get_unmatched(session_id):
     resp = {
         'status': 'ok',
         'message': '',
-        'objects': [],
+        'object': {},
     }
     status_code = 200
     if session_id not in flask_session['user_sessions']:
@@ -205,7 +210,7 @@ def get_unmatched(session_id):
         '''.format(fields, session_id)
         with engine.begin() as conn:
             rows = [dict(zip(raw_fields, r)) for r in conn.execute(sel)]
-        resp['objects'] = rows
+        resp['object'] = rows[0]
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
@@ -571,9 +576,6 @@ def mark_all_canon_cluster(session_id):
         }
         count = len(set([c.entity_id for c in updated]))
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
-       #updateSessionStatus(session_id)
-       #addRowHash.delay(session_id)
-       #cleanupTables.delay(session_id)
         getMatchingReady.delay(session_id)
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'

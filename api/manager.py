@@ -95,6 +95,15 @@ def user_list():
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('user_list.html', users=users, user=user)
 
+@manager.route('/match-review/<session_id>/')
+@login_required
+@check_roles(roles=['admin', 'reviewer'])
+def match_review(session_id):
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_template('match-review.html', 
+                            session_id=session_id, 
+                            user=user)
+
 @manager.route('/session-review/<session_id>/')
 @login_required
 @check_roles(roles=['admin', 'reviewer'])

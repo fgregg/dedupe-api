@@ -32,6 +32,7 @@ def getMatchingReady(session_id):
     cleanupTables(session_id)
     dd_session = worker_session.query(DedupeSession).get(session_id)
     dd = getMatchingDataDict(session_id)
+    field_defs = json.loads(dd_session.field_defs)
     d = dedupe.Gazetteer(field_defs)
     d.readTraining(StringIO(dd_session.training_data))
     d.train()
@@ -42,6 +43,7 @@ def getMatchingReady(session_id):
     dd_session.gaz_settings_file = settings.getvalue()
     worker_session.add(dd_session)
     worker_session.commit()
+    updateSessionStatus(session_id)
     return None
 
 @queuefunc
@@ -247,7 +249,7 @@ def dedupeCanon(session_id):
         table_name='processed_{0}_cr'.format(session_id), 
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
-    clustered_dupes = clusterDedupe(session_id, canonical=True)
+    clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=0.25)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
         with open(fname, 'wb') as f:
