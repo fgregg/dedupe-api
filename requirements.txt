@@ -12,5 +12,6 @@ redis==2.10.3
 xlwt==0.7.5
 raven==5.1.1
 pytz==2014.9
+unidecode==0.04.16
 
 #dedupe

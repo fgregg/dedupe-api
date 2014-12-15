@@ -12,6 +12,7 @@ from itertools import count
 from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
 from datetime import datetime, timedelta
+from unidecode import unidecode
 
 STATUS_LIST = [
     'dataset uploaded',       # File stored, waiting for raw tables to be written
@@ -22,36 +23,8 @@ STATUS_LIST = [
     'clustering started',     # User finished training and clustering process is running
     'entity map updated',     # Entity map updated with results of clustering
     'canon clustered',        # First cluster review complete and results of canonical dedupe are ready
-    'unmatched clustered',    # Results of matching unmatched records ready for review
+    'matching ready',         # Canonical clusters are reviewed and Gazetteer settings are saved
 ]
-
-def cleanupTables(session_id):
-    ''' 
-    Once canonical forms are deduplicated, cleanup tables
-    '''
-    engine = worker_session.bind
-    metadata = MetaData()
-    tables = [
-        'entity_{0}_cr',
-        'processed_{0}_cr',
-        'block_{0}_cr',
-        'plural_block_{0}_cr',
-        'covered_{0}_cr',
-        'plural_key_{0}_cr',
-        'small_cov_{0}_cr',
-        'cr_{0}',
-        'block_{0}',
-        'plural_block_{0}',
-        'covered_{0}',
-        'plural_key_{0}',
-    ]
-    for table in tables:
-        try:
-            data_table = Table(table.format(session_id), 
-                metadata, autoload=True, autoload_with=engine)
-            data_table.drop(engine)
-        except NoSuchTableError:
-            pass
 
 def updateTraining(session_id, record_ids, distinct=False):
     ''' 
@@ -202,6 +175,9 @@ def slugify(text, delim=u'_'):
 def preProcess(column):
     if not column:
         column = u''
+    if column == None:
+        column = u''
+    column = unidecode(column)
     column = re.sub('  +', ' ', column)
     column = re.sub('\n', ' ', column)
     column = column.strip().strip('"').strip("'").lower().strip()
@@ -287,3 +263,27 @@ def getDistinct(field_name, session_id):
     distinct_values = list(set([unicode(v[0]) for v in q.all()]))
     return distinct_values
 
+def getMatchingDataDict(session_id):
+    dd_session = worker_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(dd_session.field_defs)
+    model_fields = [d['field'] for d in field_defs]
+    fields = ', '.join(['p.{0}'.format(f) for f in model_fields])
+    sel = ''' 
+        SELECT e.record_id, {0}
+        FROM "entity_{1}" AS e
+        JOIN "processed_{1}" as p
+          ON e.record_id = p.record_id
+        WHERE e.record_id NOT IN (
+          SELECT UNNEST(member_ids)
+          FROM "exact_match_{1}"
+        )
+        '''.format(fields, session_id)
+    rows = []
+    engine = worker_session.bind
+    with engine.begin() as conn:
+        rows = list(conn.execute(sel))
+    dd = {}
+    for row in rows:
+        dd[row.record_id] = {f:getattr(row, f) for f in model_fields}
+    return dd
+    

@@ -7,7 +7,7 @@ from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
-from api.utils.delayed_tasks import dedupeCanon
+from api.utils.delayed_tasks import dedupeCanon, getMatchingReady
 from api.utils.helpers import preProcess, getCluster, updateTraining, \
     updateSessionStatus
 import dedupe
@@ -70,7 +70,7 @@ def match():
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
         model_fields = [f['field'] for f in field_defs]
-        entity_table = Table('entity_%s' % session_id, Base.metadata, 
+        entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
         raw_table = Table(sess.table_name, Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
@@ -82,27 +82,30 @@ def match():
             .filter(entity_table.c.source_hash == md5_hash).first()
         match_list = []
         if exact_match:
-            cluster = db_session.query(entity_table.c.record_id)\
-                .filter(entity_table.c.entity_id == exact_match.entity_id)\
-                .all()
-            raw_ids = [c[0] for c in cluster]
-            raw_record = db_session.query(*raw_cols)\
-                .filter(pk_col.in_(raw_ids)).first()
-            d = { f: getattr(raw_record, f) for f in model_fields }
-            d['entity_id'] = exact_match.record_id
-            d['match_confidence'] = '1.0'
-            match_list.append(d)
+            fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
+            sel = text(''' 
+                  SELECT {0} 
+                  FROM "raw_{1}" AS r
+                  JOIN "entity_{1}" AS e
+                    ON r.record_id = e.record_id
+                  WHERE e.entity_id = :entity_id
+                  LIMT :limit
+                '''.format(fields, session_id), 
+                entity_id=exact_match.entity_id, limit=n_matches)
+            rows = []
+            with engine.begin() as conn:
+                rows = conn.execute(sel)
+            for row in rows:
+                d = {f: getattr(row, f) for f in model_fields}
+                d['entity_id'] = exact_match.entity_id
+                d['match_confidence'] = '1.0'
+                match_list.append(d)
         else:
             deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
             for k,v in obj.items():
                 obj[k] = preProcess(unicode(v))
             o = {'blob': obj}
-            raw_cols.append(pk_col)
-            raw_data = db_session.query(*raw_cols).all()
-            data_d = {}
-            for row in raw_data:
-                d = {f: preProcess(unicode(getattr(row, f))) for f in model_fields}
-                data_d[int(getattr(row, pk_col.name))] = d
+            data_d = getMatchingDataDict(sess.id)
             deduper.index(data_d)
             linked = deduper.match(o, threshold=0, n_matches=n_matches)
             if linked:
@@ -277,15 +280,13 @@ def get_canon_cluster(session_id):
         if cluster:
             resp['entity_id'] = entity_id
             resp['objects'] = cluster
-        else:
-            sess.status = 'second review complete'
-            makeCanonTable.delay(session_id)
-            db_session.add(sess)
-            db_session.commit()
+       #else:
+       #    sess.status = 'second review complete'
+       #    # makeCanonTable.delay(session_id)
+       #    db_session.add(sess)
+       #    db_session.commit()
         resp['total_clusters'] = sess.entity_count
         resp['review_remainder'] = sess.review_count
-       #resp['total_clusters'] = total_clusters
-       #resp['review_remainder'] = review_remainder
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
@@ -432,28 +433,6 @@ def mark_cluster(session_id):
             # training_data['match'].extend(pairs)
         if distinct_ids:
             distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
-           #update_existing = text(''' 
-           #    UPDATE "entity_{0}" SET
-           #        entity_id = subq.entity_id,
-           #        clustered = :clustered
-           #        FROM (
-           #            SELECT DISTINCT e.entity_id, s.record_id
-           #                FROM "entity_{0}" AS e
-           #                JOIN (
-           #                    SELECT record_id 
-           #                        FROM "entity_{0}"
-           #                        WHERE entity_id = :entity_id
-           #                            AND record_id in :record_ids
-           #                ) AS s
-           #                ON e.target_record_id = s.record_id
-           #        ) as subq
-           #    WHERE "entity_{0}".record_id = subq.record_id
-           #    '''.format(sess.id))
-           #with engine.begin() as c:
-           #    c.execute(update_existing, 
-           #              entity_id=entity_id, 
-           #              clustered=True, 
-           #              record_ids=distinct_ids)
             delete = entity_table.delete()\
                 .where(entity_table.c.entity_id == entity_id)\
                 .where(entity_table.c.record_id.in_(distinct_ids))
@@ -592,10 +571,10 @@ def mark_all_canon_cluster(session_id):
         }
         count = len(set([c.entity_id for c in updated]))
         resp['message'] = 'Marked {0} entities as clusters'.format(count)
-        sess = db_session.query(DedupeSession).get(session_id)
-        sess.status = 'review complete'
-        db_session.add(sess)
-        db_session.commit()
+       #updateSessionStatus(session_id)
+       #addRowHash.delay(session_id)
+       #cleanupTables.delay(session_id)
+        getMatchingReady.delay(session_id)
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -734,15 +713,7 @@ def delete_session(session_id):
             'canon_{0}',
             'exact_match_{0}',
         ]
-        for table in tables:
-            try:
-                data_table = Table(table.format(session_id), 
-                    Base.metadata, autoload=True, autoload_with=engine)
-                data_table.drop(engine)
-            except NoSuchTableError:
-                pass
-            except ProgrammingError:
-                pass
+        cleanupTables.delay(session_id, tables=tables)
         resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
         resp.headers['Content-Type'] = 'application/json'
     return resp

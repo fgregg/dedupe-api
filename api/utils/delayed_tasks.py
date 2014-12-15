@@ -8,12 +8,13 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
-    makeSampleDict, windowed_query, updateSessionStatus, cleanupTables
+    makeSampleDict, windowed_query, updateSessionStatus, getMatchingDataDict
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
-    writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep
+    writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
+    addRowHash
 from sqlalchemy import Table, MetaData, Column, String, func
 from sqlalchemy.sql import label
-from sqlalchemy.exc import NoSuchTableError
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
 from operator import itemgetter
 from csvkit import convert
@@ -24,6 +25,53 @@ from datetime import datetime
 import cPickle
 from uuid import uuid4
 from api.app_config import TIME_ZONE
+
+@queuefunc
+def getMatchingReady(session_id):
+    addRowHash(session_id)
+    cleanupTables(session_id)
+    dd_session = worker_session.query(DedupeSession).get(session_id)
+    dd = getMatchingDataDict(session_id)
+    d = dedupe.Gazetteer(field_defs)
+    d.readTraining(StringIO(dd_session.training_data))
+    d.train()
+    d.index(dd)
+    settings = StringIO()
+    d.writeSettings(settings)
+    settings.seek(0)
+    dd_session.gaz_settings_file = settings.getvalue()
+    worker_session.add(dd_session)
+    worker_session.commit()
+    return None
+
+@queuefunc
+def cleanupTables(session_id, tables=None):
+    engine = worker_session.bind
+    metadata = MetaData()
+    if not tables:
+        tables = [
+            'entity_{0}_cr',
+            'processed_{0}_cr',
+            'block_{0}_cr',
+            'plural_block_{0}_cr',
+            'covered_{0}_cr',
+            'plural_key_{0}_cr',
+            'small_cov_{0}_cr',
+            'cr_{0}',
+            'block_{0}',
+            'plural_block_{0}',
+            'covered_{0}',
+            'plural_key_{0}',
+        ]
+    for table in tables:
+        try:
+            data_table = Table(table.format(session_id), 
+                metadata, autoload=True, autoload_with=engine)
+            data_table.drop(engine)
+        except NoSuchTableError:
+            pass
+        except ProgrammingError:
+            pass
 
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)

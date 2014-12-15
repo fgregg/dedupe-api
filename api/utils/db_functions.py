@@ -19,6 +19,29 @@ from uuid import uuid4
 from csvkit.unicsv import UnicodeCSVWriter
 from datetime import datetime
 
+def addRowHash(session_id):
+    sess = worker_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(sess.field_defs)
+    fields = [f['field'] for f in field_defs]
+    engine = worker_session.bind
+    fields = ["COALESCE(r.{0}, '')".format(f) for f in fields]
+    fields = " || ';' || ".join(fields)
+    upd = ''' 
+      UPDATE "entity_{0}" SET
+        source_hash=s.source_hash 
+        FROM (
+          SELECT 
+            MD5({1}) as source_hash,
+            r.record_id
+          FROM "entity_{0}" as e
+          JOIN "raw_{0}" as r
+            ON e.record_id = r.record_id
+        ) AS s
+        WHERE "entity_{0}".record_id = s.record_id
+    '''.format(session_id, fields)
+    with engine.begin() as conn:
+        conn.execute(upd)
+
 def writeRawTable(filename=None,
               session_id=None,
               file_obj=None):
@@ -88,26 +111,6 @@ def writeProcessedTable(session_id,
         c.execute(create_stmt)
     with engine.begin() as c:
         c.execute('ALTER TABLE "{0}" ADD PRIMARY KEY (record_id)'.format(proc_table_name))
-
-def addRowHash(session_id, fields):
-    engine = worker_session.bind
-    fields = ["COALESCE(r.{0}, '')".format(f) for f in fields]
-    fields = " || ';' || ".join(fields)
-    upd = ''' 
-      UPDATE "entity_{0}" SET
-        source_hash=s.source_hash 
-        FROM (
-          SELECT 
-            MD5({1}) as source_hash,
-            r.record_id
-          FROM "entity_{0}" as e
-          JOIN "raw_{0}" as r
-            ON e.record_id = r.record_id
-        ) AS s
-        WHERE "entity_{0}".record_id = s.record_id
-    '''.format(session_id, fields)
-    with engine.begin() as conn:
-        conn.execute(upd)
 
 def initializeEntityMap(session_id, fields):
     engine = worker_session.bind
