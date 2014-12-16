@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %} | Match Queue {% endblock %}
+{% block content %}
+    <div class="row">
+      <div class="col-md-12">
+          <div class="row">
+              <div id="counter" class="col-md-12"></div>
+          </div>
+          <div class="row">
+              <div class="col-md-12">
+                  <table class="table" id="group-display">
+                      <thead></thead>
+                      <tbody></tbody>
+                  </table>
+                  <div class="row">
+                      <div class="col-md-12">
+                          <h4>Select the records the belong together</h4>
+                      </div>
+                  </div>
+                  <div class="row">
+                      <div class="col-md-9">
+                          <div id="review-buttons">
+                              <button class="btn btn-success mark-entity">
+                                  Next &gt;
+                              </button>
+                          </div>
+                      </div>
+                      <div class="col-md-3">
+                          <button class="btn btn-danger accept-all">
+                              <i class='fa fa-check'></i>
+                              Accept the rest
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+    </div>
+{% endblock %}
+{% block extra_javascript %}
+<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
+<script type="text/javascript">
+    var session_id = "{{ session_id }}"
+    var api_key = "{{ user.id }}"
+    $.when(getRecord()).then(function(resp){
+        console.log(resp)
+        var obj = {
+            'object': resp['object'],
+            'num_results': 5,
+            'api_key': api_key,
+            'session_key': session_id
+        }
+        $.post('/match/', JSON.stringify(obj), function(matches){
+            console.log(matches)
+        })
+    });
+    function getRecord(){
+        return $.getJSON('/get-unmatched-record/' + session_id + '/')
+    }
+</script>
+{% endblock %}

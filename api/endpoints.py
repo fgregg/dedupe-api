@@ -245,8 +245,8 @@ def get_cluster(session_id):
         sess = db_session.query(DedupeSession).get(session_id)
         checkin_sessions()
         entity_id, cluster = getCluster(session_id, 
-                             'entity_{0}'.format(session_id), 
-                             'raw_{0}'.format(session_id))
+                             'entity_{0}', 
+                             'raw_{0}')
         if cluster:
             resp['entity_id'] = entity_id 
             resp['objects'] = cluster
@@ -280,16 +280,11 @@ def get_canon_cluster(session_id):
         checkin_sessions()
         sess = db_session.query(DedupeSession).get(session_id)
         entity_id, cluster = getCluster(session_id, 
-                             'entity_{0}_cr'.format(session_id), 
-                             'cr_{0}'.format(session_id))
+                             'entity_{0}_cr', 
+                             'cr_{0}')
         if cluster:
             resp['entity_id'] = entity_id
             resp['objects'] = cluster
-       #else:
-       #    sess.status = 'second review complete'
-       #    # makeCanonTable.delay(session_id)
-       #    db_session.add(sess)
-       #    db_session.commit()
         resp['total_clusters'] = sess.entity_count
         resp['review_remainder'] = sess.review_count
     response = make_response(json.dumps(resp), status_code)

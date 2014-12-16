@@ -5,7 +5,7 @@ from dedupe.core import frozendict
 from dedupe import canonicalize
 from api.database import app_session, worker_session, Base, engine
 from api.models import DedupeSession
-from sqlalchemy import Table, MetaData, distinct, and_, func, Column
+from sqlalchemy import Table, MetaData, distinct, and_, func, Column, text
 from unidecode import unidecode
 from unicodedata import normalize
 from itertools import count
@@ -51,74 +51,57 @@ def updateSessionStatus(session_id, increment=True):
     worker_session.add(dd)
     worker_session.commit()
 
-def getCluster(session_id, entity_table_name, raw_table_name):
+def getCluster(session_id, entity_pattern, raw_pattern):
+    ent_name = entity_pattern.format(session_id)
+    raw_name = raw_pattern.format(session_id)
     sess = app_session.query(DedupeSession).get(session_id)
-    entity_table = Table(entity_table_name, Base.metadata,
-        autoload=True, autoload_with=engine)
-
-    # TODO: Need a good way of getting cluster count and review remainder
-    # This way is totally slow
-    # total_clusters = app_session.query(entity_table.c.entity_id.distinct()).count()
-    # review_remainder = app_session.query(entity_table.c.entity_id.distinct())\
-    #     .filter(entity_table.c.clustered == False)\
-    #     .count()
 
     cluster_list = []
-    field_defs = [f['field'] for f in json.loads(sess.field_defs)]
-    raw_table = Table(raw_table_name, Base.metadata, 
-        autoload=True, autoload_with=engine, keep_existing=True)
+    model_fields = [f['field'] for f in json.loads(sess.field_defs)]
     entity_fields = ['record_id', 'entity_id', 'confidence']
-    entity_cols = [getattr(entity_table.c, f) for f in entity_fields]
-    ''' 
-    SELECT e.entity_id 
-        FROM entity AS e
-    WHERE e.checked_out = FALSE
-        AND e.clustered = FALSE
-    ORDER BY e.confidence
-    LIMIT 1
-    '''
-    ent = app_session.query(entity_table.c.entity_id)\
-        .filter(entity_table.c.checked_out == False)\
-        .filter(entity_table.c.clustered == False)\
-        .order_by(entity_table.c.confidence)\
-        .limit(1)
-    entity_id = ent.first()[0]
+    sel = ''' 
+        SELECT e.entity_id 
+            FROM "{0}" AS e
+        WHERE e.checked_out = FALSE
+            AND e.clustered = FALSE
+        ORDER BY e.confidence
+        LIMIT 1
+        '''.format(ent_name)
+    entity_id = None
+    with engine.begin() as conn:
+        entity_id = list(conn.execute(sel))
     if entity_id:
-        raw_cols = [getattr(raw_table.c, f) for f in field_defs]
-        raw_cols.append(raw_table.c.record_id)
-        raw_cols.append(entity_table.c.confidence)
-        '''
-        SELECT 
-            e.confidence,
-            r.phone, <-- List of fields that we care about
-            r.site_name, 
-            r.zip, 
-            r.address, 
-            r.record_id <-- plus record_id
-        FROM raw_table AS r
-        JOIN entity_table as e 
-            ON r.record_id = e.record_id
-        WHERE e.entity_id = :entity_id
-
-        The entity ID comes from the result of the query above.
-        '''
-        records = app_session.query(*raw_cols)\
-            .join(entity_table, raw_table.c.record_id == entity_table.c.record_id)\
-            .filter(entity_table.c.entity_id == entity_id)
-        raw_fields = [f['name'] for f in records.column_descriptions]
-        records = records.all()
-        one_minute = datetime.now() + timedelta(minutes=1)
-        upd = entity_table.update()\
-            .where(entity_table.c.entity_id == entity_id)\
-            .values(checked_out=True, checkout_expire=one_minute)
-        with engine.begin() as c:
-            c.execute(upd)
+        entity_id = entity_id[0][0]
+        raw_cols = ', '.join(['r.{0}'.format(f) for f in model_fields])
+        sel = text('''
+            SELECT 
+                e.confidence,
+                {0},
+                r.record_id
+            FROM "{1}" AS r
+            JOIN "{2}" as e 
+                ON r.record_id = e.record_id
+            WHERE e.entity_id = :entity_id
+            '''.format(raw_cols, raw_name, ent_name))
+        records = []
+        with engine.begin() as conn:
+            records = list(conn.execute(sel, entity_id=entity_id))
+        raw_fields = ['confidence'] + model_fields + ['record_id']
         for thing in records:
             d = {}
             for k,v in zip(raw_fields, thing):
                 d[k] = v
             cluster_list.append(d)
-        return entity_id, cluster_list
+        one_minute = datetime.now() + timedelta(minutes=1)
+        upd = text(''' 
+            UPDATE "{0}" SET
+              checked_out = TRUE,
+              checkout_expire = :one_minute
+            WHERE entity_id = :entity_id
+            '''.format(ent_name))
+        with engine.begin() as c:
+            c.execute(upd, entity_id=entity_id, one_minute=one_minute)
+    return entity_id, cluster_list
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):

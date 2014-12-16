@@ -8,7 +8,8 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
-    makeSampleDict, windowed_query, updateSessionStatus, getMatchingDataDict
+    makeSampleDict, windowed_query, updateSessionStatus, getMatchingDataDict, \
+    getDistinct
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash
@@ -49,7 +50,6 @@ def getMatchingReady(session_id):
 @queuefunc
 def cleanupTables(session_id, tables=None):
     engine = worker_session.bind
-    metadata = MetaData()
     if not tables:
         tables = [
             'entity_{0}_cr',
@@ -65,15 +65,16 @@ def cleanupTables(session_id, tables=None):
             'covered_{0}',
             'plural_key_{0}',
         ]
+    conn = engine.connect()
+    trans = conn.begin()
     for table in tables:
+        tname = table.format(session_id)
         try:
-            data_table = Table(table.format(session_id), 
-                metadata, autoload=True, autoload_with=engine)
-            data_table.drop(engine)
-        except NoSuchTableError:
-            pass
-        except ProgrammingError:
-            pass
+            conn.execute('DROP TABLE "{0}"'.format(tname))
+            trans.commit()
+        except Exception, e:
+            trans.rollback()
+    conn.close()
 
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
@@ -117,8 +118,18 @@ def initializeModel(session_id):
         if not sess.field_defs:
             time.sleep(3)
         else:
-            fields = [f['field'] for f in json.loads(sess.field_defs)]
+            field_defs = json.loads(sess.field_defs)
+            fields = [f['field'] for f in field_defs]
             writeProcessedTable(session_id)
+            updated_fds = []
+            for field in field_defs:
+                if field['type'] == 'Categorical':
+                    categories = getDistinct(field['field'], session_id)
+                    field.update({'categories': categories})
+                updated_fds.append(field)
+            sess.field_defs = json.dumps(updated_fds)
+            worker_session.add(sess)
+            worker_session.commit()
             initializeEntityMap(session_id, fields)
             drawSample(session_id)
             updateSessionStatus(session_id)
@@ -249,7 +260,7 @@ def dedupeCanon(session_id):
         table_name='processed_{0}_cr'.format(session_id), 
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
-    clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=0.25)
+    clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=0.15)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
         with open(fname, 'wb') as f:

@@ -156,8 +156,6 @@ def select_field_types():
         for k,v in field_dict.items():
             slug = slugify(unicode(k))
             d = {'field': slug}
-            if v['type'] == 'Categorical':
-                v['categories'] = getDistinct(slug,sess.id)
             d.update(v)
             field_defs.append(d)
         sess = db_session.query(DedupeSession).get(flask_session['session_id'])

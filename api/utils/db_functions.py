@@ -70,8 +70,12 @@ def writeRawTable(filename=None,
     file_obj.seek(0)
     conn = engine.raw_connection()
     cur = conn.cursor()
-    cur.copy_expert(copy_st, file_obj)
-    conn.commit()
+    try:
+        cur.copy_expert(copy_st, file_obj)
+        conn.commit()
+    except Exception, e:
+        print e
+        conn.rollback()
     return fieldnames
 
 def writeProcessedTable(session_id, 
