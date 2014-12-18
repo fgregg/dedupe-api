@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% block title %}Upload{% endblock %}
 {% block content %}
 <div class="row">
   <div class="col-md-12">
@@ -9,31 +10,29 @@
 </div>
 <div class="row">
   <div class="col-md-12">
-
-    <div class='well'>
-      <form role="form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-          <div class="upload row">
-              <div class="form-group col-md-12">
-                  <label for="input_file">Upload a spreadsheet</label>
-                  <input type="file" id="id_input_file" name="input_file">
-                  <p class="help-block">
-                      Only <strong>.csv, .xls or .xlsx</strong> files.
-                  </p>
-              </div>
-          </div>
-          <div class="row">
-              <div class="col-md-12">
-                  <div id="progress" class="progress">
-                      <div class="progress-bar progress-bar-success"></div>
-                  </div>
-              </div>
-          </div>
-          <a href="{{ url_for('trainer.select_fields') }}" id="next-step" class="btn btn-primary" style="display:none;">
-              Next &raquo;
-          </a>
-      </form>
-    </div>
+    <form role="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="upload row">
+            <div class="form-group col-md-12">
+                <p>Select a spreadsheet you want to upload</p>
+                <input type="file" id="id_input_file" name="input_file">
+                <p class="help-block">
+                    Only <strong>.csv, .xls or .xlsx</strong> files.
+                </p>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12" id="progress" style="display: none;">
+                <p id='upload_message'>Uploading ...</p>
+                <div class="progress">
+                    <div class="progress-bar progress-bar-info"></div>
+                </div>
+            </div>
+        </div>
+        <a href="{{ url_for('trainer.select_fields') }}" id="next-step" class="btn btn-primary" style="display:none;">
+            Next &raquo;
+        </a>
+    </form>
   </div>
 </div>
 {% endblock %}
@@ -47,16 +46,15 @@ $(function () {
         url: '/upload/',
         dataType: 'json',
         start: function(e, data){
-            $('#progress').show()
+            $('#progress').fadeIn();
         },
         done: function (e, data) {
-            console.log(data.result)
-            $('#progress').hide();
-            $('#next-step').show();
+            $('#next-step').fadeIn();
+            $('#upload_message').html("Uploading done!");
         },
         progressall: function (e, data) {
             var progress = parseInt(data.loaded / data.total * 100, 10);
-            $('#progress .progress-bar').css(
+            $('.progress-bar').css(
                 'width',
                 progress + '%'
             );

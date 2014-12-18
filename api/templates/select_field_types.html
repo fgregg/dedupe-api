@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% block title %}Field data types{% endblock %}
 {% block content %}
     <div class="col-md-12">
     {% include "dedupe_steps.html" %}
@@ -8,57 +9,47 @@
     <div class="col-md-12">
         <div class="row">
             <div class="col-md-8">
-                <div class='well'>
-                    <form id="fields" role="form" action="{{ url_for('trainer.select_field_types')}}" method="post" enctype="multipart/form-data">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                        <div class="form-group">
-                            {% for field in field_list %}
-                              <div class="row">
-                                <div class="col-sm-6">
-                                    <label>{{ field }}: </label>
-                                    <select class="form-control" name="{{ field }}_type">
-                                        <option value="String">String</option>
-                                        <option value="Price">Price</option>
-                                        <option value="ShortString">ShortString</option>
-                                        <option value="Text">Text</option>
-                                        <option value="LatLong">LatLong</option>
-                                        <option value="Set">Set</option>
-                                        <option value="Exact">Exact</option>
-                                        <option value="Categorical">Categorical</option>
-                                        <option value="Source">Source</option>
-                                    </select>
-                                </div>
-                                <div class="col-sm-6">
-                                    <div class="checkbox">
-                                        <label>
-                                            <input type="checkbox" name="{{ field }}_missing"> Missing data
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
+                <p>Here, you can fine-tune the way that dedupe will compare your fields. By default, we'll look at how similar the values are, but more advanced comparisons are possible.</p>
+                <form id="fields" role="form" action="{{ url_for('trainer.select_field_types')}}" method="post" enctype="multipart/form-data" class='form-horizontal'>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    {% for field in field_list %}
+                    <div class="form-group">
+                        <label for="{{ field }}_type" class="col-sm-2 control-label">{{ field }}</label>
+                        <div class="col-sm-5">
+                            <select class="form-control" name="{{ field }}_type">
+                                <option value="String">String (default)</option>
+                                <option value="Price">Price</option>
+                                <option value="ShortString">ShortString</option>
+                                <option value="Text">Text</option>
+                                <option value="LatLong">LatLong</option>
+                                <option value="Set">Set</option>
+                                <option value="Exact">Exact</option>
+                                <option value="Categorical">Categorical</option>
+                                <option value="Source">Source</option>
+                            </select>
                         </div>
-                        <button type="submit" class="btn btn-primary" id="start-training">
-                            Next &raquo;
-                        </button>
-                    </form>
-                </div>
+                        <div class="col-sm-5">
+                            <div class="checkbox">
+                                <label>
+                                    <input type="checkbox" name="{{ field }}_missing"> Has blank values
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <hr />
+                    <button type="submit" class="btn btn-primary" id="start-training">
+                        Next &raquo;
+                    </button>
+                </form>
             </div>
             <div class='col-md-4'>
                 <div class='alert alert-info'>
-                    <p>
-                        <i class='fa fa-info-circle'></i>
-                        This is some interesting information about field types!
-                    </p>
+                    <p><i class='fa fa-info-circle'></i> If you're not sure how to compare your fields, just stick with the <strong>String</strong> type.</p>
 
-                    <p>This is a list:</p>
+                    <p><strong>Has blank values</strong> should be checked if that column has blank (or empty) values you want to ignore.</p>
 
-                    <ul>
-                        <li>Item 1 (super important)</li>
-                        <li>Item 2 (Hi there)</li>
-                        <li>Item 3 (Also important but lives in the shadow of item 1)</li>
-                        <li>Item 4 (No on even knows he's here sometimes)</li>
-                    </ul>
+                    <p><a target='_blank' href='http://dedupe.readthedocs.org/en/latest/Variable-definition.html'>Read more about type comparitors &raquo;</a></p>
                 </div>
             </div>
         </div>
