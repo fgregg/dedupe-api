@@ -11,7 +11,7 @@ from api.redis_session import RedisSessionInterface
 
 try:
     from raven.contrib.flask import Sentry
-    from geomancer.app_config import SENTRY_DSN
+    from api.app_config import SENTRY_DSN
     sentry = Sentry(dsn=SENTRY_DSN)
 except ImportError:
     sentry = None

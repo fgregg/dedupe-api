@@ -172,11 +172,9 @@ def blockDedupe(session_id,
     entity_table = Table(entity_table_name, metadata,
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
-        fd = worker_session.query(proc_table.c.record_id, 
-            getattr(proc_table.c, field))
-        field_data = (row for row in fd.yield_per(50000))
-        deduper.blocker.tfIdfBlock(field_data, field)
-        del field_data
+        with engine.begin() as conn:
+            fd = conn.execute('select record_id, {0} from "processed_{1}"'.format(field, session_id))
+            deduper.blocker.tfIdfBlock(fd, field)
     """ 
     SELECT p.* <-- need the fields that we trained on at least
         FROM processed as p
