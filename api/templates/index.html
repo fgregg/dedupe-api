@@ -26,7 +26,7 @@
     function make_display(resp){
         var rows = ''
         $.each(resp.objects, function(i, object){
-            rows += '<tr><td>' + object.name + '</td>';
+            rows += '<tr><td><a href="/session-admin/' + object.id + '/">' + object.name + '</td>';
             rows += '<td>';
             if (object.status == 'entity map updated'){
                 rows += '<a href="/session-review/' + object.id + '/">Review Queue</a><br />';

@@ -2,7 +2,7 @@ from flask import Blueprint, request, session as flask_session, \
     render_template, make_response, flash, redirect, url_for
 from api.database import app_session as db_session, Base
 from api.models import User, Role, DedupeSession, Group
-from api.auth import login_required, check_roles
+from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import preProcess
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
@@ -16,6 +16,8 @@ import json
 from cPickle import loads
 from dedupe.convenience import canonicalize
 from csvkit.unicsv import UnicodeCSVReader
+import dedupe
+from cStringIO import StringIO
 
 manager = Blueprint('manager', __name__)
 
@@ -148,3 +150,60 @@ def bulk_match(session_id):
             flask_session['bulk_match_upload'] = upload.read()
             flask_session['bulk_match_filename'] = upload.filename
     return render_template('bulk-match.html', **context)
+
+@manager.route('/session-admin/<session_id>/')
+@login_required
+@check_sessions()
+def session_admin(session_id):
+    if session_id not in flask_session['user_sessions']:
+        flash("You don't have access to session {0}".format(session_id))
+        return redirect(url_for('manager.index'))
+    else:
+        sess = db_session.query(DedupeSession).get(session_id)
+        predicates = None
+        session_info = None
+        training_data = None
+        if sess.field_defs:
+            fds = json.loads(sess.field_defs)
+            session_info = {f['field']: f for f in fds}
+        if sess.settings_file:
+            dd = dedupe.StaticDedupe(StringIO(sess.settings_file))
+            for key, val in dd.data_model.items():
+                try:
+                    for field in val:
+                        name = field.name.split(':')[0][1:]
+                        session_info[name]['learned_weight'] = field.weight
+                except TypeError:
+                    name = field.name.split(':')[0][1:]
+                    session_info[name]['learned_weight'] = val
+            predicates = dd.predicates
+        if sess.training_data:
+            training_data = json.loads(sess.training_data)
+            td = {'distinct': [], 'match': []}
+            for left, right in training_data['distinct']:
+                keys = left.keys()
+                pair = []
+                for key in keys:
+                    d = {
+                        'field': key,
+                        'left': left[key],
+                        'right': right[key]
+                    }
+                    pair.append(d)
+                td['distinct'].append(pair)
+            for left, right in training_data['match']:
+                keys = left.keys()
+                pair = []
+                for key in keys:
+                    d = {
+                        'field': key,
+                        'left': left[key],
+                        'right': right[key]
+                    }
+                    pair.append(d)
+                td['match'].append(pair)
+    return render_template('session-admin.html', 
+                            dd_session=sess, 
+                            session_info=session_info, 
+                            predicates=predicates,
+                            training_data=td)
