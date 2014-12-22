@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% block title %}Training{% endblock %}
 {% block content %}
     <div class="col-md-12">
     {% include "dedupe_steps.html" %}
@@ -25,7 +26,7 @@
                 <i class='fa fa-check'></i>
                 Yes
             </button>
-            <button class="btn btn-danger" id="no">
+            <button class="btn btn-primary" id="no">
                 <i class='fa fa-remove'></i>
                 No
             </button>
@@ -33,7 +34,7 @@
                 Unsure
             </button>
             &nbsp;&nbsp;&nbsp;
-            <button class="btn btn-primary hidden" id="finish">
+            <button class="btn btn-success hidden" id="finish">
                 Finished training &raquo;
             </button>
         </p>
@@ -62,7 +63,8 @@
             </tbody>
         </table>
         <div class='alert alert-info'>
-            <p><i class='fa fa-info-circle'></i> Here, we use machine learning to <a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>make smart comparisons</a> about your data. The more labeled examples you give us, the better the deduplication results will be.</p>
+            <p><i class='fa fa-info-circle'></i> By providing examples of what records are the same or not, dedupe will learn the best way to deduplicate your data. The more training you provide, the better the results will be.</p>
+            <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
         </div>
     </div>
 

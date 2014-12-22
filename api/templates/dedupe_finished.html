@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% block title %}Dedupe it!{% endblock %}
 {% block content %}
     <div class="col-md-12">
         {% include "dedupe_steps.html" %}
@@ -18,8 +19,6 @@
 
         <div id='spinner'><br /><br /></div>
         <div id='results'>
-            <p>While you wait, how about a nice game of 3D pong?</p>
-            <embed src="/static/curveball.swf" width="650px" height="472px" autostart="true" loop="false" controller="true"></embed>
         </div>
     </div>
 
@@ -34,7 +33,7 @@
     function display_links(data){
         $('#spinner').spin(false);
         $('#wait-info').slideUp();
-        $('#results').html('<h3>Training session added</h3>');
+        $('#results').html('<stong>Training session added!</strong> <a href="/">Continue to the review queue &raquo;</a>');
 
         // original, training, settings, deduped
         $('#recall_weight').val(recall_weight);
