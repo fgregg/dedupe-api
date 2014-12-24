@@ -18,6 +18,8 @@ from unidecode import unidecode
 from uuid import uuid4
 from csvkit.unicsv import UnicodeCSVWriter
 from datetime import datetime
+from operator import itemgetter
+from itertools import groupby
 
 def addRowHash(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
@@ -122,12 +124,17 @@ def initializeEntityMap(session_id, fields):
     create = '''
         CREATE TABLE "exact_match_{0}" AS (
           SELECT 
-            MIN(record_id) AS record_id, 
-            (array_agg(record_id ORDER BY record_id))
-              [2:array_upper(array_agg(record_id), 1)] AS member_ids
-          FROM "processed_{0}" 
-          GROUP BY {1} 
-          HAVING (array_length(array_agg(record_id), 1) > 1)
+            s.record_id,
+            UNNEST(s.members) as match
+          FROM (
+            SELECT 
+              MIN(record_id) AS record_id, 
+              (array_agg(record_id ORDER BY record_id))
+                [2:array_upper(array_agg(record_id), 1)] AS members
+            FROM "processed_{0}" 
+            GROUP BY {1} 
+            HAVING (array_length(array_agg(record_id), 1) > 1)
+          ) AS s
         )
         '''.format(session_id, ', '.join(fields))
     with engine.begin() as conn:
@@ -142,8 +149,12 @@ def initializeEntityMap(session_id, fields):
     s = StringIO()
     writer = UnicodeCSVWriter(s)
     now = datetime.now().replace(tzinfo=TIME_ZONE).isoformat()
-    for row in rows:
-        king, members = row[0], row[1]
+    rows = sorted(rows, key=itemgetter(0))
+    grouped = {}
+    for k, g in groupby(rows, key=itemgetter(0)):
+        rs = [r[1] for r in g]
+        grouped[k] = rs
+    for king,serfs in grouped.items():
         entity_id = unicode(uuid4())
         writer.writerow([
             king, 
@@ -156,9 +167,9 @@ def initializeEntityMap(session_id, fields):
             'exact',
             now,
         ])
-        for member in members:
+        for serf in serfs:
             writer.writerow([
-                member,
+                serf,
                 king,
                 entity_id,
                 1.0,

@@ -13,6 +13,7 @@ from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 from unidecode import unidecode
+import cPickle
 
 STATUS_LIST = [
     'dataset uploaded',       # File stored, waiting for raw tables to be written
@@ -246,27 +247,3 @@ def getDistinct(field_name, session_id):
     distinct_values = list(set([unicode(v[0]) for v in q.all()]))
     return distinct_values
 
-def getMatchingDataDict(session_id):
-    dd_session = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(dd_session.field_defs)
-    model_fields = [d['field'] for d in field_defs]
-    fields = ', '.join(['p.{0}'.format(f) for f in model_fields])
-    sel = ''' 
-        SELECT e.record_id, {0}
-        FROM "entity_{1}" AS e
-        JOIN "processed_{1}" as p
-          ON e.record_id = p.record_id
-        WHERE e.record_id NOT IN (
-          SELECT UNNEST(member_ids)
-          FROM "exact_match_{1}"
-        )
-        '''.format(fields, session_id)
-    rows = []
-    engine = worker_session.bind
-    with engine.begin() as conn:
-        rows = list(conn.execute(sel))
-    dd = {}
-    for row in rows:
-        dd[row.record_id] = {f:getattr(row, f) for f in model_fields}
-    return dd
-    

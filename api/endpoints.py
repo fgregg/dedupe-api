@@ -9,7 +9,7 @@ from api.database import app_session as db_session, engine, Base
 from api.auth import csrf, check_sessions
 from api.utils.delayed_tasks import dedupeCanon, getMatchingReady, cleanupTables
 from api.utils.helpers import preProcess, getCluster, updateTraining, \
-    updateSessionStatus, getMatchingDataDict
+    updateSessionStatus
 import dedupe
 from dedupe.serializer import _to_json, dedupe_decoder
 from dedupe.convenience import canonicalize
@@ -57,7 +57,6 @@ def validate_post(post, user_sessions):
 @endpoints.route('/match/', methods=['POST'])
 @check_sessions()
 def match():
-    print request.form
     try:
         post = json.loads(request.data)
     except ValueError:
@@ -101,33 +100,46 @@ def match():
             deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
             for k,v in obj.items():
                 obj[k] = preProcess(unicode(v))
-            o = {'blob': obj}
-            data_d = getMatchingDataDict(sess.id)
-            deduper.index(data_d)
-            linked = deduper.match(o, threshold=0, n_matches=n_matches)
-            if linked:
-                ids = []
-                confs = {}
-                for l in linked[0]:
-                    id_set, confidence = l
-                    ids.extend([i for i in id_set if i != 'blob'])
-                    confs[id_set[1]] = confidence
-                ids = tuple(set(ids))
-                sel = text(''' 
-                      SELECT {0}, r.record_id, e.entity_id
-                      FROM "raw_{1}" as r
-                      JOIN "entity_{1}" as e
-                        ON r.record_id = e.record_id
-                      WHERE r.record_id IN :ids
-                    '''.format(fields, session_id))
-                matches = []
-                with engine.begin() as conn:
-                    matches = list(conn.execute(sel, ids=ids))
-                for match in matches:
-                    m = {f: getattr(match, f) for f in model_fields}
-                    m['entity_id'] = getattr(match, 'entity_id')
-                    # m['match_confidence'] = float(confs[str(m['entity_id'])])
-                    match_list.append(m)
+            block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', obj)]))])
+            sel = text('''
+                  SELECT r.record_id, {1}
+                  FROM "processed_{0}" as r
+                  JOIN (
+                    SELECT record_id
+                    FROM "match_blocks_{0}"
+                    WHERE block_key IN :block_keys
+                  ) AS s
+                  ON r.record_id = s.record_id
+                '''.format(session_id, fields))
+            with engine.begin() as conn:
+                data_d = {int(i[0]): dict(zip(model_fields, i[1:])) \
+                    for i in list(conn.execute(sel, block_keys=block_keys))}
+            if data_d:
+                deduper.index(data_d)
+                linked = deduper.match({'blob': obj}, threshold=0, n_matches=n_matches)
+                if linked:
+                    ids = []
+                    confs = {}
+                    for l in linked[0]:
+                        id_set, confidence = l
+                        ids.extend([i for i in id_set if i != 'blob'])
+                        confs[id_set[1]] = confidence
+                    ids = tuple(set(ids))
+                    sel = text(''' 
+                          SELECT {0}, r.record_id, e.entity_id
+                          FROM "raw_{1}" as r
+                          JOIN "entity_{1}" as e
+                            ON r.record_id = e.record_id
+                          WHERE r.record_id IN :ids
+                        '''.format(fields, session_id))
+                    matches = []
+                    with engine.begin() as conn:
+                        matches = list(conn.execute(sel, ids=ids))
+                    for match in matches:
+                        m = {f: getattr(match, f) for f in model_fields}
+                        m['entity_id'] = getattr(match, 'entity_id')
+                        # m['match_confidence'] = float(confs[str(m['entity_id'])])
+                        match_list.append(m)
         r['matches'] = match_list
 
     resp = make_response(json.dumps(r, default=_to_json), status_code)

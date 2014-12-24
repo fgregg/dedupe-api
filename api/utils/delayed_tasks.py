@@ -8,8 +8,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
-    makeSampleDict, windowed_query, updateSessionStatus, getMatchingDataDict, \
-    getDistinct
+    makeSampleDict, windowed_query, updateSessionStatus, getDistinct
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash
@@ -29,22 +28,71 @@ from api.app_config import TIME_ZONE
 
 @queuefunc
 def getMatchingReady(session_id):
-    addRowHash(session_id)
-    cleanupTables(session_id)
-    dd_session = worker_session.query(DedupeSession).get(session_id)
-    dd = getMatchingDataDict(session_id)
-    field_defs = json.loads(dd_session.field_defs)
+   #addRowHash(session_id)
+   #cleanupTables(session_id)
+    engine = worker_session.bind
+    with engine.begin() as conn:
+        conn.execute('DROP TABLE IF EXISTS "match_blocks_{0}"'\
+            .format(session_id))
+        conn.execute(''' 
+            CREATE TABLE "match_blocks_{0}" (
+                block_key VARCHAR, 
+                record_id BIGINT
+            )
+            '''.format(session_id))
+    sess = worker_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(sess.field_defs)
+
+    # Save Gazetteer settings
     d = dedupe.Gazetteer(field_defs)
-    d.readTraining(StringIO(dd_session.training_data))
+    d.readTraining(StringIO(sess.training_data))
     d.train()
-    d.index(dd)
-    settings = StringIO()
-    d.writeSettings(settings)
-    settings.seek(0)
-    dd_session.gaz_settings_file = settings.getvalue()
-    worker_session.add(dd_session)
+    g_settings = StringIO()
+    d.writeSettings(g_settings)
+    g_settings.seek(0)
+    sess.gaz_settings_file = g_settings.getvalue()
+    worker_session.add(sess)
     worker_session.commit()
-    updateSessionStatus(session_id)
+
+    # Write match_block table
+    model_fields = [f['field'] for f in field_defs]
+    fields = ', '.join(['p.{0}'.format(f) for f in model_fields])
+    sel = ''' 
+        SELECT 
+          p.record_id, 
+          {0}
+        FROM "processed_{1}" AS p 
+        LEFT JOIN "exact_match_{1}" AS e 
+          ON p.record_id = e.match 
+        WHERE e.record_id IS NULL;
+        '''.format(fields, session_id)
+    conn = engine.connect()
+    rows = conn.execute(sel)
+    data = ((getattr(row, 'record_id'), dict(zip(model_fields, row[1:]))) \
+        for row in rows)
+    block_gen = d.blocker(data)
+    s = StringIO()
+    writer = UnicodeCSVWriter(s)
+    writer.writerows(block_gen)
+    conn.close()
+    s.seek(0)
+    conn = engine.raw_connection()
+    curs = conn.cursor()
+    try:
+        curs.copy_expert('COPY "match_blocks_{0}" FROM STDIN CSV'\
+            .format(session_id), s)
+        conn.commit()
+    except Exception, e:
+        conn.rollback()
+        raise e
+    conn.close()
+    with engine.begin() as conn:
+        conn.execute('''
+            CREATE INDEX "match_blocks_key_{0}_idx" 
+              ON "match_blocks_{0}" (block_key)
+            '''.format(session_id)
+        )
+    # updateSessionStatus(session_id)
     return None
 
 @queuefunc
@@ -173,7 +221,7 @@ def blockDedupe(session_id,
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
         with engine.begin() as conn:
-            fd = conn.execute('select record_id, {0} from "processed_{1}"'.format(field, session_id))
+            fd = conn.execute('select record_id, {0} from "{1}"'.format(field, table_name))
             deduper.blocker.tfIdfBlock(fd, field)
     """ 
     SELECT p.* <-- need the fields that we trained on at least
@@ -188,8 +236,7 @@ def blockDedupe(session_id,
     fields = proc_table.columns.keys()
     full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
         for row in proc_records.yield_per(50000))
-    block_gen = deduper.blocker(full_data)
-    writeBlockingMap(session_id, block_gen, canonical=canonical)
+    return deduper.blocker(full_data)
 
 def clusterDedupe(session_id, canonical=False, threshold=0.75):
     dd_session = worker_session.query(DedupeSession)\
@@ -224,7 +271,8 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
 @queuefunc
 def dedupeRaw(session_id, threshold=0.75):
     trainDedupe(session_id)
-    blockDedupe(session_id)
+    block_gen = blockDedupe(session_id)
+    writeBlockingMap(session_id, block_gen, canonical=False)
     clustered_dupes = clusterDedupe(session_id)
     updateEntityMap(clustered_dupes, session_id)
     updateSessionStatus(session_id)
@@ -254,10 +302,11 @@ def dedupeCanon(session_id):
     entity_table_name = 'entity_{0}_cr'.format(session_id)
     entity_table = entity_map(entity_table_name, metadata, record_id_type=String)
     entity_table.create(bind=engine, checkfirst=True)
-    blockDedupe(session_id, 
+    block_gen = blockDedupe(session_id, 
         table_name='processed_{0}_cr'.format(session_id), 
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
+    writeBlockingMap(session_id, block_gen, canonical=False)
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=0.15)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)

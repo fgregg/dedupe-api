@@ -172,15 +172,18 @@ def session_admin(session_id):
                 try:
                     for field in val:
                         name = field.name.split(':')[0][1:]
-                        session_info[name]['learned_weight'] = field.weight
+                        try:
+                            session_info[name]['learned_weight'] = field.weight
+                        except KeyError:
+                            continue
                 except TypeError:
                     name = field.name.split(':')[0][1:]
                     session_info[name]['learned_weight'] = val
             predicates = dd.predicates
         if sess.training_data:
-            training_data = json.loads(sess.training_data)
-            td = {'distinct': [], 'match': []}
-            for left, right in training_data['distinct']:
+            td = json.loads(sess.training_data)
+            training_data = {'distinct': [], 'match': []}
+            for left, right in td['distinct']:
                 keys = left.keys()
                 pair = []
                 for key in keys:
@@ -190,8 +193,8 @@ def session_admin(session_id):
                         'right': right[key]
                     }
                     pair.append(d)
-                td['distinct'].append(pair)
-            for left, right in training_data['match']:
+                training_data['distinct'].append(pair)
+            for left, right in td['match']:
                 keys = left.keys()
                 pair = []
                 for key in keys:
@@ -201,9 +204,9 @@ def session_admin(session_id):
                         'right': right[key]
                     }
                     pair.append(d)
-                td['match'].append(pair)
+                training_data['match'].append(pair)
     return render_template('session-admin.html', 
                             dd_session=sess, 
                             session_info=session_info, 
                             predicates=predicates,
-                            training_data=td)
+                            training_data=training_data)
