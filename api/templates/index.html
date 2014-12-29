@@ -5,7 +5,7 @@
     <div class="col-md-12">
         {% if 'admin' in roles %}
             <h2 class='pull-right' id='start-session-btn' style='display: none;'><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-info"><i class='fa fa-plus-circle'></i> Start a new dedupe session</a></h2>
-        
+
             <div id='start-session' style='display: none;'>
                 <h3>Welcome to dedupe!</h3>
                 <p>Let's get started on your first dedupe session.</p>
@@ -41,10 +41,13 @@
                     rows += '<a href="/session-review/' + object.id + '/">Review Queue</a><br />';
                 } else if (object.status == 'session initialized'){
                     rows += '<a href="/select-fields/?session_id=' + object.id + '">Define Model</a><br />';
-                } else if (object.status == 'training started' || object.status == 'entity map initialized'){
-                    rows += '<a href="/training-run/?session_id=' + object.id + '">Start training</a><br />';
-                }  else if (object.status == 'canon clustered'){
+                } else if (object.status == 'canon clustered'){
                     rows += '<a href="/session-review/' + object.id + '/?second_review=true">Second Review</a><br />';
+                } else if (object.status == 'matching ready'){
+                    rows += '<a href="/match-review/' + object.id + '/?second_review=true">Final Review</a><br />';
+                }
+                if (object.status && object.status != 'session initialized'){
+                    rows += '<a href="/training-run/?session_id=' + object.id + '">Add training</a><br />';
                 }
                 rows += '<a class="delete-model" href="javascript://" data-session_id="' + object.id + '">Delete Data Model</a><br/>';
                 rows += '</td>';

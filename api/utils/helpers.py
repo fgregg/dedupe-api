@@ -247,3 +247,16 @@ def getDistinct(field_name, session_id):
     distinct_values = list(set([unicode(v[0]) for v in q.all()]))
     return distinct_values
 
+def checkinSessions():
+    now = datetime.now()
+    all_sessions = [i.id for i in db_session.query(DedupeSession.id).all()]
+    for sess_id in all_sessions:
+        table = Table('entity_%s' % sess_id, Base.metadata, 
+            autoload=True, autoload_with=engine)
+        upd = table.update().where(table.c.checkout_expire <= now)\
+            .where(table.c.clustered == False)\
+            .values(checked_out = False, checkout_expire = None)
+        with engine.begin() as c:
+            c.execute(upd)
+    return None
+

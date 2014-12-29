@@ -2,11 +2,12 @@ import os
 import json
 from flask import Flask
 from redis import Redis
-from api.endpoints import endpoints
 from api.auth import auth, login_manager, csrf
 from api.models import bcrypt
 from api.trainer import trainer
-from api.manager import manager
+from api.matching import matching
+from api.admin import admin
+from api.review import review
 from api.redis_session import RedisSessionInterface
 
 try:
@@ -29,9 +30,10 @@ def create_app():
     bcrypt.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
-    app.register_blueprint(endpoints)
+    app.register_blueprint(admin)
+    app.register_blueprint(review)
     app.register_blueprint(auth)
     app.register_blueprint(trainer)
-    app.register_blueprint(manager)
+    app.register_blueprint(matching)
     return app
 

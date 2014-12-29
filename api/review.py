@@ -1,0 +1,383 @@
+import json
+from datetime import datetime
+from flask import Flask, make_response, request, Blueprint, \
+    session as flask_session, render_template
+from api.database import app_session as db_session, engine
+from api.models import User, DedupeSession
+from api.auth import login_required, check_roles, check_sessions
+from api.utils.helpers import checkinSessions, getCluster
+from api.utils.delayed_tasks import dedupeCanon, getMatchingReady
+from api.app_config import TIME_ZONE
+from sqlalchemy import text
+
+review = Blueprint('review', __name__)
+
+@review.route('/match-review/<session_id>/')
+@login_required
+@check_roles(roles=['admin', 'reviewer'])
+def match_review(session_id):
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_template('match-review.html', 
+                            session_id=session_id, 
+                            user=user)
+
+@review.route('/session-review/<session_id>/')
+@login_required
+@check_roles(roles=['admin', 'reviewer'])
+def session_review(session_id):
+    first_review = True
+    if request.args.get('second_review'):
+        first_review = False
+    user = db_session.query(User).get(flask_session['user_id'])
+    return render_template('session-review.html', 
+                            session_id=session_id, 
+                            user=user, 
+                            first_review=first_review)
+
+@review.route('/get-review-cluster/<session_id>/')
+@check_sessions()
+def get_cluster(session_id):
+    resp = {
+        'status': 'ok',
+        'message': '',
+        'objects': [],
+    }
+    status_code = 200
+    if session_id not in flask_session['user_sessions']:
+        resp['status'] = 'error'
+        resp['message'] = "You don't have access to session '{0}'".format(session_id)
+        status_code = 401
+    else:
+        sess = db_session.query(DedupeSession).get(session_id)
+        checkinSessions()
+        entity_id, cluster = getCluster(session_id, 
+                             'entity_{0}', 
+                             'raw_{0}')
+        if cluster:
+            resp['entity_id'] = entity_id 
+            resp['objects'] = cluster
+        else:
+            sess.status = 'first pass review complete'
+            dedupeCanon.delay(sess.id)
+            db_session.add(sess)
+            db_session.commit()
+        resp['total_clusters'] = sess.entity_count
+        resp['review_remainder'] = sess.review_count
+       #resp['total_clusters'] = total_clusters
+       #resp['review_remainder'] = review_remainder
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+@review.route('/get-canon-review-cluster/<session_id>/')
+@check_sessions()
+def get_canon_cluster(session_id):
+    resp = {
+        'status': 'ok',
+        'message': '',
+        'objects': [],
+    }
+    status_code = 200
+    if session_id not in flask_session['user_sessions']:
+        resp['status'] = 'error'
+        resp['message'] = "You don't have access to session '{0}'".format(session_id)
+        status_code = 401
+    else:
+        checkinSessions()
+        sess = db_session.query(DedupeSession).get(session_id)
+        entity_id, cluster = getCluster(session_id, 
+                             'entity_{0}_cr', 
+                             'cr_{0}')
+        if cluster:
+            resp['entity_id'] = entity_id
+            resp['objects'] = cluster
+        resp['total_clusters'] = sess.entity_count
+        resp['review_remainder'] = sess.review_count
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+@review.route('/mark-all-clusters/<session_id>/')
+@check_sessions()
+def mark_all_clusters(session_id):
+    resp = {
+        'status': 'ok',
+        'message': ''
+    }
+    status_code = 200
+    if session_id not in flask_session['user_sessions']:
+        resp['status'] = 'error'
+        resp['message'] = "You don't have access to session '%s'" % session_id
+        status_code = 401
+    else:
+        # Need to update existing clusters with new entity_id here, too.
+        user = db_session.query(User).get(flask_session['api_key']) 
+        now =  datetime.now().replace(tzinfo=TIME_ZONE)
+        upd_vals = {
+            'user_name': user.name, 
+            'clustered': True,
+            'match_type': 'bulk accepted',
+            'last_update': now,
+        }
+        upd = text(''' 
+            UPDATE "entity_{0}" SET 
+                entity_id=subq.entity_id,
+                clustered= :clustered,
+                reviewer = :user_name,
+                match_type = :match_type,
+                last_update = :last_update
+            FROM (
+                    SELECT 
+                        s.entity_id AS entity_id,
+                        e.record_id 
+                    FROM "entity_{0}" AS e
+                    JOIN (
+                        SELECT 
+                            record_id, 
+                            entity_id
+                        FROM "entity_{0}"
+                    ) AS s
+                        ON e.target_record_id = s.record_id
+                ) as subq 
+            WHERE "entity_{0}".record_id=subq.record_id 
+                AND ( "entity_{0}".clustered=FALSE 
+                      OR "entity_{0}".match_type != 'clerical review' )
+            RETURNING "entity_{0}".entity_id
+            '''.format(session_id))
+        with engine.begin() as c:
+            child_entities = c.execute(upd, **upd_vals)
+        upd = text(''' 
+            UPDATE "entity_{0}" SET
+                clustered = :clustered,
+                reviewer = :user_name,
+                last_update = :last_update,
+                match_type = :match_type
+            WHERE target_record_id IS NULL
+                AND clustered=FALSE
+            RETURNING entity_id;
+        '''.format(session_id))
+        with engine.begin() as c:
+            parent_entities = c.execute(upd, **upd_vals)
+        child_entities = set([c.entity_id for c in child_entities])
+        parent_entities = set([p.entity_id for p in parent_entities])
+        count = len(child_entities.union(parent_entities))
+        sess = db_session.query(DedupeSession).get(session_id)
+        sess.review_count = 0
+        sess.entity_count = count
+        db_session.add(sess)
+        db_session.commit()
+        resp['message'] = 'Marked {0} entities as clusters'.format(count)
+        dedupeCanon.delay(session_id)
+    response = make_response(json.dumps(resp), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+@review.route('/mark-cluster/<session_id>/')
+@check_sessions()
+def mark_cluster(session_id):
+    resp = {
+        'status': 'ok',
+        'message': ''
+    }
+    status_code = 200
+    if session_id not in flask_session['user_sessions']:
+        resp['status'] = 'error'
+        resp['message'] = "You don't have access to session '%s'" % session_id
+        status_code = 401
+    else:
+        sess = db_session.query(DedupeSession).get(session_id)
+        user = db_session.query(User).get(flask_session['api_key'])
+        entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
+            autoload=True, autoload_with=engine)
+        # TODO: Return an error if these args are not present.
+        entity_id = request.args.get('entity_id')
+        match_ids = request.args.get('match_ids')
+        distinct_ids = request.args.get('distinct_ids')
+        training_data = json.loads(sess.training_data)
+        if match_ids:
+            match_ids = tuple([int(m) for m in match_ids.split(',')])
+            upd = entity_table.update()\
+                .where(entity_table.c.entity_id == entity_id)\
+                .where(entity_table.c.record_id.in_(match_ids))\
+                .values(clustered=True, 
+                        checked_out=False, 
+                        checkout_expire=None,
+                        last_update=datetime.now().replace(tzinfo=TIME_ZONE),
+                        reviewer=user.name)
+            with engine.begin() as c:
+                c.execute(upd)
+            upd_vals = {
+                'entity_id': entity_id,
+                'record_ids': match_ids,
+                'user_name': user.name, 
+                'clustered': True,
+                'match_type': 'clerical review',
+                'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+            }
+            update_existing = text('''
+                UPDATE "entity_{0}" SET 
+                    entity_id = :entity_id, 
+                    clustered = :clustered,
+                    reviewer = :user_name,
+                    match_type = :match_type,
+                    last_update = :last_update
+                    FROM (
+                        SELECT e.record_id 
+                            FROM "entity_{0}" AS e 
+                            JOIN (
+                                SELECT record_id 
+                                    FROM "entity_{0}"
+                                    WHERE entity_id = :entity_id
+                                        AND record_id IN :record_ids
+                            ) AS s 
+                            ON e.target_record_id = s.record_id
+                    ) AS subq 
+                WHERE "entity_{0}".record_id = subq.record_id
+                '''.format(sess.id))
+            with engine.begin() as c:
+                c.execute(update_existing,**upd_vals)
+            # training_data['match'].extend(pairs)
+        if distinct_ids:
+            distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
+            delete = entity_table.delete()\
+                .where(entity_table.c.entity_id == entity_id)\
+                .where(entity_table.c.record_id.in_(distinct_ids))
+            with engine.begin() as c:
+                c.execute(delete)
+            #training_data['distinct'].append(pairs)
+        sess.review_count = sess.review_count - 1
+        db_session.add(sess)
+        db_session.commit()
+        resp = {
+            'session_id': session_id, 
+            'entity_id': entity_id, 
+            'match_ids': match_ids,
+            'distinct_ids': distinct_ids,
+            'status': 'ok', 
+            'message': ''
+        }
+        status_code = 200
+    resp = make_response(json.dumps(resp), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+@review.route('/mark-canon-cluster/<session_id>/')
+@check_sessions()
+def mark_canon_cluster(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        status_code = 401
+    elif not request.args.get('entity_id'):
+        resp = {
+            'status': 'error',
+            'message': '"entity_id" is a required parameter'
+        }
+        status_code = 401
+    else:
+        entity_id = request.args.get('entity_id')
+        match_ids = request.args.get('match_ids')
+        distinct_ids = request.args.get('distinct_ids')
+        user = db_session.query(User).get(flask_session['api_key'])
+        if match_ids:
+            match_ids = tuple([d for d in match_ids.split(',')])
+            upd = text('''
+                UPDATE "entity_{0}" SET 
+                    entity_id = :entity_id,
+                    clustered = TRUE,
+                    checked_out = FALSE,
+                    last_update = :last_update,
+                    reviewer = :user_name
+                WHERE entity_id in (
+                    SELECT record_id 
+                        FROM "entity_{0}_cr"
+                    WHERE entity_id = :entity_id
+                        AND record_id IN :record_ids
+                )
+                '''.format(session_id))
+            last_update = datetime.now().replace(tzinfo=TIME_ZONE)
+            with engine.begin() as c:
+                c.execute(upd, 
+                          entity_id=entity_id, 
+                          last_update=last_update,
+                          user_name=user.name,
+                          record_ids=match_ids)
+        if distinct_ids:
+            distinct_ids = tuple([d for d in distinct_ids.split(',')])
+            delete = text(''' 
+                DELETE FROM "entity_{0}_cr"
+                WHERE entity_id = :entity_id
+                    AND record_id IN :record_ids
+            '''.format(session_id))
+            with engine.begin() as c:
+                c.execute(delete, entity_id=entity_id, record_ids=distinct_ids)
+        resp = {
+            'session_id': session_id, 
+            'entity_id': entity_id,
+            'match_ids': match_ids,
+            'distinct_ids': distinct_ids,
+            'status': 'ok', 
+            'message': ''
+        }
+        status_code = 200
+    resp = make_response(json.dumps(resp), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+@review.route('/mark-all-canon-clusters/<session_id>/')
+@check_sessions()
+def mark_all_canon_cluster(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        resp = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        status_code = 401
+    else:
+        status_code = 200
+        user = db_session.query(User).get(flask_session['api_key'])
+        upd_vals = {
+            'user_name': user.name, 
+            'clustered': True,
+            'match_type': 'bulk accepted - canon',
+            'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+        }
+        upd = text(''' 
+            UPDATE "entity_{0}" SET 
+                entity_id=subq.entity_id,
+                clustered= :clustered,
+                reviewer = :user_name,
+                match_type = :match_type,
+                last_update = :last_update
+            FROM (
+                SELECT 
+                    c.entity_id, 
+                    e.record_id 
+                FROM "entity_{0}" as e
+                JOIN "entity_{0}_cr" as c 
+                    ON e.entity_id = c.record_id 
+                LEFT JOIN (
+                    SELECT record_id, target_record_id FROM "entity_{0}"
+                    ) AS s 
+                    ON e.record_id = s.target_record_id
+                ) as subq 
+            WHERE "entity_{0}".record_id=subq.record_id 
+            RETURNING "entity_{0}".entity_id
+            '''.format(session_id))
+        with engine.begin() as c:
+            updated = c.execute(upd,**upd_vals)
+        resp = {
+            'session_id': session_id,
+            'status': 'ok',
+            'message': '',
+        }
+        count = len(set([c.entity_id for c in updated]))
+        resp['message'] = 'Marked {0} entities as clusters'.format(count)
+        getMatchingReady.delay(session_id)
+    resp = make_response(json.dumps(resp), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp

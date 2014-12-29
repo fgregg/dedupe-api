@@ -2,61 +2,160 @@
 {% block title %} | Match Queue {% endblock %}
 {% block content %}
     <div class="row">
-      <div class="col-md-12">
-          <div class="row">
-              <div id="counter" class="col-md-12"></div>
-          </div>
-          <div class="row">
-              <div class="col-md-12">
-                  <table class="table" id="group-display">
-                      <thead></thead>
-                      <tbody></tbody>
-                  </table>
-                  <div class="row">
-                      <div class="col-md-12">
-                          <h4>Select the records the belong together</h4>
-                      </div>
-                  </div>
-                  <div class="row">
-                      <div class="col-md-9">
-                          <div id="review-buttons">
-                              <button class="btn btn-success mark-entity">
-                                  Next &gt;
-                              </button>
-                          </div>
-                      </div>
-                      <div class="col-md-3">
-                          <button class="btn btn-danger accept-all">
-                              <i class='fa fa-check'></i>
-                              Accept the rest
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      </div>
+        <div class="col-md-12">
+            <div class="row">
+                <div id="counter" class="col-md-12"></div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="row">
+                        <div id="group-display" class="col-md-12"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <h4>Select the records that match</h4>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div id="review-buttons">
+                                <button class="btn btn-success mark-match">
+                                    Next &gt;
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row" style="display:none" id="errors">
+                        <div class="col-md-12">
+                            <div class="alert alert-danger" role="alert">
+                                <strong>Oops!</strong> You can only pick one matching record
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 {% endblock %}
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
+<script type="text/EJS" id="matchTemplate">
+    <h4>Unmatched Record</h4>
+    <table class="table">
+        <thead>
+            <tr>
+                <% $.each(obj, function(field, value){ %>
+                    <th><%= field %></th>
+                <% }) %>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <% $.each(obj, function(field, value){ %>
+                    <td><%= value %></td>
+                <% }) %>
+            </tr>
+        </tbody>
+    </table>
+    <% if(matches.length > 0){ %>
+    <h4>Possible Matches</h4>
+    <table class="table">
+        <thead>
+            <tr>
+                <th></th>
+                <% $.each(matches[0], function(field, value){ %>
+                    <th><%= field %></th>
+                <% }) %>
+            </tr>
+        </thead>
+        <tbody>
+            <% $.each(matches, function(i, match){ %>
+                <tr>
+                    <td data-record_id="<%= match.record_id %>">
+                        <input type="checkbox" />
+                    </td>
+                    <% $.each(match, function(field, val){ %>
+                        <td><%= val %></td>
+                    <% }) %>
+                </tr>
+            <% }) %>
+        </tbody>
+    </table>
+    <% } else { %>
+        <h4>No Matches found</h4>
+    <% } %>
+</script>
 <script type="text/javascript">
     var session_id = "{{ session_id }}"
     var api_key = "{{ user.id }}"
-    $.when(getRecord()).then(function(resp){
-        console.log(resp)
-        var obj = {
-            'object': resp['object'],
-            'num_results': 5,
-            'api_key': api_key,
-            'session_key': session_id
-        }
-        $.post('/match/', JSON.stringify(obj), function(matches){
-            console.log(matches)
-        })
-    });
+    var match_obj;
+    $(document).ready(function(){
+        getAndMatch();
+        $('.mark-match').on('click', function(e){
+            $('#errors').hide();
+            var data = {
+                'api_key': api_key,
+                'object': match_obj,
+                'match_id': null
+            }
+            var valid = true;
+            if ($('input:checked').length > 1){
+                valid = false;
+                $('#errors').show();
+            }
+            if (valid){
+                data['match_id'] = $('input:checked').parent().data('record_id');
+                console.log(data);
+                $.when(addToEntityMap(JSON.stringify(data))).then(
+                    function(resp){
+                        getAndMatch();
+                    }
+                )
+            }
+        });
+    })
+    function getAndMatch(){
+        $('#group-display').spin('large')
+        $.when(getRecord()).then(function(resp){
+            match_obj = resp['object'];
+            var obj = {
+                    'object': resp['object'],
+                    'num_results': 5,
+                    'api_key': api_key,
+                    'session_key': session_id
+            }
+            $.when(getMatches(JSON.stringify(obj))).then(
+                function(matches){
+                    $('#group-display').spin(false);
+                    displayRecord(matches.matches, obj)
+                }
+            )
+        });
+    }
+    function displayRecord(matches, obj){
+        var tpl = new EJS({'text': $('#matchTemplate').html()});
+        $('#group-display').html(tpl.render({matches: matches, obj: obj.object}))
+    }
     function getRecord(){
         return $.getJSON('/get-unmatched-record/' + session_id + '/')
+    }
+    function getMatches(data){
+        return $.ajax({
+            type: 'POST',
+            url: '/match/',
+            data: data,
+            contentType: 'application/json'
+        })
+    }
+    function addToEntityMap(data){
+        return $.ajax({
+            type: 'POST',
+            url: '/add-entity/' + session_id + '/',
+            data: data,
+            contentType: 'application/json'
+        })
     }
 </script>
 {% endblock %}
