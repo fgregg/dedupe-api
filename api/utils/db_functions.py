@@ -24,7 +24,7 @@ from itertools import groupby
 def addRowHash(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
-    fields = [f['field'] for f in field_defs]
+    fields = list(set([f['field'] for f in field_defs]))
     engine = worker_session.bind
     fields = ["COALESCE(r.{0}, '')".format(f) for f in fields]
     fields = " || ';' || ".join(fields)
@@ -44,8 +44,7 @@ def addRowHash(session_id):
     with engine.begin() as conn:
         conn.execute(upd)
 
-def writeRawTable(filename=None,
-              session_id=None,
+def writeRawTable(session_id=None,
               file_obj=None):
     """ 
     Create a table from incoming tabular data
@@ -85,7 +84,12 @@ def writeProcessedTable(session_id,
                         proc_table_format='processed_{0}'):
     dd = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(dd.field_defs)
-    field_defs = {d['field']:d['type'] for d in field_defs}
+    fds = {}
+    for fd in field_defs:
+        try:
+            fds[fd['field']].append(fd['type'])
+        except KeyError:
+            fds[fd['field']] = [fd['type']]
     engine = worker_session.bind
     metadata = MetaData()
     proc_table_name = proc_table_format.format(session_id)
@@ -96,11 +100,11 @@ def writeProcessedTable(session_id,
     create = 'CREATE TABLE "{0}" AS (SELECT record_id, '.format(proc_table_name)
     for idx, field in enumerate(raw_fields):
         try:
-            field_type = field_defs[field]
+            field_types = fds[field]
         except KeyError:
-            field_type = 'String'
+            field_types = ['String']
         # TODO: Need to figure out how to parse a LatLong field type
-        if field_type == 'Price':
+        if 'Price' in field_types:
             col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
         else:
             col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)

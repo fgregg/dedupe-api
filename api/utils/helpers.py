@@ -58,7 +58,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
     sess = app_session.query(DedupeSession).get(session_id)
 
     cluster_list = []
-    model_fields = [f['field'] for f in json.loads(sess.field_defs)]
+    model_fields = list(set([f['field'] for f in json.loads(sess.field_defs)]))
     entity_fields = ['record_id', 'entity_id', 'confidence']
     sel = ''' 
         SELECT e.entity_id 
@@ -249,7 +249,7 @@ def getDistinct(field_name, session_id):
 
 def checkinSessions():
     now = datetime.now()
-    all_sessions = [i.id for i in db_session.query(DedupeSession.id).all()]
+    all_sessions = [i.id for i in app_session.query(DedupeSession.id).all()]
     for sess_id in all_sessions:
         table = Table('entity_%s' % sess_id, Base.metadata, 
             autoload=True, autoload_with=engine)

@@ -2,44 +2,72 @@
 {% block title %} | Review Queue {% endblock %}
 {% block content %}
     <div class="row">
-      <div class="col-md-12">
-          <div class="row">
-              <div id="counter" class="col-md-12"></div>
-          </div>
-          <div class="row">
-              <div class="col-md-12">
-                  <table class="table" id="group-display">
-                      <thead></thead>
-                      <tbody></tbody>
-                  </table>
-                  <div class="row">
-                      <div class="col-md-12">
-                          <h4>Select the records the belong together</h4>
-                      </div>
-                  </div>
-                  <div class="row">
-                      <div class="col-md-9">
-                          <div id="review-buttons">
-                              <button class="btn btn-success mark-entity">
-                                  Next &gt;
-                              </button>
-                          </div>
-                      </div>
-                      <div class="col-md-3">
-                          <button class="btn btn-danger accept-all">
-                              <i class='fa fa-check'></i>
-                              Accept the rest
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      </div>
+      <div class="col-md-12" id="group-display"></div>
     </div>
 {% endblock %}
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
+<script type="text/EJS" id="reviewTemplate">
+    <div class="row">
+        <div id="counter" class="col-md-12">
+            <p><%= resp.review_remainder %> out of <%= resp.total_clusters %> left to review</p>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <div class="row">
+                <div class="col-md-12" id="group-table" data-entity_id="<%= resp.entity_id %>">
+                    <table class="table">
+                      <thead>
+                            <tr>
+                                <th></th>
+                                <% $.each(resp.objects[0], function(k,v){ %>
+                                    <th><%= k %></th>
+                                <% }) %>
+                            </tr>
+                        </thead>
+                        <tbody>
+                              <% $.each(resp.objects, function(k, item){ %>
+                                  <tr>
+                                      <td data-record_id="<%= item.record_id %>">
+                                          <input checked type="checkbox" />
+                                      </td>
+                                      <% $.each(item, function(i, val){ %>
+                                          <% if (i != 'record_id') { %>
+                                              <td><%= val %></td>
+                                          <% } %>
+                                      <% }) %>
+                                  </tr>
+                              <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <h4>Select the records the belong together</h4>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-9">
+                    <div id="review-buttons">
+                        <button class="btn btn-success mark-entity">
+                            Next &gt;
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-danger accept-all">
+                        <i class='fa fa-check'></i>
+                        Accept the rest
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</script>
 <script type="text/javascript">
     var session_id = "{{session_id}}"
     {% if first_review %}

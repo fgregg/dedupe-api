@@ -60,29 +60,29 @@
         </tbody>
     </table>
     <% if(matches.length > 0){ %>
-    <h4>Possible Matches</h4>
-    <table class="table">
-        <thead>
-            <tr>
-                <th></th>
-                <% $.each(matches[0], function(field, value){ %>
-                    <th><%= field %></th>
-                <% }) %>
-            </tr>
-        </thead>
-        <tbody>
-            <% $.each(matches, function(i, match){ %>
+        <h4>Possible Matches</h4>
+        <table class="table">
+            <thead>
                 <tr>
-                    <td data-record_id="<%= match.record_id %>">
-                        <input type="checkbox" />
-                    </td>
-                    <% $.each(match, function(field, val){ %>
-                        <td><%= val %></td>
+                    <th></th>
+                    <% $.each(matches[0], function(field, value){ %>
+                        <th><%= field %></th>
                     <% }) %>
                 </tr>
-            <% }) %>
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                <% $.each(matches, function(i, match){ %>
+                    <tr>
+                        <td data-record_id="<%= match.record_id %>">
+                            <input type="checkbox" />
+                        </td>
+                        <% $.each(match, function(field, val){ %>
+                            <td><%= val %></td>
+                        <% }) %>
+                    </tr>
+                <% }) %>
+            </tbody>
+        </table>
     <% } else { %>
         <h4>No Matches found</h4>
     <% } %>

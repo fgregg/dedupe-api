@@ -1,15 +1,17 @@
 from flask import Blueprint, request, session as flask_session, \
     render_template, make_response, flash, redirect, url_for
-from api.database import app_session as db_session, Base
+from api.database import app_session as db_session, Base, engine
 from api.models import User, Role, DedupeSession, Group
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import preProcess
+from api.utils.delayed_tasks import cleanupTables
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
 from wtforms.validators import DataRequired, Email
 from sqlalchemy import Table, and_
 from sqlalchemy.sql import select
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
 from operator import itemgetter
 import json
@@ -107,11 +109,19 @@ def session_admin(session_id):
     else:
         sess = db_session.query(DedupeSession).get(session_id)
         predicates = None
-        session_info = None
+        session_info = {}
         training_data = None
         if sess.field_defs:
-            fds = json.loads(sess.field_defs)
-            session_info = {f['field']: f for f in fds}
+            field_defs = json.loads(sess.field_defs)
+            for fd in field_defs:
+                try:
+                    session_info[fd['field']]['types'].append(fd['type'])
+                    session_info[fd['field']]['has_missing'] = fd.get('has_missing', '')
+                except KeyError:
+                    session_info[fd['field']] = {
+                                                  'types': [fd['type']],
+                                                  'has_missing': fd.get('has_missing', ''),
+                                                }
         if sess.settings_file:
             dd = dedupe.StaticDedupe(StringIO(sess.settings_file))
             for key, val in dd.data_model.items():
@@ -121,10 +131,13 @@ def session_admin(session_id):
                         try:
                             session_info[name]['learned_weight'] = field.weight
                         except KeyError:
-                            continue
+                            session_info[name] = {'learned_weight': field.weight}
                 except TypeError:
                     name = field.name.split(':')[0][1:]
-                    session_info[name]['learned_weight'] = val
+                    try:
+                        session_info[name]['learned_weight'] = field.weight
+                    except KeyError:
+                        session_info[name] = {'learned_weight': field.weight}
             predicates = dd.predicates
         if sess.training_data:
             td = json.loads(sess.training_data)

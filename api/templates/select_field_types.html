@@ -15,18 +15,45 @@
                     {% for field in field_list %}
                     <div class="form-group">
                         <label for="{{ field }}_type" class="col-sm-2 control-label">{{ field }}</label>
-                        <div class="col-sm-5">
-                            <select class="form-control" name="{{ field }}_type">
-                                <option value="String">String (default)</option>
-                                <option value="Price">Price</option>
-                                <option value="ShortString">ShortString</option>
-                                <option value="Text">Text</option>
-                                <option value="LatLong">LatLong</option>
-                                <option value="Set">Set</option>
-                                <option value="Exact">Exact</option>
-                                <option value="Categorical">Categorical</option>
-                                <option value="Source">Source</option>
-                            </select>
+                        <div class="col-sm-5" id="{{ field }}-container">
+                            <div class="input-group" id="{{ field }}-add">
+                                <select class="form-control" name="{{ field }}_type">
+                                    <option value="String">String (default)</option>
+                                    <option value="Address">Address</option>
+                                    <option value="Price">Price</option>
+                                    <option value="ShortString">ShortString</option>
+                                    <option value="Text">Text</option>
+                                    <option value="LatLong">LatLong</option>
+                                    <option value="Set">Set</option>
+                                    <option value="Exact">Exact</option>
+                                    <option value="Categorical">Categorical</option>
+                                    <option value="Source">Source</option>
+                                </select>
+                                <span class="input-group-btn">
+                                    <button class="btn btn-default add-field-type" data-fieldname="{{field}}">
+                                        <i class="fa fa-plus-square"> </i> Add
+                                    </button>
+                                </span>
+                            </div>
+                            <div class="input-group" id="{{ field }}-remove" style="display:none;">
+                                <select class="form-control" name="{{ field }}_type">
+                                    <option value="String">String (default)</option>
+                                    <option value="Address">Address</option>
+                                    <option value="Price">Price</option>
+                                    <option value="ShortString">ShortString</option>
+                                    <option value="Text">Text</option>
+                                    <option value="LatLong">LatLong</option>
+                                    <option value="Set">Set</option>
+                                    <option value="Exact">Exact</option>
+                                    <option value="Categorical">Categorical</option>
+                                    <option value="Source">Source</option>
+                                </select>
+                                <span class="input-group-btn">
+                                    <button class="btn btn-danger remove-field-type" data-fieldname="{{field}}">
+                                        <i class="fa fa-minus"> </i> Remove
+                                    </button>
+                                </span>
+                            </div>
                         </div>
                         <div class="col-sm-5">
                             <div class="checkbox">
@@ -61,8 +88,21 @@
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script type="text/javascript">
     $(document).ready(function(){
-        console.log('woo')
-    })
+        $('.add-field-type').on('click', function(e){
+            e.preventDefault();
+            var fieldname = $(this).data('fieldname');
+            $('#' + fieldname + '-remove')
+                .clone()
+                .show()
+                .css('display', 'table')
+                .prependTo('#' + fieldname + '-container');
+            $('.remove-field-type').on('click', removeFieldType);
+        });
+    });
+    function removeFieldType(e){
+        e.preventDefault();
+        $(this).parent().parent().remove();
+    }
 </script>
 {% endif %}
 {% endblock %}

@@ -13,18 +13,32 @@
             </div>
         {% endif %}
         <div id='dedupe-sessions' style='display: none;'>
-            <h2>Dedupe sessions</h2>
-            <table class="table table-bordered table-striped">
-                <thead>
-                    <tr id="review-header">
-                        <th>Name</th>
-                        <th>Actions</th>
-                        <th>Entity count</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody id="session-list"></tbody>
-            </table>
+            <div class="row">
+                <div class="col-md-9">
+                    <h2>Dedupe sessions</h2>
+                </div>
+                <div class="col-md-3">
+                    <a role="button" href="{{url_for('trainer.train')}}" class="btn btn-info">
+                        <i class='fa fa-plus-circle'></i>
+                        Start a new dedupe session
+                    </a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <table class="table table-bordered table-striped">
+                        <thead>
+                            <tr id="review-header">
+                                <th>Name</th>
+                                <th>Actions</th>
+                                <th>Entity count</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="session-list"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>

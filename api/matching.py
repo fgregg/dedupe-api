@@ -73,7 +73,7 @@ def match():
         n_matches = post.get('num_matches', 5)
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
-        model_fields = [f['field'] for f in field_defs]
+        model_fields = list(set([f['field'] for f in field_defs]))
         fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
@@ -198,7 +198,12 @@ def add_entity(session_id):
         match_id = json.loads(request.data).get('match_id')
         sess = db_session.query(DedupeSession).get(session_id)
         field_defs = json.loads(sess.field_defs)
-        fields = {d['field']:d['type'] for d in field_defs}
+        fds = {}
+        for fd in field_defs:
+            try:
+                fds[fd['field']].append(fd['type'])
+            except KeyError:
+                fds[fd['field']] = [fd['type']]
         if not set(fields.keys()) == set(obj.keys()):
             r['status'] = 'error'
             r['message'] = "The fields in the object do not match the fields in the model"
@@ -214,17 +219,17 @@ def add_entity(session_id):
                     autoload=True, autoload_with=engine, keep_existing=True)
                 proc_ins = 'INSERT INTO "processed_{0}" (SELECT record_id, '\
                     .format(proc_table_name)
-                for idx, field in enumerate(fields.keys()):
+                for idx, field in enumerate(fds.keys()):
                     try:
-                        field_type = field_defs[field]
+                        field_types = fds[field]
                     except KeyError:
-                        field_type = 'String'
+                        field_types = ['String']
                     # TODO: Need to figure out how to parse a LatLong field type
-                    if field_type == 'Price':
+                    if 'Price' in field_types:
                         col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
                     else:
                         col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
-                    if idx < len(fields.keys()) - 1:
+                    if idx < len(fds.keys()) - 1:
                         proc_ins += '{0}, '.format(col_def)
                     else:
                         proc_ins += '{0} '.format(col_def)
@@ -236,7 +241,7 @@ def add_entity(session_id):
                     record_id = conn.execute(raw_table.insert()\
                         .returning(raw_table.c.record_id) , **obj)
                     conn.execute(text(proc_ins), record_id=record_id)
-            hash_me = ';'.join([preProcess(unicode(obj[i])) for i in fields.keys()])
+            hash_me = ';'.join([preProcess(unicode(obj[i])) for i in fds.keys()])
             md5_hash = md5(unidecode(hash_me)).hexdigest()
             entity = {
                 'entity_id': unicode(uuid4()),
@@ -317,7 +322,7 @@ def get_unmatched(session_id):
         status_code = 401
     else:
         sess = db_session.query(DedupeSession).get(session_id)
-        raw_fields = [f['field'] for f in json.loads(sess.field_defs)]
+        raw_fields = list(set([f['field'] for f in json.loads(sess.field_defs)]))
         raw_fields.append('record_id')
         fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
         sel = ''' 
@@ -359,7 +364,7 @@ def bulk_match_demo(session_id):
             upload = None
             flash('File upload is required')
         if upload:
-            context['field_defs'] = [f['field'] for f in json.loads(sess.field_defs)]
+            context['field_defs'] = list(set([f['field'] for f in json.loads(sess.field_defs)]))
             reader = UnicodeCSVReader(upload)
             context['header'] = reader.next()
             upload.seek(0)

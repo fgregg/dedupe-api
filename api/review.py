@@ -2,13 +2,13 @@ import json
 from datetime import datetime
 from flask import Flask, make_response, request, Blueprint, \
     session as flask_session, render_template
-from api.database import app_session as db_session, engine
+from api.database import app_session as db_session, engine, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import checkinSessions, getCluster
 from api.utils.delayed_tasks import dedupeCanon, getMatchingReady
 from api.app_config import TIME_ZONE
-from sqlalchemy import text
+from sqlalchemy import text, Table
 
 review = Blueprint('review', __name__)
 
@@ -276,7 +276,7 @@ def mark_canon_cluster(session_id):
             'status': 'error',
             'message': '"entity_id" is a required parameter'
         }
-        status_code = 401
+        status_code = 400
     else:
         entity_id = request.args.get('entity_id')
         match_ids = request.args.get('match_ids')

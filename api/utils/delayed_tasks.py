@@ -55,7 +55,7 @@ def getMatchingReady(session_id):
     worker_session.commit()
 
     # Write match_block table
-    model_fields = [f['field'] for f in field_defs]
+    model_fields = list(set([f['field'] for f in field_defs]))
     fields = ', '.join(['p.{0}'.format(f) for f in model_fields])
     sel = ''' 
         SELECT 
@@ -127,7 +127,7 @@ def cleanupTables(session_id, tables=None):
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
-    fields = [f['field'] for f in field_defs]
+    fields = list(set([f['field'] for f in field_defs]))
     d = dedupe.Dedupe(field_defs)
     data_d = makeSampleDict(sess.id, fields=fields)
     if len(data_d) < 50001:
@@ -140,11 +140,10 @@ def drawSample(session_id):
     worker_session.commit()
 
 @queuefunc
-def initializeSession(session_id, filename):
+def initializeSession(session_id):
     file_obj = open('/tmp/{0}_raw.csv'.format(session_id), 'rb')
     kwargs = {
         'session_id':session_id,
-        'filename': filename,
         'file_obj':file_obj
     }
     writeRawTable(**kwargs)
@@ -167,7 +166,7 @@ def initializeModel(session_id):
             time.sleep(3)
         else:
             field_defs = json.loads(sess.field_defs)
-            fields = [f['field'] for f in field_defs]
+            fields = list(set([f['field'] for f in field_defs]))
             writeProcessedTable(session_id)
             updated_fds = []
             for field in field_defs:
@@ -253,7 +252,7 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
         autoload=True, autoload_with=engine, keep_existing=True)
     proc = Table(proc_format.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    trained_fields = [f['field'] for f in json.loads(dd_session.field_defs)]
+    trained_fields = list(set([f['field'] for f in json.loads(dd_session.field_defs)]))
     proc_cols = [getattr(proc.c, f) for f in trained_fields]
     cols = [c for c in small_cov.columns] + proc_cols
     rows = worker_session.query(*cols)\
@@ -306,7 +305,7 @@ def dedupeCanon(session_id):
         table_name='processed_{0}_cr'.format(session_id), 
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
-    writeBlockingMap(session_id, block_gen, canonical=False)
+    writeBlockingMap(session_id, block_gen, canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=0.15)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)

@@ -4,6 +4,7 @@ from uuid import uuid4
 import sys
 import os
 from api.app_config import REDIS_QUEUE_KEY
+import traceback
 
 try:
     from raven import Client
@@ -48,7 +49,8 @@ def queue_daemon(rv_ttl=500):
         except Exception, e:
             if client:
                 client.captureException()
-            print e
+            tb = traceback.format_exc()
+            print tb
             rv = 'Exc: %s' % (e.message)
         if rv is not None:
             redis.set(key, dumps(rv))

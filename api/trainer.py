@@ -71,7 +71,7 @@ def upload():
     with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
         s.write(u.getvalue())
     del u
-    flask_session['init_key'] = initializeSession.delay(session_id, fieldnames)
+    flask_session['init_key'] = initializeSession.delay(session_id)
     return jsonify(ready=True)
 
 @trainer.route('/get-init-status/<init_key>/')
@@ -142,22 +142,18 @@ def select_field_types():
     sess = db_session.query(DedupeSession).get(flask_session['session_id'])
     field_list = flask_session['field_list']
     if request.method == 'POST':
-        field_dict = {}
-        for k,v in request.form.items():
-            if k != 'csrf_token':
-                field_name, form_field = k.rsplit('_', 1)
-                if not field_dict.get(field_name):
-                    field_dict[field_name] = {}
-                if form_field == 'missing':
-                    field_dict[field_name]['has_missing'] = True
-                if form_field == 'type': 
-                    field_dict[field_name]['type'] = v
         field_defs = []
-        for k,v in field_dict.items():
-            slug = slugify(unicode(k))
-            d = {'field': slug}
-            d.update(v)
-            field_defs.append(d)
+        for k in request.form.keys():
+            if k != 'csrf_token':
+                values = set(request.form.getlist(k))
+                for v in values:
+                    field_name, form_field = k.rsplit('_', 1)
+                    field_dict = {'field': slugify(unicode(field_name))}
+                    if form_field == 'missing':
+                        field_dict['has_missing'] = True
+                    if form_field == 'type': 
+                        field_dict['type'] = v
+                    field_defs.append(field_dict)
         sess = db_session.query(DedupeSession).get(flask_session['session_id'])
         sess.field_defs = json.dumps(field_defs)
         db_session.add(sess)
@@ -212,7 +208,7 @@ def training_run():
 def get_pair():
     deduper = flask_session['deduper']
     flask_session['last_interaction'] = datetime.now()
-    fields = [f[0] for f in deduper.data_model.field_comparators]
+    fields = list(set([f[0] for f in deduper.data_model.field_comparators]))
     #fields = deduper.data_model.field_comparators
     record_pair = deduper.uncertainPairs()[0]
     flask_session['current_pair'] = record_pair
@@ -242,18 +238,23 @@ def mark_pair():
     # Attempt to cast the training input appropriately
     # TODO: Figure out LatLong type
     field_defs = json.loads(sess.field_defs)
-    field_defs = {d['field']:d['type'] for d in field_defs}
+    fds = {}
+    for fd in field_defs:
+        try:
+            fds[fd['field']].append(fd['type'])
+        except KeyError:
+            fds[fd['field']] = [fd['type']]
     current_pair = flask_session['current_pair']
     left, right = current_pair
     l_d = {}
     r_d = {}
     for k,v in left.items():
-        if field_defs[k] == 'Price':
+        if 'Price' in fds[k]:
             l_d[k] = float(v)
         else:
             l_d[k] = v
     for k,v in right.items():
-        if field_defs[k] == 'Price':
+        if 'Price' in fds[k]:
             r_d[k] = float(v)
         else:
             r_d[k] = v

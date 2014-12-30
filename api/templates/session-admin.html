@@ -33,15 +33,15 @@
             <table class="table table-condensed table-striped">
                 <thead>
                     <th>Name</th>
-                    <th>Type</th>
+                    <th>Types</th>
                     <th>Has missing?</th>
                     <th>Learned Weight</th>
                 </thead>
                 <tbody>
                     {% for field, info in session_info.items() %}
                         <tr>
-                            <td>{{info.field}}</td>
-                            <td>{{info.type}}</td>
+                            <td>{{field}}</td>
+                            <td>{{info.types|join(',')}}</td>
                             <td>{{info.has_missing}}</td>
                             <td>{{info.learned_weight}}</td>
                         </tr>
