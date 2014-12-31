@@ -1,11 +1,13 @@
+from flask import current_app
 import re
 import os
 import json
 from dedupe.core import frozendict
 from dedupe import canonicalize
-from api.database import app_session, worker_session, Base, engine
+from api.database import app_session, worker_session, Base, init_engine
 from api.models import DedupeSession
 from sqlalchemy import Table, MetaData, distinct, and_, func, Column, text
+from sqlalchemy.exc import NoSuchTableError
 from unidecode import unidecode
 from unicodedata import normalize
 from itertools import count
@@ -69,6 +71,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
         LIMIT 1
         '''.format(ent_name)
     entity_id = None
+    engine = init_engine(current_app.config['DB_CONN'])
     with engine.begin() as conn:
         entity_id = list(conn.execute(sel))
     if entity_id:
@@ -250,13 +253,17 @@ def getDistinct(field_name, session_id):
 def checkinSessions():
     now = datetime.now()
     all_sessions = [i.id for i in app_session.query(DedupeSession.id).all()]
+    engine = init_engine(current_app.config['DB_CONN'])
     for sess_id in all_sessions:
-        table = Table('entity_%s' % sess_id, Base.metadata, 
-            autoload=True, autoload_with=engine)
-        upd = table.update().where(table.c.checkout_expire <= now)\
-            .where(table.c.clustered == False)\
-            .values(checked_out = False, checkout_expire = None)
-        with engine.begin() as c:
-            c.execute(upd)
+        try:
+            table = Table('entity_%s' % sess_id, Base.metadata, 
+                autoload=True, autoload_with=engine)
+            upd = table.update().where(table.c.checkout_expire <= now)\
+                .where(table.c.clustered == False)\
+                .values(checked_out = False, checkout_expire = None)
+            with engine.begin() as c:
+                c.execute(upd)
+        except NoSuchTableError:
+            pass
     return None
 

@@ -9,22 +9,24 @@ from api.matching import matching
 from api.admin import admin
 from api.review import review
 from api.redis_session import RedisSessionInterface
+from api.database import init_engine
 
-try:
+try: # pragma: no cover
     from raven.contrib.flask import Sentry
     from api.app_config import SENTRY_DSN
-    sentry = Sentry(dsn=SENTRY_DSN)
+    sentry = Sentry(dsn=SENTRY_DSN) 
 except ImportError:
     sentry = None
-except KeyError:
+except KeyError: #pragma: no cover
     sentry = None
 
-def create_app():
+def create_app(config='api.app_config'):
     app = Flask(__name__)
-    app.config.from_object('api.app_config')
+    app.config.from_object(config)
+    init_engine(app.config['DB_CONN'])
     redis = Redis()
     app.session_interface = RedisSessionInterface(redis=redis)
-    if sentry:
+    if sentry: # pragma: no cover
         sentry.init_app(app)
     csrf.init_app(app)
     bcrypt.init_app(app)

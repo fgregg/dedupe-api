@@ -19,7 +19,7 @@ from api.utils.db_functions import writeRawTable
 from api.utils.helpers import getDistinct, slugify, updateSessionStatus, \
     STATUS_LIST
 from api.models import DedupeSession, User, Group
-from api.database import app_session as db_session
+from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required
 from sqlalchemy.exc import OperationalError, NoSuchTableError
 from sqlalchemy import Table, MetaData
@@ -118,7 +118,7 @@ def select_fields():
         session_id = request.args['session_id']
         flask_session['session_id'] = session_id
         meta = MetaData()
-        engine = db_session.bind
+        engine = init_engine(current_app.config['DB_CONN'])
         raw = Table('raw_{0}'.format(session_id), meta, 
             autoload=True, autoload_with=engine, keep_existing=True)
         fields = [r for r in raw.columns.keys() if r != 'record_id']

@@ -1,13 +1,13 @@
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import create_session, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
-from api.app_config import DB_CONN, DEFAULT_USER
+from api.app_config import DEFAULT_USER
 
 DEFAULT_ROLES = [
     {
@@ -20,33 +20,42 @@ DEFAULT_ROLES = [
     }
 ]
 
-engine = create_engine(DB_CONN, 
-                       convert_unicode=True, 
-                       server_side_cursors=True)
+engine = None
 
-app_session = scoped_session(sessionmaker(bind=engine, 
+app_session = scoped_session(lambda: create_session(bind=engine, 
                                       autocommit=False, 
                                       autoflush=False))
 
-worker_session = scoped_session(sessionmaker(bind=engine,
+worker_session = scoped_session(lambda: create_session(bind=engine,
                                           autocommit=False,
                                           autoflush=False))
 
 Base = declarative_base()
 
-def init_db():
+def init_engine(uri):
+    global engine
+    engine = create_engine(uri, 
+                           convert_unicode=True, 
+                           server_side_cursors=True)
+    return engine
+
+def init_db(sess=None, eng=None):
     import api.models
-    Base.metadata.create_all(bind=engine)
+    if not eng:
+        eng = engine
+    if not sess:
+        sess = app_session
+    Base.metadata.create_all(bind=eng)
     for role in DEFAULT_ROLES:
-        app_session.add(api.models.Role(**role))
+        sess.add(api.models.Role(**role))
     
     try:
-        app_session.commit()
+        sess.commit()
     except IntegrityError, e:
-        app_session.rollback()
+        sess.rollback()
         print e.message
 
-    admin = app_session.query(api.models.Role)\
+    admin = sess.query(api.models.Role)\
         .filter(api.models.Role.name == 'admin').first()
     if DEFAULT_USER:
         name = DEFAULT_USER['user']['name']
@@ -56,9 +65,9 @@ def init_db():
         g_name = DEFAULT_USER['group']['name']
         description = DEFAULT_USER['group']['description']
         group = api.models.Group(name=g_name, description=description)
-        app_session.add(group)
-        app_session.commit()
+        sess.add(group)
+        sess.commit()
         user.groups = [group]
         user.roles = [admin]
-        app_session.add(user)
-        app_session.commit()
+        sess.add(user)
+        sess.commit()

@@ -1,6 +1,6 @@
 from flask import Blueprint, request, session as flask_session, \
-    render_template, make_response, flash, redirect, url_for
-from api.database import app_session as db_session, Base, engine
+    render_template, make_response, flash, redirect, url_for, current_app
+from api.database import app_session as db_session, Base, init_engine
 from api.models import User, Role, DedupeSession, Group
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import preProcess
@@ -251,6 +251,7 @@ def delete_data_model(session_id):
             'plural_key_{0}',
             'small_cov_{0}',
         ]
+        engine = init_engine(current_app.config['DB_CONN'])
         for table in tables:
             try:
                 data_table = Table(table.format(session_id), 

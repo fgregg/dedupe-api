@@ -2,11 +2,12 @@ import os
 import json
 from uuid import uuid4
 from flask import Flask, make_response, request, Blueprint, \
-    session as flask_session, make_response, render_template, jsonify
+    session as flask_session, make_response, render_template, jsonify, \
+    current_app
 from api.models import DedupeSession, User
 from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.queue import DelayedResult, redis
-from api.database import app_session as db_session, engine, Base
+from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
 from api.utils.helpers import preProcess
 import dedupe
@@ -75,6 +76,7 @@ def match():
         field_defs = json.loads(sess.field_defs)
         model_fields = list(set([f['field'] for f in field_defs]))
         fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
+        engine = init_engine(current_app.config['DB_CONN'])
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
         hash_me = ';'.join([preProcess(unicode(obj[i])) for i in model_fields])
@@ -209,6 +211,7 @@ def add_entity(session_id):
             r['message'] = "The fields in the object do not match the fields in the model"
             status_code = 400
         else:
+            engine = init_engine(current_app.config['DB_CONN'])
             proc_table = Table('processed_{0}'.format(session_id), Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
             row = db_session.query(proc_table)\
@@ -333,6 +336,7 @@ def get_unmatched(session_id):
           WHERE e.record_id IS NULL
           LIMIT 1
         '''.format(fields, session_id)
+        engine = init_engine(current_app.config['DB_CONN'])
         with engine.begin() as conn:
             rows = [dict(zip(raw_fields, r)) for r in conn.execute(sel)]
         resp['object'] = rows[0]

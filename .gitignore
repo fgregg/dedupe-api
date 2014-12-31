@@ -4,3 +4,5 @@ dedupe
 api/dedupe.db
 dump.rdb
 api/app_config.py
+tests/test_config.py
+.coverage

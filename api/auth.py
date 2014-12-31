@@ -55,14 +55,17 @@ def check_roles(roles=[]):
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
-            user = db_session.query(User).get(flask_session['user_id'])
+            user_id = flask_session.get('user_id')
+            if not user_id:
+                return redirect(url_for('auth.login'))
+            user = db_session.query(User).get(user_id)
             user_roles = set([r.name for r in user.roles])
             rs = set(roles)
             if user_roles.issubset(rs):
                 return f(*args, **kwargs)
             else:
                 flash('Sorry, you don\'t have access to that page')
-                return redirect(url_for('trainer.index'))
+                return redirect(url_for('admin.index'))
         return decorated
     return decorator
 
@@ -116,7 +119,7 @@ def login():
     if form.validate_on_submit():
         user = form.user
         login_user(user)
-        return redirect(request.args.get('next') or url_for('manager.index'))
+        return redirect(request.args.get('next') or url_for('admin.index'))
     email = form.email.data
     return render_template('login.html', form=form, email=email)
 
