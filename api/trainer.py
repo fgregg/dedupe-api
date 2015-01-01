@@ -11,6 +11,7 @@ import re
 import os
 import copy
 import time
+from itertools import groupby
 from dedupe.serializer import _to_json, dedupe_decoder
 import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
@@ -143,17 +144,25 @@ def select_field_types():
     field_list = flask_session['field_list']
     if request.method == 'POST':
         field_defs = []
+        form = {}
         for k in request.form.keys():
             if k != 'csrf_token':
-                values = set(request.form.getlist(k))
-                for v in values:
-                    field_name, form_field = k.rsplit('_', 1)
-                    field_dict = {'field': slugify(unicode(field_name))}
-                    if form_field == 'missing':
-                        field_dict['has_missing'] = True
-                    if form_field == 'type': 
-                        field_dict['type'] = v
-                    field_defs.append(field_dict)
+                form[k] = request.form.getlist(k)
+        ftypes = sorted(form.items())
+        for k,g in groupby(ftypes, key=lambda x: x[0].rsplit('_', 1)[0]):
+            vals = list(g)
+            has_missing = False
+            for ftype, val in vals:
+                if ftype == '{0}_missing'.format(k):
+                    has_missing = True
+            fs = []
+            for field, val in vals:
+                fs.extend([{'field': k, 'type': val[i]} \
+                    for i in range(len(val)) if field.endswith('type')])
+            for f in fs:
+                if has_missing:
+                    f.update({'has_missing': True})
+            field_defs.extend(fs)
         sess = db_session.query(DedupeSession).get(flask_session['session_id'])
         sess.field_defs = json.dumps(field_defs)
         db_session.add(sess)

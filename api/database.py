@@ -3,8 +3,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import create_session, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.types import TypeDecorator, CHAR
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
 from api.app_config import DEFAULT_USER

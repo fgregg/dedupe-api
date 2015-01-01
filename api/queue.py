@@ -3,7 +3,8 @@ from redis import Redis
 from uuid import uuid4
 import sys
 import os
-from api.app_config import REDIS_QUEUE_KEY
+from api.app_config import REDIS_QUEUE_KEY, DB_CONN
+from api.database import init_engine
 import traceback
 
 try:
@@ -40,6 +41,7 @@ def queuefunc(f):
     return f
 
 def queue_daemon(rv_ttl=500):
+    init_engine(DB_CONN)
     print 'Listening for messages...'
     while 1:
         msg = redis.blpop(REDIS_QUEUE_KEY)

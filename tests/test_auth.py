@@ -3,7 +3,7 @@ from uuid import uuid4
 from flask import request
 from api import create_app
 from test_config import DEFAULT_USER
-from api.database import init_engine, app_session, worker_session
+from api.database import app_session, worker_session
 
 class AuthTest(unittest.TestCase):
     ''' 
@@ -20,6 +20,9 @@ class AuthTest(unittest.TestCase):
         worker_session.close()
         worker_session.bind.dispose()
 
+    def tearDown(self):
+        self.logout()
+
     def login(self, email, password):
         return self.client.post('/login/', data=dict(
                     email=email,
@@ -28,6 +31,15 @@ class AuthTest(unittest.TestCase):
 
     def logout(self):
         return self.client.get('/logout/')
+
+    def test_login_redirect(self):
+        with self.app.test_request_context():
+            rv = self.client.get('/', follow_redirects=False)
+            rd_path = rv.location.split('http://localhost')[1]
+            rd_path = rd_path.split('?')[0]
+            assert rd_path == '/login/'
+            rv = self.client.get(rd_path)
+            assert 'Please log in to access this page' in rv.data
 
     def test_login(self):
         user = DEFAULT_USER['user']
