@@ -1,6 +1,6 @@
 branches:
 only:
-- master
+  - master
 language: python
 notifications:
 email:
@@ -8,10 +8,12 @@ on_success: change
 on_failure: always
 irc: chat.freenode.net#dedupe
 python:
-- '2.7'
+  - '2.7'
 install:
-- pip install -r requirements.txt
-- pip install coveralls
+  - pip install -r requirements.txt
+  - pip install coveralls
+  - pip install nose
+  - pip install coverage
 after_success: coveralls
 sudo: false
 addons:
@@ -20,5 +22,4 @@ install: "pip install -r requirements.txt"
 before_script:
   - cp tests/test_config.py.travis tests/test_config.py
   - psql -c 'create database dedupe_test;' -U postgres
-
-script: nosetests tests
+script: coverage run -m nose
