@@ -130,13 +130,13 @@ def session_admin(session_id):
                         name = field.name.split(':')[0][1:]
                         try:
                             session_info[name]['learned_weight'] = field.weight
-                        except KeyError:
+                        except KeyError: # pragma: no cover
                             session_info[name] = {'learned_weight': field.weight}
                 except TypeError:
                     name = field.name.split(':')[0][1:]
                     try:
                         session_info[name]['learned_weight'] = field.weight
-                    except KeyError:
+                    except KeyError: # pragma: no cover
                         session_info[name] = {'learned_weight': field.weight}
             predicates = dd.predicates
         if sess.training_data:
@@ -175,11 +175,11 @@ def session_admin(session_id):
 def training_data(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
-        resp = {
+        r = {
             'status': 'error', 
             'message': "You don't have access to session %s" % session_id
         }
-        resp = make_response(resp, 401)
+        resp = make_response(json.dumps(r), 401)
         resp.headers['Content-Type'] = 'application/json'
     else:
         data = db_session.query(DedupeSession).get(session_id)
@@ -194,11 +194,11 @@ def training_data(session_id):
 def settings_file(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
-        resp = {
+        r = {
             'status': 'error', 
             'message': "You don't have access to session %s" % session_id
         }
-        resp = make_response(resp, 401)
+        resp = make_response(json.dumps(r), 401)
         resp.headers['Content-Type'] = 'application/json'
     else:
         data = db_session.query(DedupeSession).get(session_id)
@@ -212,11 +212,11 @@ def settings_file(session_id):
 def field_definitions(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
-        resp = {
+        r = {
             'status': 'error', 
             'message': "You don't have access to session %s" % session_id
         }
-        resp = make_response(resp, 401)
+        resp = make_response(json.dumps(r), 401)
         resp.headers['Content-Type'] = 'application/json'
     else:
         data = db_session.query(DedupeSession).get(session_id)
@@ -251,8 +251,8 @@ def delete_data_model(session_id):
             'plural_key_{0}',
             'small_cov_{0}',
         ]
-        engine = init_engine(current_app.config['DB_CONN'])
-        for table in tables:
+        engine = db_session.bind
+        for table in tables: # pragma: no cover
             try:
                 data_table = Table(table.format(session_id), 
                     Base.metadata, autoload=True, autoload_with=engine)
@@ -275,11 +275,11 @@ def delete_data_model(session_id):
 def delete_session(session_id):
     user_sessions = flask_session['user_sessions']
     if session_id not in user_sessions:
-        resp = {
+        r = {
             'status': 'error', 
             'message': "You don't have access to session %s" % session_id
         }
-        resp = make_response(resp, 401)
+        resp = make_response(json.dumps(r), 401)
         resp.headers['Content-Type'] = 'application/json'
     else:
         data = db_session.query(DedupeSession).get(session_id)

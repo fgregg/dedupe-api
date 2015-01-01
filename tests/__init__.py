@@ -37,6 +37,8 @@ def setUpPackage():
         .filter(Role.name == 'reviewer').first()
     user.groups = [group]
     user.roles = [role]
+    dummy_group = Group(name='dummy', description='dummy')
+    session.add(dummy_group)
     session.add(user)
     session.commit()
 
