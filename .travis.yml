@@ -12,7 +12,11 @@ python:
 install:
 - pip install -r requirements.txt
 - pip install coveralls
-script:
-- coverage run -m nose
 after_success: coveralls
 sudo: false
+addons:
+  postgresql: "9.3"
+install: "pip install -r requirements.txt"
+before_script:
+  - cp tests/test_config.py.travis tests/test_config.py
+  - psql -c 'create database dedupe_test;' -U postgres
