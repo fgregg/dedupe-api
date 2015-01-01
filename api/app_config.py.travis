@@ -1,0 +1,36 @@
+from os.path import join, abspath, dirname
+from pytz import timezone
+
+TIME_ZONE = timezone('America/Chicago')
+
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'postgres',
+    'pw': '',
+    'port': '5432',
+    'name': 'dedupe_test',
+}
+DB_CONN='postgresql+psycopg2://{user}:{pw}@{host}:{port}/{name}'.format(**DB_CONFIG)
+MAX_CONTENT_LENGTH = 500 * 1024 * 1024
+SECRET_KEY = 'test super secret key'
+REDIS_QUEUE_KEY = 'testdedupeapi'
+WTF_CSRF_ENABLED = False
+
+DOWNLOAD_FOLDER = join(abspath(dirname(__file__)), 'download_data')
+
+# This is a dict that gives the app a way to setup
+# a default user, and group and then attach that user
+# to the admin role.
+
+DEFAULT_USER = {
+  'user': {
+      'name': 'eric',
+      'email': 'eric@eric.com',
+      'password': 'really-secret',
+  },
+  'group': {
+      'name': 'data gurus',
+      'description': 'This is the first deduping group. You rock.'
+  },
+}
+
