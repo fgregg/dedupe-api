@@ -6,11 +6,13 @@ from flask import request, session
 from api import create_app
 from api.utils.helpers import slugify
 from api.database import init_engine, app_session, worker_session
-from api.models import User
+from api.models import User, DedupeSession
+from api.utils.helpers import STATUS_LIST
 from api.utils.db_functions import writeRawTable
 from test_config import DEFAULT_USER
 from sqlalchemy.orm import sessionmaker, scoped_session
 from csvkit.unicsv import UnicodeCSVReader
+from hashlib import md5
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -31,6 +33,23 @@ class TrainerTest(unittest.TestCase):
         cls.group = cls.user.groups[0]
         cls.user_pw = DEFAULT_USER['user']['password']
         cls.session_id = unicode(uuid4())
+
+    def setUp(self):
+        self.dd_sess = DedupeSession(
+                        id=self.session_id, 
+                        name='csv_example_messy_input.csv',
+                        group=self.group,
+                        status=STATUS_LIST[0],
+                      )
+        self.session.add(self.dd_sess)
+        self.session.commit()
+
+    def tearDown(self):
+        try:
+            self.session.delete(self.dd_sess)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
 
     @classmethod
     def tearDownClass(cls):
@@ -54,6 +73,8 @@ class TrainerTest(unittest.TestCase):
         return self.client.get('/logout/')
 
     def test_upload(self):
+        self.session.delete(self.dd_sess)
+        self.session.commit()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
@@ -139,3 +160,54 @@ class TrainerTest(unittest.TestCase):
             with self.client as c:
                 rv = c.post('/select-fields/', data={})
                 assert 'You must select at least one field to compare on.' in rv.data
+
+    def test_select_field_type(self):
+        field_list = [
+            'phone',
+            'address',
+            'site_name',
+            'zip',
+        ]
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['field_list'] = field_list
+                    sess['user_id'] = self.user.id
+                    sess['session_id'] = self.session_id
+                rv = c.get('/select-field-types/')
+                for field in field_list:
+                    assert field in rv.data
+
+    def test_select_field_type_post(self):
+        field_list = [
+            'phone',
+            'address',
+            'site_name',
+            'zip',
+        ]
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['field_list'] = field_list
+                    sess['user_id'] = self.user.id
+                    sess['session_id'] = self.session_id
+                post_data = {
+                    'phone_type': 'ShortString', 
+                    'phone_missing': 'on',
+                    'address_type': 'String', 
+                    'address_missing': 'on',
+                    'site_name_type': 'String', 
+                    'zip_type': ['ShortString', 'Exact'], 
+                    'zip_missing': 'on',
+                }
+                rv = c.post('/select-field-types/', data=post_data)
+                self.session.refresh(self.dd_sess)
+                fds_str = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+                fds = sorted(json.loads(fds_str))
+                expected = sorted(json.loads(self.dd_sess.field_defs))
+                for idx, f in enumerate(fds):
+                    print f
+                    print expected[idx]
+                    assert set(f.items()) == set(expected[idx].items())
