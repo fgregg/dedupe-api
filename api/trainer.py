@@ -53,7 +53,7 @@ def upload():
     file_type = f.filename.rsplit('.')[1]
     u = StringIO(f.read())
     u.seek(0)
-    if file_type != 'csv':
+    if file_type != 'csv': # pragma: no cover
         file_format = convert.guess_format(flask_session['session_name'])
         u = StringIO(convert.convert(u, file_format))
     fieldnames = [slugify(unicode(i)) for i in u.next().strip('\r\n').split(',')]
@@ -77,7 +77,7 @@ def upload():
 
 @trainer.route('/get-init-status/<init_key>/')
 @login_required
-def get_init_status(init_key):
+def get_init_status(init_key): # pragma: no cover
     rv = DelayedResult(init_key)
     if rv.return_value is None:
         return jsonify(ready=False)
@@ -119,7 +119,7 @@ def select_fields():
         session_id = request.args['session_id']
         flask_session['session_id'] = session_id
         meta = MetaData()
-        engine = init_engine(current_app.config['DB_CONN'])
+        engine = db_session.bind
         raw = Table('raw_{0}'.format(session_id), meta, 
             autoload=True, autoload_with=engine, keep_existing=True)
         fields = [r for r in raw.columns.keys() if r != 'record_id']
@@ -131,7 +131,7 @@ def select_fields():
             return redirect(url_for('trainer.select_field_types'))
         else:
             error = 'You must select at least one field to compare on.'
-            status_code = 500
+            status_code = 400
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('select_fields.html', error=error, fields=fields, user=user)
 

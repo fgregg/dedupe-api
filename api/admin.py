@@ -1,6 +1,6 @@
 from flask import Blueprint, request, session as flask_session, \
     render_template, make_response, flash, redirect, url_for, current_app
-from api.database import app_session as db_session, Base, init_engine
+from api.database import app_session as db_session, Base
 from api.models import User, Role, DedupeSession, Group
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import preProcess
