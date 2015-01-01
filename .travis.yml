@@ -22,4 +22,4 @@ before_script:
   - cp tests/test_config.py.travis tests/test_config.py
   - cp api/app_config.py.travis api/app_config.py
   - psql -c 'create database dedupe_test;' -U postgres
-script: coverage run -m nose
+script: nosetests --with-coverage --cover-package=api tests

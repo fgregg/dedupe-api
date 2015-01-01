@@ -1,6 +1,7 @@
 Dedupe API
 ==========
 ![](https://travis-ci.org/datamade/dedupe-api.svg?branch=master)
+
 Repository for Enterprise Dedupe API
 
 ### Setup
