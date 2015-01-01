@@ -1,0 +1,37 @@
+[
+
+{
+
+    "field": "address",
+    "type": "String",
+    "has_missing": true
+
+},
+{
+
+    "field": "phone",
+    "type": "ShortString",
+    "has_missing": true
+
+},
+{
+
+    "field": "site_name",
+    "type": "String"
+
+},
+{
+
+    "field": "zip",
+    "type": "Exact",
+    "has_missing": true
+
+},
+
+    {
+        "field": "zip",
+        "type": "ShortString",
+        "has_missing": true
+    }
+
+]

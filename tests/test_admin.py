@@ -1,4 +1,5 @@
 import unittest
+from os.path import join, abspath, dirname
 from uuid import uuid4
 from flask import request, session
 from api import create_app
@@ -8,6 +9,8 @@ from api.auth import check_sessions
 from api.utils.helpers import STATUS_LIST
 from test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy.orm import sessionmaker, scoped_session
+
+fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
 class AdminTest(unittest.TestCase):
     ''' 
@@ -25,11 +28,17 @@ class AdminTest(unittest.TestCase):
         cls.user = cls.session.query(User).first()
         cls.group = cls.user.groups[0]
         cls.user_pw = DEFAULT_USER['user']['password']
+        field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
+        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
         cls.dd_sess = DedupeSession(
                         id=unicode(uuid4()), 
                         name='test_filename.csv',
                         group=cls.group,
-                        status=STATUS_LIST[0]
+                        status=STATUS_LIST[0],
+                        settings_file=settings,
+                        field_defs=field_defs,
+                        training_data=training
                       )
         cls.session.add(cls.dd_sess)
         cls.session.commit()
