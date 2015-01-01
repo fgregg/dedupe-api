@@ -14,9 +14,6 @@ from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
-def get_time():
-    return datetime.now().replace(tzinfo=TIME_ZONE)
-
 def entity_map(name, metadata, record_id_type=BigInteger):
     table = Table(name, metadata, 
         Column('entity_id', String, index=True),
@@ -66,7 +63,7 @@ class DedupeSession(Base):
     group_id = Column(String(36), ForeignKey('dedupe_group.id'))
     group = relationship('Group', backref=backref('sessions'))
 
-    def __repr__(self):
+    def __repr__(self): # pragma: no cover
         return '<DedupeSession %r >' % (self.name)
     
     def as_dict(self):
@@ -98,7 +95,7 @@ class Role(Base):
     name = Column(String(80), unique=True)
     description = Column(String(255))
     
-    def __repr__(self):
+    def __repr__(self): # pragma: no cover
         return '<Role %r>' % self.name
 
 class Group(Base):
@@ -107,7 +104,7 @@ class Group(Base):
     name = Column(String(10))
     description = Column(String(255))
 
-    def __repr__(self):
+    def __repr__(self): # pragma: no cover
         return '<Group %r>' % self.name
 
 class User(Base):
@@ -122,7 +119,7 @@ class User(Base):
     groups = relationship('Group', secondary=groups_users,
         backref=backref('users', lazy='dynamic'))
     
-    def __repr__(self):
+    def __repr__(self): # pragma: no cover
         return '<User %r>' % self.name
 
     def _get_password(self):
@@ -146,7 +143,7 @@ class User(Base):
     @classmethod
     def check_password(cls, name, value):
         user = cls.get_by_username(name)
-        if not user:
+        if not user: # pragma: no cover
             return False
         return bcrypt.check_password_hash(user.password, value)
 

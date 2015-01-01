@@ -39,9 +39,9 @@ def init_engine(uri):
 
 def init_db(sess=None, eng=None):
     import api.models
-    if not eng:
+    if not eng: # pragma: no cover
         eng = engine
-    if not sess:
+    if not sess: # pragma: no cover
         sess = app_session
     Base.metadata.create_all(bind=eng)
     for role in DEFAULT_ROLES:
@@ -49,7 +49,7 @@ def init_db(sess=None, eng=None):
     
     try:
         sess.commit()
-    except IntegrityError, e:
+    except IntegrityError, e: # pragma: no cover
         sess.rollback()
         print e.message
 
