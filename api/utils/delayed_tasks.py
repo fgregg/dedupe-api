@@ -28,8 +28,8 @@ from api.app_config import TIME_ZONE
 
 @queuefunc
 def getMatchingReady(session_id):
-   #addRowHash(session_id)
-   #cleanupTables(session_id)
+    addRowHash(session_id)
+    cleanupTables(session_id)
     engine = worker_session.bind
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "match_blocks_{0}"'\
@@ -82,7 +82,7 @@ def getMatchingReady(session_id):
         curs.copy_expert('COPY "match_blocks_{0}" FROM STDIN CSV'\
             .format(session_id), s)
         conn.commit()
-    except Exception, e:
+    except Exception, e: # pragma: no cover
         conn.rollback()
         raise e
     conn.close()
@@ -92,7 +92,7 @@ def getMatchingReady(session_id):
               ON "match_blocks_{0}" (block_key)
             '''.format(session_id)
         )
-    # updateSessionStatus(session_id)
+    updateSessionStatus(session_id)
     return None
 
 @queuefunc
@@ -132,7 +132,7 @@ def drawSample(session_id):
     data_d = makeSampleDict(sess.id, fields=fields)
     if len(data_d) < 50001:
         sample_size = 5000
-    else:
+    else: # pragma: no cover
         sample_size = round(int(len(data_d) * 0.01), -3)
     d.sample(data_d, sample_size=sample_size, blocked_proportion=1)
     sess.sample = cPickle.dumps(d.data_sample)
@@ -154,6 +154,8 @@ def initializeSession(session_id):
     raw_table = Table('raw_{0}'.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     sess.record_count = worker_session.query(raw_table).count()
+    worker_session.add(sess)
+    worker_session.commit()
     print 'session initialized'
     os.remove('/tmp/{0}_raw.csv'.format(session_id))
 
@@ -162,7 +164,7 @@ def initializeModel(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     while True:
         worker_session.refresh(sess, ['field_defs', 'sample'])
-        if not sess.field_defs:
+        if not sess.field_defs: # pragma: no cover
             time.sleep(3)
         else:
             field_defs = json.loads(sess.field_defs)
@@ -346,90 +348,11 @@ def dedupeCanon(session_id):
                     FROM STDIN CSV'''.format(session_id), f)
                 conn.commit()
                 os.remove(fname)
-            except Exception, e:
+            except Exception, e: # pragma: no cover
                 conn.rollback()
                 raise e
-    else:
+    else: # pragma: no cover
         print 'did not find clusters'
         updateSessionStatus(session_id)
     updateSessionStatus(session_id)
     return 'ok'
-
-@queuefunc
-def matchUnmatched(session_id):
-    cleanupTables(session_id)
-    dd_session = worker_session.query(DedupeSession).get(session_id)
-    dd = makeDataDict(session_id, name_pattern='canon_{0}')
-    field_defs = json.loads(dd_session.field_defs)
-    d = dedupe.Gazetteer(field_defs)
-    d.readTraining(StringIO(dd_session.training_data))
-    d.train()
-    d.index(dd)
-    sel = ''' 
-        SELECT p.* 
-            FROM "processed_{0}" AS p
-            LEFT JOIN "entity_{0}" AS e
-                ON p.record_id = e.record_id
-            WHERE e.entity_id IS NULL
-    '''.format(session_id)
-    engine = worker_session.bind
-    messy_dd = {}
-    with engine.begin() as c:
-        messy = c.execute(sel)
-        for row in messy:
-            messy_dd[row.record_id] = {k:v for k,v in row.items()}
-    clusters = d.match(messy_dd, n_matches=5)
-    match_list = []
-    for cluster in clusters:
-        for matches, confidence in cluster:
-            matches = list(matches)
-            matches.extend([
-                confidence,
-                datetime.now().replace(tzinfo=TIME_ZONE).isoformat(),
-                'canonical',
-            ])
-            match_list.append(matches)
-    match_fobj = StringIO()
-    writer = UnicodeCSVWriter(match_fobj)
-    writer.writerow([
-        'record_id', 
-        'entity_id', 
-        'confidence', 
-        'last_update', 
-        'match_type'
-    ])
-    writer.writerows(match_list)
-    with engine.begin() as conn:
-        create = ''' 
-            CREATE TABLE "temp_{0}" (
-                record_id INTEGER, 
-                entity_id VARCHAR, 
-                confidence DOUBLE PRECISION, 
-                last_update TIMESTAMP,
-                match_type VARCHAR
-            )
-            '''.format(session_id)
-        conn.execute(create)
-    match_fobj.seek(0)
-    conn = engine.raw_connection()
-    curs = conn.cursor()
-    copy_st = '''
-        COPY "temp_{0}" (
-            record_id,
-            entity_id,
-            confidence,
-            last_update,
-            match_type
-        ) FROM STDIN CSV
-        '''.format(session_id)
-    try:
-        curs.copy_expert(copy_st, match_fobj)
-        conn.commit()
-        del match_fobj
-    except Exception, e:
-        conn.rollback()
-        raise e
-    with engine.begin() as conn:
-        conn.execute('DROP TABLE "temp_{0}"')
-    return None
-

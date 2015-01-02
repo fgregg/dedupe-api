@@ -149,7 +149,6 @@ def select_field_types():
     if request.method == 'POST':
         field_defs = []
         form = {}
-        print request.form
         for k in request.form.keys():
             if k != 'csrf_token':
                 form[k] = request.form.getlist(k)
