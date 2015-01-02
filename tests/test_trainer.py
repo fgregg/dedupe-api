@@ -208,6 +208,4 @@ class TrainerTest(unittest.TestCase):
                 fds = sorted(json.loads(fds_str))
                 expected = sorted(json.loads(self.dd_sess.field_defs))
                 for idx, f in enumerate(fds):
-                    print f
-                    print expected[idx]
                     assert set(f.items()) == set(expected[idx].items())

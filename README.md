@@ -1,6 +1,10 @@
 Dedupe API
 ==========
-[![](https://travis-ci.org/datamade/dedupe-api.svg?branch=master)](https://travis-ci.org/datamade/dedupe-api)
+
+[![Build
+Status](https://travis-ci.org/datamade/dedupe-api.svg?branch=master)](https://travis-ci.org/datamade/dedupe-api)
+
+[![Coverage Status](https://coveralls.io/repos/datamade/dedupe-api/badge.png?branch=master)](https://coveralls.io/r/datamade/dedupe-api?branch=master)
 
 Repository for Enterprise Dedupe API
 
