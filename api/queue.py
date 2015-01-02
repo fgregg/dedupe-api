@@ -10,7 +10,7 @@ import traceback
 try:
     from raven import Client
     client = Client(os.environ['DEDUPE_WORKER_SENTRY_URL'])
-except ImportError:
+except ImportError: # pragma: no cover
     client = None
 except KeyError:
     client = None
@@ -40,24 +40,27 @@ def queuefunc(f):
     f.delay = delay
     return f
 
-def queue_daemon(rv_ttl=500):
+def processMessage(rv_ttl=500):
+    msg = redis.blpop(REDIS_QUEUE_KEY)
+    func, key, args, kwargs = loads(msg[1])
+    try:
+        rv = func(*args, **kwargs)
+    except Exception, e:
+        if client: # pragma: no cover
+            client.captureException()
+        tb = traceback.format_exc()
+        print tb
+        rv = 'Exc: %s' % (e.message)
+    if rv is not None:
+        redis.set(key, dumps(rv))
+        redis.expire(key, rv_ttl)
+        del args
+        del kwargs
+        del rv
+        del msg
+
+def queue_daemon(): # pragma: no cover
     init_engine(DB_CONN)
     print 'Listening for messages...'
     while 1:
-        msg = redis.blpop(REDIS_QUEUE_KEY)
-        func, key, args, kwargs = loads(msg[1])
-        try:
-            rv = func(*args, **kwargs)
-        except Exception, e:
-            if client:
-                client.captureException()
-            tb = traceback.format_exc()
-            print tb
-            rv = 'Exc: %s' % (e.message)
-        if rv is not None:
-            redis.set(key, dumps(rv))
-            redis.expire(key, rv_ttl)
-            del args
-            del kwargs
-            del rv
-            del msg
+        processMessage()
