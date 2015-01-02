@@ -32,16 +32,20 @@ class DelayedResult(object):
     
 def queuefunc(f):
     def delay(*args, **kwargs):
-        qkey = REDIS_QUEUE_KEY
+        qkey = kwargs.get('qkey', REDIS_QUEUE_KEY)
+        try:
+            del kwargs['qkey']
+        except KeyError:
+            pass
         key = '%s:result:%s' % (qkey, str(uuid4()))
         s = dumps((f, key, args, kwargs))
-        redis.rpush(REDIS_QUEUE_KEY, s)
+        redis.rpush(qkey, s)
         return DelayedResult(key)
     f.delay = delay
     return f
 
-def processMessage(rv_ttl=500):
-    msg = redis.blpop(REDIS_QUEUE_KEY)
+def processMessage(rv_ttl=500, qkey=None):
+    msg = redis.blpop(qkey)
     func, key, args, kwargs = loads(msg[1])
     try:
         rv = func(*args, **kwargs)
@@ -59,8 +63,8 @@ def processMessage(rv_ttl=500):
         del rv
         del msg
 
-def queue_daemon(): # pragma: no cover
-    init_engine(DB_CONN)
+def queue_daemon(db_conn=DB_CONN, qkey=REDIS_QUEUE_KEY): # pragma: no cover
+    init_engine(db_conn)
     print 'Listening for messages...'
     while 1:
-        processMessage()
+        processMessage(qkey=qkey)

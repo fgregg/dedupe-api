@@ -25,7 +25,8 @@ def create_app(config='api.app_config'):
     app.config.from_object(config)
     init_engine(app.config['DB_CONN'])
     redis = Redis()
-    app.session_interface = RedisSessionInterface(redis=redis)
+    app.session_interface = RedisSessionInterface(redis=redis, 
+                                prefix=app.config['REDIS_SESSION_KEY'])
     if sentry: # pragma: no cover
         sentry.init_app(app)
     csrf.init_app(app)

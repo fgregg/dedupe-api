@@ -15,6 +15,7 @@ MAX_CONTENT_LENGTH = 500 * 1024 * 1024
 SECRET_KEY = 'test super secret key'
 REDIS_QUEUE_KEY = 'testdedupeapi'
 WTF_CSRF_ENABLED = False
+REDIS_SESSION_KEY = 'testsession'
 
 DOWNLOAD_FOLDER = join(abspath(dirname(__file__)), 'download_data')
 

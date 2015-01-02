@@ -1,5 +1,7 @@
 import unittest
 import json
+import cPickle
+import dedupe
 from os.path import join, abspath, dirname
 from uuid import uuid4
 from flask import request, session
@@ -209,3 +211,101 @@ class TrainerTest(unittest.TestCase):
                 expected = sorted(json.loads(self.dd_sess.field_defs))
                 for idx, f in enumerate(fds):
                     assert set(f.items()) == set(expected[idx].items())
+
+    def test_training_run_processing(self):
+        fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        self.dd_sess.field_defs = fds
+        self.session.add(self.dd_sess)
+        self.session.commit()
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_id'] = self.user.id
+                    sess['session_id'] = self.session_id
+                rv = c.get('/training-run/')
+                assert 'still working on finishing up processing your upload' in rv.data
+    
+    def test_training_run_redirect(self):
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    del sess['session_id']
+                rv = c.get('/training-run/', follow_redirects=False)
+                rd_path = rv.location.split('http://localhost')[1]
+                rd_path = rd_path.split('?')[0]
+                assert rd_path == '/train-start/'
+    
+    def test_training_run_qparam(self):
+        fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        self.dd_sess.field_defs = fds
+        self.session.add(self.dd_sess)
+        self.session.commit()
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    del sess['session_id']
+                rv = c.get('/training-run/?session_id=' + self.session_id)
+                assert 'still working on finishing up processing your upload' in rv.data
+    
+    def test_training_run_qparam(self):
+        fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        sample = open(join(fixtures_path, 'sample.dump'), 'rb').read()
+        self.dd_sess.field_defs = fds
+        self.dd_sess.sample = sample
+        self.session.add(self.dd_sess)
+        self.session.commit()
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                rv = c.get('/training-run/')
+                assert 'still working on finishing up processing your upload' not in rv.data
+
+    def test_get_pair(self):
+        fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        sample = open(join(fixtures_path, 'sample.dump'), 'rb').read()
+        deduper = dedupe.Dedupe(json.loads(fds), cPickle.loads(sample))
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['deduper'] = deduper
+                rv = c.get('/get-pair/')
+                assert set(['left', 'right', 'field']) == set(json.loads(rv.data)[0].keys())
+                assert session.get('current_pair') is not None
+    
+    def test_mark_pair(self):
+        fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        sample = open(join(fixtures_path, 'sample.dump'), 'rb').read()
+        self.dd_sess.field_defs = fds
+        self.session.add(self.dd_sess)
+        self.session.commit()
+        deduper = dedupe.Dedupe(json.loads(fds), cPickle.loads(sample))
+        record_pair = deduper.uncertainPairs()[0]
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['session_id'] = self.session_id
+                    sess['deduper'] = deduper
+                    sess['current_pair'] = record_pair
+                rv = c.get('/mark-pair/?action=yes')
+                assert json.loads(rv.data)['counter']['yes'] == 1
+                
+                self.session.refresh(self.dd_sess)
+                assert self.dd_sess.status == 'training started'
+                
+                rv = c.get('/mark-pair/?action=no')
+                assert json.loads(rv.data)['counter']['yes'] == 1
+                assert json.loads(rv.data)['counter']['no'] == 1
+                
+                rv = c.get('/mark-pair/?action=unsure')
+                assert json.loads(rv.data)['counter']['yes'] == 1
+                assert json.loads(rv.data)['counter']['no'] == 1
+                assert json.loads(rv.data)['counter']['unsure'] == 1
+                
+                rv = c.get('/mark-pair/?action=finish')
+                assert session.get('deduper_key') is not None
+                assert json.loads(rv.data)['finished'] == True

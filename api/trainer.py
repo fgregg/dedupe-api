@@ -21,7 +21,7 @@ from api.utils.helpers import getDistinct, slugify, updateSessionStatus, \
     STATUS_LIST
 from api.models import DedupeSession, User, Group
 from api.database import app_session as db_session, init_engine
-from api.auth import check_roles, csrf, login_required
+from api.auth import check_roles, csrf, login_required, check_sessions
 from sqlalchemy.exc import OperationalError, NoSuchTableError
 from sqlalchemy import Table, MetaData
 from cStringIO import StringIO
@@ -111,6 +111,7 @@ def train():
 @trainer.route('/select-fields/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
+@check_sessions()
 def select_fields():
     status_code = 200
     error = None
@@ -118,6 +119,9 @@ def select_fields():
     if request.args.get('session_id'):
         session_id = request.args['session_id']
         flask_session['session_id'] = session_id
+        if session_id not in flask_session['user_sessions']:
+            flash("Sorry, you don't have access to that session")
+            return redirect(url_for('admin.index'))
         meta = MetaData()
         engine = db_session.bind
         raw = Table('raw_{0}'.format(session_id), meta, 
@@ -176,6 +180,7 @@ def select_field_types():
 @trainer.route('/training-run/')
 @login_required
 @check_roles(roles=['admin'])
+@check_sessions()
 def training_run():
     if request.args.get('session_id'):
         session_id = request.args['session_id']
@@ -187,17 +192,13 @@ def training_run():
     elif flask_session.get('session_id'):
         session_id = flask_session['session_id']
     else:
-        return redirect(url_for('trainer.train_start'))
-    user = db_session.query(User).get(flask_session['user_id'])
-    sess = db_session.query(DedupeSession)\
-        .filter(DedupeSession.group.has(
-            Group.id.in_([i.id for i in user.groups])))\
-        .filter(DedupeSession.id == session_id)\
-        .first()
-    if not sess:
-        error = "You don't have access to session '%s'" % session_id
-        status_code = 401
+        return redirect(url_for('trainer.train'))
+    if flask_session['session_id'] not in flask_session['user_sessions']:
+        flash("Sorry, you don't have access to that session")
+        return redirect(url_for('admin.index'))
     else:
+        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
+        user = db_session.query(User).get(flask_session['user_id'])
         error = None
         status_code = 200
         field_defs = json.loads(sess.field_defs)
@@ -308,20 +309,12 @@ def mark_pair():
 @trainer.route('/dedupe_finished/')
 @login_required
 @check_roles(roles=['admin'])
-def dedupe_finished():
+def dedupe_finished(): # pragma: no cover
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template("dedupe_finished.html", user=user)
 
-@trainer.route('/dedupe_finished/checkscore.php')
-def pong_score():
-    print request.args
-    resp = {}
-    resp = make_response(json.dumps(resp))
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
-
 @trainer.route('/about/')
-def about():
+def about(): # pragma: no cover
     user_id = flask_session.get('user_id')
     user = None
     if user_id:
@@ -342,9 +335,6 @@ def working():
     del flask_session['deduper_key']
     if flask_session.get('dedupe_start'):
         start = flask_session['dedupe_start']
-        end = time.time()
-    if flask_session.get('adjust_start'):
-        start = flask_session['adjust_start']
         end = time.time()
     return jsonify(ready=True, result=rv.return_value)
 
