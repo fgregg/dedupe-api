@@ -99,6 +99,10 @@ class ReviewTest(unittest.TestCase):
         }
         entity_table = 'entity_{0}'.format(self.dd_sess.id)
         if canonical:
+            with self.app.test_request_context():
+                self.login()
+                with self.client as c:
+                    c.get('/mark-all-clusters/{0}/'.format(self.dd_sess.id))
             dedupeCanon(self.dd_sess.id)
             endpoints = {
                 'get': '/get-canon-review-cluster/{0}/'.format(self.dd_sess.id),
@@ -169,5 +173,5 @@ class ReviewTest(unittest.TestCase):
     def test_review_clusters(self):
         self.review_wrapper()
     
-   #def test_review_canon_clusters(self):
-   #    self.review_wrapper(canonical=True)
+    def test_review_canon_clusters(self):
+        self.review_wrapper(canonical=True)
