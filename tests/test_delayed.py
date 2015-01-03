@@ -116,7 +116,8 @@ class DelayedTest(unittest.TestCase):
         getMatchingReady(self.dd_sess.id)
         self.session.refresh(self.dd_sess)
         self.get_table_names()
-        removed_tables = set([
+        removed_tables = set()
+        table_patterns = [
             'entity_{0}_cr',
             'processed_{0}_cr',
             'block_{0}_cr',
@@ -129,7 +130,8 @@ class DelayedTest(unittest.TestCase):
             'plural_block_{0}',
             'covered_{0}',
             'plural_key_{0}',
-        ])
+        ]
+        table_names = [t.format(self.dd_sess.id) for t in table_patterns]
         assert 'match_blocks_{0}'.format(self.dd_sess.id) in self.table_names
         assert set(self.table_names).isdisjoint(removed_tables)
         assert self.dd_sess.gaz_settings_file is not None

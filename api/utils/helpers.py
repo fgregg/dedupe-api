@@ -48,7 +48,7 @@ def updateSessionStatus(session_id, increment=True):
     if increment:
         dd.status = STATUS_LIST[current + 1]
         print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
-    else:
+    else: # pragma: no cover
         dd.status = STATUS_LIST[current - 1]
         print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
     worker_session.add(dd)
@@ -156,7 +156,7 @@ def slugify(text, delim=u'_'):
             if word:
                 result.append(word)
         return unicode(delim.join(result))
-    else:
+    else: # pragma: no cover
         return text
 
 def preProcess(column):

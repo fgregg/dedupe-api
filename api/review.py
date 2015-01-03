@@ -15,7 +15,7 @@ review = Blueprint('review', __name__)
 @review.route('/match-review/<session_id>/')
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
-def match_review(session_id):
+def match_review(session_id): # pragma: no cover
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('match-review.html', 
                             session_id=session_id, 
@@ -198,24 +198,27 @@ def mark_cluster(session_id):
         training_data = json.loads(sess.training_data)
         if match_ids:
             match_ids = tuple([int(m) for m in match_ids.split(',')])
-            upd = entity_table.update()\
-                .where(entity_table.c.entity_id == entity_id)\
-                .where(entity_table.c.record_id.in_(match_ids))\
-                .values(clustered=True, 
-                        checked_out=False, 
-                        checkout_expire=None,
-                        last_update=datetime.now().replace(tzinfo=TIME_ZONE),
-                        reviewer=user.name)
-            with engine.begin() as c:
-                c.execute(upd)
             upd_vals = {
                 'entity_id': entity_id,
                 'record_ids': match_ids,
                 'user_name': user.name, 
                 'clustered': True,
                 'match_type': 'clerical review',
-                'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+                'last_update': datetime.now().replace(tzinfo=TIME_ZONE), 
+                'match_ids': match_ids,
             }
+            upd = text(''' 
+                UPDATE "entity_{0}" SET
+                  entity_id = :entity_id,
+                  reviewer = :user_name,
+                  clustered = :clustered,
+                  match_type = :match_type,
+                  last_update = :last_update
+                WHERE entity_id = :entity_id
+                  AND record_id IN :match_ids
+            '''.format(session_id))
+            with engine.begin() as conn:
+                conn.execute(upd, **upd_vals)
             update_existing = text('''
                 UPDATE "entity_{0}" SET 
                     entity_id = :entity_id, 
@@ -290,8 +293,8 @@ def mark_canon_cluster(session_id):
             upd = text('''
                 UPDATE "entity_{0}" SET 
                     entity_id = :entity_id,
-                    clustered = TRUE,
-                    checked_out = FALSE,
+                    clustered = :clustered,
+                    checked_out = :checked_out,
                     last_update = :last_update,
                     reviewer = :user_name
                 WHERE entity_id in (
@@ -300,14 +303,17 @@ def mark_canon_cluster(session_id):
                     WHERE entity_id = :entity_id
                         AND record_id IN :record_ids
                 )
+                RETURNING record_id
                 '''.format(session_id))
             last_update = datetime.now().replace(tzinfo=TIME_ZONE)
             with engine.begin() as c:
-                c.execute(upd, 
+                ids = c.execute(upd, 
                           entity_id=entity_id, 
                           last_update=last_update,
                           user_name=user.name,
-                          record_ids=match_ids)
+                          record_ids=match_ids,
+                          clustered=True,
+                          checked_out=False)
         if distinct_ids:
             distinct_ids = tuple([d for d in distinct_ids.split(',')])
             delete = text(''' 
