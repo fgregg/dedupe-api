@@ -109,7 +109,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
-        if end_id:
+        if end_id: # pragma: no cover
             return and_(
                 column>=start_id,
                 column<end_id
@@ -131,7 +131,7 @@ def column_windows(session, column, windowsize):
 
     while intervals:
         start = intervals.pop(0)
-        if intervals:
+        if intervals: # pragma: no cover
             end = intervals[0]
         else:
             end = None
@@ -218,28 +218,6 @@ def makeSampleDict(session_id, fields):
                             for i, row in enumerate(curs))
     return result
 
-def makeDataDict(session_id, fields=None, name_pattern='processed_{0}'):
-    session = worker_session
-    engine = session.bind
-    metadata = MetaData()
-    table_name = name_pattern.format(session_id)
-    table = Table(table_name, metadata, 
-        autoload=True, autoload_with=engine)
-    if not fields:
-        fields = [unicode(s) for s in table.columns.keys()]
-    primary_key = [p.name for p in table.primary_key][0]
-    result = {}
-
-    cols = [getattr(table.c, f) for f in fields]
-    cols.append(getattr(table.c, primary_key))
-    curs = session.query(*cols)
-    for row in curs:
-        try:
-            result[int(getattr(row, primary_key))] = frozendict(zip(fields, row))
-        except ValueError:
-            result[getattr(row, primary_key)] = frozendict(zip(fields, row))
-    return result
-
 def getDistinct(field_name, session_id):
     engine = app_session.bind
     metadata = MetaData()
@@ -263,7 +241,7 @@ def checkinSessions():
                 .values(checked_out = False, checkout_expire = None)
             with engine.begin() as c:
                 c.execute(upd)
-        except NoSuchTableError:
+        except NoSuchTableError: # pragma: no cover 
             pass
     return None
 

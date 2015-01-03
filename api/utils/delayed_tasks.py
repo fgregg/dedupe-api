@@ -7,7 +7,7 @@ from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
-from api.utils.helpers import preProcess, makeDataDict, clusterGen, \
+from api.utils.helpers import preProcess, clusterGen, \
     makeSampleDict, windowed_query, updateSessionStatus, getDistinct
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
