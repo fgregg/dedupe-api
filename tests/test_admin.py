@@ -9,10 +9,14 @@ from api.models import User, DedupeSession, Group
 from api.database import init_engine, app_session, worker_session
 from api.auth import check_sessions
 from api.utils.helpers import STATUS_LIST
+from api.utils.delayed_tasks import initializeSession, initializeModel, \
+    dedupeRaw
 from test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.orm.exc import ObjectDeletedError
 from sqlalchemy import text
+from cStringIO import StringIO
+from csvkit.unicsv import UnicodeCSVReader
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -227,4 +231,30 @@ class AdminTest(unittest.TestCase):
             with self.client as c:
                 rv = c.open('/session-list/?session_id=' + self.dd_sess.id)
                 assert json.loads(rv.data)['status'] == 'ok'
-
+    
+    def test_dump_entity_map(self):
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'wb') as outp:
+                outp.write(inp.read())
+        initializeSession(self.dd_sess.id)
+        initializeModel(self.dd_sess.id)
+        dedupeRaw(self.dd_sess.id)
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                c.get('/mark-all-clusters/{0}/'.format(self.dd_sess.id))
+                rv = c.get('/dump-entity-map/' + self.dd_sess.id + '/')
+                row_count = ''' 
+                    SELECT count(*) 
+                    FROM "raw_{0}" AS r
+                    JOIN "entity_{0}" AS e
+                      ON r.record_id = e.record_id
+                    WHERE e.clustered = TRUE
+                '''.format(self.dd_sess.id)
+                with self.engine.begin() as conn:
+                    row_count = list(conn.execute(row_count))
+                row_count = row_count[0][0]
+                s = StringIO(rv.data)
+                reader = UnicodeCSVReader(s)
+                reader.next()
+                assert len([r for r in list(reader) if r[0]]) == row_count

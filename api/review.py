@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from flask import Flask, make_response, request, Blueprint, \
     session as flask_session, render_template, current_app
-from api.database import app_session as db_session, init_engine, Base
+from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import checkinSessions, getCluster
@@ -63,8 +63,6 @@ def get_cluster(session_id):
             db_session.commit()
         resp['total_clusters'] = sess.entity_count
         resp['review_remainder'] = sess.review_count
-       #resp['total_clusters'] = total_clusters
-       #resp['review_remainder'] = review_remainder
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
@@ -144,7 +142,7 @@ def mark_all_clusters(session_id):
                       OR "entity_{0}".match_type != 'clerical review' )
             RETURNING "entity_{0}".entity_id
             '''.format(session_id))
-        engine = init_engine(current_app.config['DB_CONN'])
+        engine = db_session.bind
         with engine.begin() as c:
             child_entities = c.execute(upd, **upd_vals)
         upd = text(''' 
@@ -188,7 +186,7 @@ def mark_cluster(session_id):
     else:
         sess = db_session.query(DedupeSession).get(session_id)
         user = db_session.query(User).get(flask_session['api_key'])
-        engine = init_engine(current_app.config['DB_CONN'])
+        engine = db_session.bind
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
         # TODO: Return an error if these args are not present.
@@ -287,7 +285,7 @@ def mark_canon_cluster(session_id):
         match_ids = request.args.get('match_ids')
         distinct_ids = request.args.get('distinct_ids')
         user = db_session.query(User).get(flask_session['api_key'])
-        engine = init_engine(current_app.config['DB_CONN'])
+        engine = db_session.bind
         if match_ids:
             match_ids = tuple([d for d in match_ids.split(',')])
             upd = text('''
@@ -349,7 +347,7 @@ def mark_all_canon_cluster(session_id):
     else:
         status_code = 200
         user = db_session.query(User).get(flask_session['api_key'])
-        engine = init_engine(current_app.config['DB_CONN'])
+        engine = db_session.bind
         upd_vals = {
             'user_name': user.name, 
             'clustered': True,

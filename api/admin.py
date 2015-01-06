@@ -20,6 +20,7 @@ from dedupe.convenience import canonicalize
 from csvkit.unicsv import UnicodeCSVReader
 import dedupe
 from cStringIO import StringIO
+from datetime import datetime
 
 admin = Blueprint('admin', __name__)
 
@@ -337,3 +338,39 @@ def review():
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
+
+@admin.route('/dump-entity-map/<session_id>/')
+@check_sessions()
+def entity_map_dump(session_id):
+    user_sessions = flask_session['user_sessions']
+    if session_id not in user_sessions:
+        r = {
+            'status': 'error', 
+            'message': "You don't have access to session %s" % session_id
+        }
+        resp = make_response(json.dumps(r), 401)
+        resp.headers['Content-Type'] = 'application/json'
+        return resp
+    outp = StringIO()
+    copy = """ 
+        COPY (
+          SELECT 
+            e.entity_id, 
+            r.* 
+          FROM \"raw_{0}\" AS r
+          LEFT JOIN \"entity_{0}\" AS e
+            ON r.record_id = e.record_id
+          WHERE e.clustered = TRUE
+          ORDER BY e.entity_id NULLS LAST
+        ) TO STDOUT WITH CSV HEADER DELIMITER ','
+    """.format(session_id)
+    engine = db_session.bind
+    conn = engine.raw_connection()
+    curs = conn.cursor()
+    curs.copy_expert(copy, outp)
+    outp.seek(0)
+    resp = make_response(outp.getvalue())
+    resp.headers['Content-Type'] = 'text/csv'
+    filedate = datetime.now().strftime('%Y-%m-%d')
+    resp.headers['Content-Disposition'] = 'attachment; filename=entity_map_{0}.csv'.format(filedate)
+    return resp
