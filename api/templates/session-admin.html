@@ -9,26 +9,21 @@
                 <h4>
                     Downloads: <br />
                     {% if dd_session.field_defs %}
-                      <span class="label label-default">
+                      <span class="label label-info">
                         <a href="{{url_for('admin.field_definitions', session_id=dd_session.id)}}">Data Model</a>
                       </span>
                     {% endif %}
                     {% if dd_session.settings_file %}
-                      &nbsp;<span class="label label-default">
+                      &nbsp;<span class="label label-info">
                         <a href="{{url_for('admin.settings_file', session_id=dd_session.id)}}">Settings File</a>
                       </span>
                     {% endif %}
                     {% if dd_session.training_data %}
-                      &nbsp;<span class="label label-default">
+                      &nbsp;<span class="label label-info">
                         <a href="{{url_for('admin.training_data', session_id=dd_session.id)}}">Training Data</a>
                       </span>
                     {% endif %}
-                    {% if dd_session.training_data %}
-                      &nbsp;<span class="label label-default">
-                        <a href="{{url_for('admin.training_data', session_id=dd_session.id)}}">Training Data</a>
-                      </span>
-                    {% endif %}
-                      &nbsp;<span class="label label-default">
+                      &nbsp;<span class="label label-info">
                         <a href="{{url_for('admin.entity_map_dump', session_id=dd_session.id)}}">Entity Map</a>
                       </span>
                 </h4>

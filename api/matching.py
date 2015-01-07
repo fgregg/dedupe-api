@@ -206,7 +206,7 @@ def add_entity(session_id):
                 fds[fd['field']].append(fd['type'])
             except KeyError:
                 fds[fd['field']] = [fd['type']]
-        if not set(fields.keys()) == set(obj.keys()):
+        if not set(fds.keys()) == set(obj.keys()):
             r['status'] = 'error'
             r['message'] = "The fields in the object do not match the fields in the model"
             status_code = 400
