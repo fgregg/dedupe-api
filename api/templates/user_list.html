@@ -3,6 +3,10 @@
 {% block content %}
     <div class="col-md-12">
         <h1>User list</h1>
+        <p><a role="button" href="{{url_for('admin.add_user')}}" class="btn btn-info">
+            <i class='fa fa-plus-circle'></i>
+            Add user
+        </a></p>
         <table class="table table-bordered table-striped">
             <thead>
                 <tr>
