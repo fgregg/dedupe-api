@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
-    dedupeRaw, dedupeCanon, bulkMarkClusters
+    dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -161,6 +161,8 @@ class ReviewTest(unittest.TestCase):
 
                 if not canonical:
                     bulkMarkClusters(self.dd_sess.id, user=self.user.name)
+                else:
+                    bulkMarkCanonClusters(self.dd_sess.id, user=self.user.name)
                 sel = 'select clustered from "entity_{0}"'\
                     .format(self.dd_sess.id)
                 with self.engine.begin() as conn:

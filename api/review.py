@@ -6,7 +6,7 @@ from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import checkinSessions, getCluster
-from api.utils.delayed_tasks import bulkMarkClusters, getMatchingReady
+from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters
 from api.app_config import TIME_ZONE
 from sqlalchemy import text, Table
 
@@ -291,45 +291,7 @@ def mark_all_canon_cluster(session_id):
     else:
         status_code = 200
         user = db_session.query(User).get(flask_session['api_key'])
-        engine = db_session.bind
-        upd_vals = {
-            'user_name': user.name, 
-            'clustered': True,
-            'match_type': 'bulk accepted - canon',
-            'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
-        }
-        upd = text(''' 
-            UPDATE "entity_{0}" SET 
-                entity_id=subq.entity_id,
-                clustered= :clustered,
-                reviewer = :user_name,
-                match_type = :match_type,
-                last_update = :last_update
-            FROM (
-                SELECT 
-                    c.entity_id, 
-                    e.record_id 
-                FROM "entity_{0}" as e
-                JOIN "entity_{0}_cr" as c 
-                    ON e.entity_id = c.record_id 
-                LEFT JOIN (
-                    SELECT record_id, target_record_id FROM "entity_{0}"
-                    ) AS s 
-                    ON e.record_id = s.target_record_id
-                ) as subq 
-            WHERE "entity_{0}".record_id=subq.record_id 
-            RETURNING "entity_{0}".entity_id
-            '''.format(session_id))
-        with engine.begin() as c:
-            updated = c.execute(upd,**upd_vals)
-        resp = {
-            'session_id': session_id,
-            'status': 'ok',
-            'message': '',
-        }
-        count = len(set([c.entity_id for c in updated]))
-        resp['message'] = 'Marked {0} entities as clusters'.format(count)
-        getMatchingReady.delay(session_id)
+        bulkMarkCanonCluster.delay(session_id, user=user.name)
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp

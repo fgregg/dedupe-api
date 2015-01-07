@@ -89,6 +89,41 @@ def bulkMarkClusters(session_id, user=None):
     return None
 
 @queuefunc
+def bulkMarkCanonClusters(session_id, user=None):
+    engine = worker_session.bind
+    upd_vals = {
+        'user_name': user, 
+        'clustered': True,
+        'match_type': 'bulk accepted - canon',
+        'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+    }
+    upd = text(''' 
+        UPDATE "entity_{0}" SET 
+            entity_id=subq.entity_id,
+            clustered= :clustered,
+            reviewer = :user_name,
+            match_type = :match_type,
+            last_update = :last_update
+        FROM (
+            SELECT 
+                c.entity_id, 
+                e.record_id 
+            FROM "entity_{0}" as e
+            JOIN "entity_{0}_cr" as c 
+                ON e.entity_id = c.record_id 
+            LEFT JOIN (
+                SELECT record_id, target_record_id FROM "entity_{0}"
+                ) AS s 
+                ON e.record_id = s.target_record_id
+            ) as subq 
+        WHERE "entity_{0}".record_id=subq.record_id 
+        RETURNING "entity_{0}".entity_id
+        '''.format(session_id))
+    with engine.begin() as c:
+        updated = c.execute(upd,**upd_vals)
+    getMatchingReady(session_id)
+
+@queuefunc
 def getMatchingReady(session_id):
     addRowHash(session_id)
     cleanupTables(session_id)
