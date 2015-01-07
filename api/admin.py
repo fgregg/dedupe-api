@@ -118,27 +118,26 @@ def session_admin(session_id):
                 try:
                     session_info[fd['field']]['types'].append(fd['type'])
                     session_info[fd['field']]['has_missing'] = fd.get('has_missing', '')
+                    session_info[fd['field']]['children'] = []
                 except KeyError:
                     session_info[fd['field']] = {
                                                   'types': [fd['type']],
                                                   'has_missing': fd.get('has_missing', ''),
                                                 }
+                    session_info[fd['field']]['children'] = []
         if sess.settings_file:
             dd = dedupe.StaticDedupe(StringIO(sess.settings_file))
-            for key, val in dd.data_model.items():
+            for field in dd.data_model.primary_fields:
+                name, ftype = field.field, field.type
+                if ftype in ['Categorical', 'Address', 'Set']:
+                    children = []
+                    for f in field.higher_vars:
+                        children.append((f.name, f.type, f.has_missing, f.weight,) )
+                    session_info[name]['children'] = children
                 try:
-                    for field in val:
-                        name = field.name.split(':')[0][1:]
-                        try:
-                            session_info[name]['learned_weight'] = field.weight
-                        except KeyError: # pragma: no cover
-                            session_info[name] = {'learned_weight': field.weight}
-                except TypeError:
-                    name = field.name.split(':')[0][1:]
-                    try:
-                        session_info[name]['learned_weight'] = field.weight
-                    except KeyError: # pragma: no cover
-                        session_info[name] = {'learned_weight': field.weight}
+                    session_info[name]['learned_weight'] = field.weight
+                except KeyError: # pragma: no cover
+                    session_info[name] = {'learned_weight': field.weight}
             predicates = dd.predicates
         if sess.training_data:
             td = json.loads(sess.training_data)
@@ -343,7 +342,7 @@ def review():
 @check_sessions()
 def entity_map_dump(session_id):
     user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
+    if session_id not in user_sessions: # pragma: no cover
         r = {
             'status': 'error', 
             'message': "You don't have access to session %s" % session_id

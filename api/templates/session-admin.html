@@ -57,6 +57,7 @@
             <h4>Data Model</h4>
             <table class="table table-condensed table-striped">
                 <thead>
+                    <th></th>
                     <th>Name</th>
                     <th>Types</th>
                     <th>Has missing?</th>
@@ -65,11 +66,31 @@
                 <tbody>
                     {% for field, info in session_info.items() %}
                         <tr>
+                            {% if info.children %}
+                            <td>
+                                <button class="parent-row btn btn-info btn-xs" data-fieldname="{{field}}">
+                                    <i class="fa fa-plus-square"> </i>
+                                </button>
+                            </td>
+                            {% else %}
+                                <td></td>
+                            {% endif %}
                             <td>{{field}}</td>
                             <td>{{info.types|join(',')}}</td>
                             <td>{{info.has_missing}}</td>
                             <td>{{info.learned_weight}}</td>
                         </tr>
+                        {% if info.children %}
+                            {% for name, type, missing, weight in info.children %}
+                              <tr style="display:none" class="parent-{{field}}">
+                                    <td></td>
+                                    <td>{{name}}</td>
+                                    <td>{{type}}</td>
+                                    <td>{{missing}}</td>
+                                    <td>{{weight}}</td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -157,4 +178,14 @@
     </div>
 {% endif %}
 {% endblock %}
-{% block extra_javascript %}{% endblock %}
+{% block extra_javascript %}
+    <script type="text/javascript">
+        $(document).ready(function(){
+            $('.parent-row').on('click', function(e){
+                e.preventDefault();
+                var fname = $(this).data('fieldname');
+                $('.parent-' + fname).toggle();
+            })
+        })
+    </script>
+{% endblock %}
