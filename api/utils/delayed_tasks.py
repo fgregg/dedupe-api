@@ -12,7 +12,7 @@ from api.utils.helpers import preProcess, clusterGen, \
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash
-from sqlalchemy import Table, MetaData, Column, String, func
+from sqlalchemy import Table, MetaData, Column, String, func, text
 from sqlalchemy.sql import label
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
@@ -25,6 +25,68 @@ from datetime import datetime
 import cPickle
 from uuid import uuid4
 from api.app_config import TIME_ZONE
+
+@queuefunc
+def bulkMarkClusters(session_id, user=None):
+    engine = worker_session.bind
+    now =  datetime.now().replace(tzinfo=TIME_ZONE)
+    upd_vals = {
+        'user_name': user, 
+        'clustered': True,
+        'match_type': 'bulk accepted',
+        'last_update': now,
+    }
+    upd = text(''' 
+        UPDATE "entity_{0}" SET 
+            entity_id=subq.entity_id,
+            clustered= :clustered,
+            reviewer = :user_name,
+            match_type = :match_type,
+            last_update = :last_update
+        FROM (
+                SELECT 
+                    s.entity_id AS entity_id,
+                    e.record_id 
+                FROM "entity_{0}" AS e
+                JOIN (
+                    SELECT 
+                        record_id, 
+                        entity_id
+                    FROM "entity_{0}"
+                ) AS s
+                    ON e.target_record_id = s.record_id
+            ) as subq 
+        WHERE "entity_{0}".record_id=subq.record_id 
+            AND ( "entity_{0}".clustered=FALSE 
+                  OR "entity_{0}".match_type != 'clerical review' )
+        RETURNING "entity_{0}".entity_id
+        '''.format(session_id))
+    with engine.begin() as c:
+        child_entities = c.execute(upd, **upd_vals)
+    upd = text(''' 
+        UPDATE "entity_{0}" SET
+            clustered = :clustered,
+            reviewer = :user_name,
+            last_update = :last_update,
+            match_type = :match_type
+        WHERE target_record_id IS NULL
+            AND clustered=FALSE
+        RETURNING entity_id;
+    '''.format(session_id))
+    with engine.begin() as c:
+        parent_entities = c.execute(upd, **upd_vals)
+    child_entities = set([c.entity_id for c in child_entities])
+    parent_entities = set([p.entity_id for p in parent_entities])
+    count = len(child_entities.union(parent_entities))
+    with engine.begin() as conn:
+        conn.execute(text('''
+          UPDATE dedupe_session SET 
+            review_count = 0,
+            entity_count = :entity_count
+          WHERE id = :id
+          '''), entity_count=count, id=session_id)
+    dedupeCanon(session_id)
+    return None
 
 @queuefunc
 def getMatchingReady(session_id):

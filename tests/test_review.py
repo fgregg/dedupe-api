@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
-    dedupeRaw, dedupeCanon
+    dedupeRaw, dedupeCanon, bulkMarkClusters
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -99,11 +99,7 @@ class ReviewTest(unittest.TestCase):
         }
         entity_table = 'entity_{0}'.format(self.dd_sess.id)
         if canonical:
-            with self.app.test_request_context():
-                self.login()
-                with self.client as c:
-                    c.get('/mark-all-clusters/{0}/'.format(self.dd_sess.id))
-            dedupeCanon(self.dd_sess.id)
+            bulkMarkClusters(self.dd_sess.id, user=self.user.name)
             endpoints = {
                 'get': '/get-canon-review-cluster/{0}/'.format(self.dd_sess.id),
                 'mark_one': '/mark-canon-cluster/{0}/'.format(self.dd_sess.id),
@@ -163,7 +159,8 @@ class ReviewTest(unittest.TestCase):
                 assert set([r['record_id'] for r in json_resp_2['objects']])\
                     .isdisjoint(set(rows))
 
-                rv = c.get(endpoints['mark_all'])
+                if not canonical:
+                    bulkMarkClusters(self.dd_sess.id, user=self.user.name)
                 sel = 'select clustered from "entity_{0}"'\
                     .format(self.dd_sess.id)
                 with self.engine.begin() as conn:

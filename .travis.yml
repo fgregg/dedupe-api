@@ -21,5 +21,4 @@ install: "pip install -r requirements.txt"
 before_script:
   - cp tests/test_config.py.travis tests/test_config.py
   - cp api/app_config.py.travis api/app_config.py
-  - psql -c 'create database dedupe_test;' -U postgres
 script: nosetests --with-coverage --cover-package=api tests

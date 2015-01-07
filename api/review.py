@@ -6,7 +6,7 @@ from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import checkinSessions, getCluster
-from api.utils.delayed_tasks import dedupeCanon, getMatchingReady
+from api.utils.delayed_tasks import bulkMarkClusters, getMatchingReady
 from api.app_config import TIME_ZONE
 from sqlalchemy import text, Table
 
@@ -110,63 +110,7 @@ def mark_all_clusters(session_id):
     else:
         # Need to update existing clusters with new entity_id here, too.
         user = db_session.query(User).get(flask_session['api_key']) 
-        now =  datetime.now().replace(tzinfo=TIME_ZONE)
-        upd_vals = {
-            'user_name': user.name, 
-            'clustered': True,
-            'match_type': 'bulk accepted',
-            'last_update': now,
-        }
-        upd = text(''' 
-            UPDATE "entity_{0}" SET 
-                entity_id=subq.entity_id,
-                clustered= :clustered,
-                reviewer = :user_name,
-                match_type = :match_type,
-                last_update = :last_update
-            FROM (
-                    SELECT 
-                        s.entity_id AS entity_id,
-                        e.record_id 
-                    FROM "entity_{0}" AS e
-                    JOIN (
-                        SELECT 
-                            record_id, 
-                            entity_id
-                        FROM "entity_{0}"
-                    ) AS s
-                        ON e.target_record_id = s.record_id
-                ) as subq 
-            WHERE "entity_{0}".record_id=subq.record_id 
-                AND ( "entity_{0}".clustered=FALSE 
-                      OR "entity_{0}".match_type != 'clerical review' )
-            RETURNING "entity_{0}".entity_id
-            '''.format(session_id))
-        engine = db_session.bind
-        with engine.begin() as c:
-            child_entities = c.execute(upd, **upd_vals)
-        upd = text(''' 
-            UPDATE "entity_{0}" SET
-                clustered = :clustered,
-                reviewer = :user_name,
-                last_update = :last_update,
-                match_type = :match_type
-            WHERE target_record_id IS NULL
-                AND clustered=FALSE
-            RETURNING entity_id;
-        '''.format(session_id))
-        with engine.begin() as c:
-            parent_entities = c.execute(upd, **upd_vals)
-        child_entities = set([c.entity_id for c in child_entities])
-        parent_entities = set([p.entity_id for p in parent_entities])
-        count = len(child_entities.union(parent_entities))
-        sess = db_session.query(DedupeSession).get(session_id)
-        sess.review_count = 0
-        sess.entity_count = count
-        db_session.add(sess)
-        db_session.commit()
-        resp['message'] = 'Marked {0} entities as clusters'.format(count)
-        dedupeCanon.delay(session_id)
+        bulkMarkClusters.delay(session_id, user=user.name)
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
