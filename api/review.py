@@ -282,6 +282,7 @@ def mark_canon_cluster(session_id):
 @check_sessions()
 def mark_all_canon_cluster(session_id):
     user_sessions = flask_session['user_sessions']
+    resp = {}
     if session_id not in user_sessions:
         resp = {
             'status': 'error', 
@@ -291,7 +292,7 @@ def mark_all_canon_cluster(session_id):
     else:
         status_code = 200
         user = db_session.query(User).get(flask_session['api_key'])
-        bulkMarkCanonCluster.delay(session_id, user=user.name)
+        bulkMarkCanonClusters.delay(session_id, user=user.name)
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
