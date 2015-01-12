@@ -12,6 +12,7 @@ redis==2.10.3
 xlwt==0.7.5
 raven==5.1.1
 pytz==2014.9
+Flask-Track-Usage==1.0.0
 
 dedupe
 dedupe-variable-address

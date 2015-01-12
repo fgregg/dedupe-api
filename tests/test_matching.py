@@ -11,7 +11,8 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
-    dedupeRaw, dedupeCanon
+    dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
+from tests import DedupeAPITestCase
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -19,5 +20,159 @@ class MatchingTest(unittest.TestCase):
     ''' 
     Test the matching module
     '''
-    pass
+    @classmethod
+    def setUpClass(cls):
+        cls.app = create_app(config='tests.test_config')
+        cls.client = cls.app.test_client()
+        cls.engine = init_engine(cls.app.config['DB_CONN'])
+   
+        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
+                                              autocommit=False, 
+                                              autoflush=False))
+        cls.user = cls.session.query(User).first()
+        cls.group = cls.user.groups[0]
+        cls.user_pw = DEFAULT_USER['user']['password']
+        cls.field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
+        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
+        cls.dd_sess = DedupeSession(
+                        id=unicode(uuid4()), 
+                        name='test_filename.csv',
+                        group=cls.group,
+                        status=STATUS_LIST[0],
+                        settings_file=settings,
+                        field_defs=cls.field_defs,
+                        training_data=training
+                      )
+        cls.session.add(cls.dd_sess)
+        cls.session.commit()
+        
+        # Go through dedupe process
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(cls.dd_sess.id)), 'wb') as outp:
+                outp.write(inp.read())
+        initializeSession(cls.dd_sess.id)
+        initializeModel(cls.dd_sess.id)
+        dedupeRaw(cls.dd_sess.id)
+        bulkMarkClusters(cls.dd_sess.id, user=cls.user.name)
+        bulkMarkCanonClusters(cls.dd_sess.id, user=cls.user.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.session.close()
+        app_session.close()
+        worker_session.close()
+        worker_session.bind.dispose()
+        cls.engine.dispose()
+    
+    def login(self, email=None, pw=None):
+        if not email: 
+            email = self.user.email
+        if not pw:
+            pw = self.user_pw
+        return self.client.post('/login/', data=dict(
+                    email=email,
+                    password=pw,
+                ), follow_redirects=True)
+
+    def logout(self):
+        return self.client.get('/logout/')
+
+    def test_exact_match(self):
+        model_fields = [f['field'] for f in json.loads(self.field_defs)]
+        fields = ','.join([u'r.{0}'.format(f) for f in model_fields])
+        sel = ''' 
+          SELECT 
+            {0}
+          FROM "raw_{1}" AS r
+          JOIN "entity_{1}" AS e
+            USING(record_id)
+          LIMIT 1
+        '''.format(fields, self.dd_sess.id)
+        match_record = {}
+        with self.engine.begin() as conn:
+            match_record = dict(zip(model_fields, list(conn.execute(sel))[0]))
+        post_data = {
+            'api_key': self.user.id,
+            'session_key': self.dd_sess.id,
+            'object': match_record
+        }
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                rv = c.post('/match/', data=json.dumps(post_data))
+                for match in json.loads(rv.data)['matches']:
+                    assert float(match['match_confidence']) == 1.0
+
+    def test_bad_fields(self):
+        post_data = {
+            'api_key': self.user.id,
+            'session_key': self.dd_sess.id,
+            'object': {
+                'boo': 'foo',
+                'schmoo': 'schmoo'
+            },
+        }
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                rv = c.post('/match/', data=json.dumps(post_data))
+                assert rv.status == '400 BAD REQUEST'
+                assert json.loads(rv.data)['status'] == 'error'
+                assert 'schmoo' in json.loads(rv.data)['message']
+
+    def test_bad_post(self):
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                rv = c.post('/match/', data='lalala')
+                assert rv.status == '400 BAD REQUEST'
+                assert json.loads(rv.data)['status'] == 'error'
+                assert 'JSON object' in json.loads(rv.data)['message']
+    
+    def test_no_match(self):
+        model_fields = [f['field'] for f in json.loads(self.field_defs)]
+        match_record = {a: unicode(i) for i,a in enumerate(model_fields)}
+        post_data = {
+            'api_key': self.user.id,
+            'session_key': self.dd_sess.id,
+            'object': match_record
+        }
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                rv = c.post('/match/', data=json.dumps(post_data))
+                assert json.loads(rv.data)['status'] == 'ok'
+                assert len(json.loads(rv.data)['matches']) == 0
+
+    def test_matches_add_entity_getunmatched(self):
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                obj = json.loads(unmatched.data)['object']
+                matches = []
+                post_data = {
+                    'api_key': self.user.id,
+                    'session_key': self.dd_sess.id,
+                    'object': obj
+                }
+                while not matches:
+                    rv = c.post('/match/', data=json.dumps(post_data))
+                    matches = json.loads(rv.data)['matches']
+                post_data['object'] = obj
+                post_data['match_id'] = matches[0]['record_id']
+                del post_data['session_key']
+                add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', data=json.dumps(post_data))
+                assert json.loads(add_entity.data)['status'] == 'ok'
 

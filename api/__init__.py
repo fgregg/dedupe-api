@@ -10,6 +10,7 @@ from api.admin import admin
 from api.review import review
 from api.redis_session import RedisSessionInterface
 from api.database import init_engine
+from api.track_usage import tracker, UserSQLStorage
 
 try: # pragma: no cover
     from raven.contrib.flask import Sentry
@@ -23,10 +24,12 @@ except KeyError: #pragma: no cover
 def create_app(config='api.app_config'):
     app = Flask(__name__)
     app.config.from_object(config)
-    init_engine(app.config['DB_CONN'])
+    engine = init_engine(app.config['DB_CONN'])
     redis = Redis()
     app.session_interface = RedisSessionInterface(redis=redis, 
                                 prefix=app.config['REDIS_SESSION_KEY'])
+    storage = UserSQLStorage(engine=engine)
+    tracker.init_app(app, storage)
     if sentry: # pragma: no cover
         sentry.init_app(app)
     csrf.init_app(app)

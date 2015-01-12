@@ -1,64 +1,18 @@
-import unittest
 from os.path import join, abspath, dirname
-from uuid import uuid4
 from flask import request, session
 from api import create_app
-from api.database import init_engine, app_session, worker_session
-from api.models import DedupeSession, User
-from sqlalchemy.orm import sessionmaker, scoped_session
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, getMatchingReady
-from api.utils.helpers import STATUS_LIST
 from sqlalchemy import text
+from tests import DedupeAPITestCase
+from api.utils.helpers import STATUS_LIST
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
-class DelayedTest(unittest.TestCase):
+class DelayedTest(DedupeAPITestCase):
     ''' 
     Test the matching module
     '''
-    pass
-    
-    @classmethod
-    def setUpClass(cls):
-        cls.app = create_app(config='tests.test_config')
-        cls.engine = init_engine(cls.app.config['DB_CONN'])
-        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
-                                              autocommit=False, 
-                                              autoflush=False))
-        cls.user = cls.session.query(User).first()
-        cls.group = cls.user.groups[0]
-    
-    def setUp(self):
-        self.field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
-        settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
-        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
-        self.dd_sess = DedupeSession(
-                        id=unicode(uuid4()), 
-                        name='test_filename.csv',
-                        group=self.group,
-                        status=STATUS_LIST[0],
-                        settings_file=settings,
-                        field_defs=self.field_defs,
-                        training_data=training
-                      )
-        self.session.add(self.dd_sess)
-        self.session.commit()
-
-    def tearDown(self):
-        try:
-            self.session.delete(self.dd_sess)
-            self.session.commit()
-        except Exception:
-            self.session.rollback()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.session.close()
-        app_session.close()
-        worker_session.close()
-        worker_session.bind.dispose()
-        cls.engine.dispose()
 
     def get_table_names(self):
         tnames = text(''' 

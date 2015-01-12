@@ -24,7 +24,7 @@ from itertools import groupby
 def addRowHash(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
-    fields = list(set([f['field'] for f in field_defs]))
+    fields = sorted(list(set([f['field'] for f in field_defs])))
     engine = worker_session.bind
     fields = ["COALESCE(r.{0}, '')".format(f) for f in fields]
     fields = " || ';' || ".join(fields)

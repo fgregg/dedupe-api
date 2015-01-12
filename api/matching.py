@@ -10,6 +10,7 @@ from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
 from api.utils.helpers import preProcess
+from api.track_usage import tracker
 import dedupe
 from dedupe.serializer import _to_json
 from cStringIO import StringIO
@@ -48,9 +49,10 @@ def validate_post(post, user_sessions):
         status_code = 400
     return r, status_code, sess
 
+@tracker.include
 @csrf.exempt
-@matching.route('/match/', methods=['POST'])
 @check_sessions()
+@matching.route('/match/', methods=['POST'])
 def match():
     try:
         post = json.loads(request.data)
@@ -74,12 +76,33 @@ def match():
         n_matches = post.get('num_matches', 5)
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
-        model_fields = list(set([f['field'] for f in field_defs]))
+        model_fields = sorted(list(set([f['field'] for f in field_defs])))
         fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
-        engine = init_engine(current_app.config['DB_CONN'])
+        engine = db_session.bind
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
-        hash_me = ';'.join([preProcess(unicode(obj[i])) for i in model_fields])
+        try:
+            hash_me = []
+            for field in model_fields:
+                if obj[field]:
+                    hash_me.append(unicode(obj[field]))
+                else:
+                    hash_me.append('')
+            hash_me = ';'.join(hash_me)
+        except KeyError, e:
+            r['status'] = 'error'
+            r['message'] = 'Sent fields "{0}" do no match model fields "{1}"'\
+                .format(','.join(obj.keys()), ','.join(model_fields))
+            resp = make_response(json.dumps(r), 400)
+            resp.headers['Content-Type'] = 'application/json'
+            return resp
+        if set(obj.keys()).isdisjoint(set(model_fields)):
+            r['status'] = 'error'
+            r['message'] = 'Sent fields "{0}" do no match model fields "{1}"'\
+                .format(','.join(obj.keys()), ','.join(model_fields))
+            resp = make_response(json.dumps(r), 400)
+            resp.headers['Content-Type'] = 'application/json'
+            return resp
         md5_hash = md5(unidecode(hash_me)).hexdigest()
         exact_match = db_session.query(entity_table)\
             .filter(entity_table.c.source_hash == md5_hash).first()
@@ -91,12 +114,12 @@ def match():
                   JOIN "entity_{1}" AS e
                     ON r.record_id = e.record_id
                   WHERE e.entity_id = :entity_id
-                  LIMT :limit
-                '''.format(fields, session_id), 
-                entity_id=exact_match.entity_id, limit=n_matches)
+                  LIMIT :limit
+                '''.format(fields, session_id))
             rows = []
             with engine.begin() as conn:
-                rows = conn.execute(sel)
+                rows = list(conn.execute(sel, 
+                    entity_id=exact_match.entity_id, limit=n_matches))
             for row in rows:
                 d = {f: getattr(row, f) for f in model_fields}
                 d['entity_id'] = exact_match.entity_id
@@ -188,12 +211,26 @@ def add_entity(session_id):
         'message': ""
     }
     status_code = 200
-    if session_id not in flask_session['user_sessions']:
+    if session_id not in flask_session['user_sessions']: # pragma: no cover
         r['status'] = 'error'
         r['message'] = "You don't have access to session {0}".format(session_id)
         status_code = 401
     else:
-        obj = json.loads(request.data)['object']
+        try:
+            post = json.loads(request.data)
+        except ValueError:
+            r = {
+                'status': 'error',
+                'message': ''' 
+                    The content of your request should be a 
+                    string encoded JSON object.
+                ''',
+                'object': request.data,
+            }
+            resp = make_response(json.dumps(r), 400)
+            resp.headers['Content-Type'] = 'application/json'
+            return resp
+        obj = post['object']
         record_id = obj.get('record_id')
         if record_id:
             del obj['record_id']
@@ -336,7 +373,7 @@ def get_unmatched(session_id):
           WHERE e.record_id IS NULL
           LIMIT 1
         '''.format(fields, session_id)
-        engine = init_engine(current_app.config['DB_CONN'])
+        engine = db_session.bind
         with engine.begin() as conn:
             rows = [dict(zip(raw_fields, r)) for r in conn.execute(sel)]
         resp['object'] = rows[0]

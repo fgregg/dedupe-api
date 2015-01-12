@@ -1,79 +1,20 @@
-import unittest
 import json
 import cPickle
 import dedupe
 from os.path import join, abspath, dirname
-from uuid import uuid4
 from flask import request, session
-from api import create_app
 from api.utils.helpers import slugify
-from api.database import init_engine, app_session, worker_session
-from api.models import User, DedupeSession
-from api.utils.helpers import STATUS_LIST
 from api.utils.db_functions import writeRawTable
-from test_config import DEFAULT_USER
-from sqlalchemy.orm import sessionmaker, scoped_session
 from csvkit.unicsv import UnicodeCSVReader
-from hashlib import md5
+from tests import DedupeAPITestCase
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
-class TrainerTest(unittest.TestCase):
+class TrainerTest(DedupeAPITestCase):
     ''' 
     Test the matching module
     '''
-    @classmethod
-    def setUpClass(cls):
-        cls.app = create_app(config='tests.test_config')
-        cls.client = cls.app.test_client()
-        cls.engine = init_engine(cls.app.config['DB_CONN'])
-   
-        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
-                                              autocommit=False, 
-                                              autoflush=False))
-        cls.user = cls.session.query(User).first()
-        cls.group = cls.user.groups[0]
-        cls.user_pw = DEFAULT_USER['user']['password']
-        cls.session_id = unicode(uuid4())
-
-    def setUp(self):
-        self.dd_sess = DedupeSession(
-                        id=self.session_id, 
-                        name='csv_example_messy_input.csv',
-                        group=self.group,
-                        status=STATUS_LIST[0],
-                      )
-        self.session.add(self.dd_sess)
-        self.session.commit()
-
-    def tearDown(self):
-        try:
-            self.session.delete(self.dd_sess)
-            self.session.commit()
-        except Exception:
-            self.session.rollback()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.session.close()
-        app_session.close()
-        worker_session.close()
-        worker_session.bind.dispose()
-        cls.engine.dispose()
     
-    def login(self, email=None, pw=None):
-        if not email: 
-            email = self.user.email
-        if not pw:
-            pw = self.user_pw
-        return self.client.post('/login/', data=dict(
-                    email=email,
-                    password=pw,
-                ), follow_redirects=True)
-
-    def logout(self):
-        return self.client.get('/logout/')
-
     def test_upload(self):
         self.session.delete(self.dd_sess)
         self.session.commit()
@@ -81,7 +22,7 @@ class TrainerTest(unittest.TestCase):
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
-                    sess['session_id'] = self.session_id
+                    sess['session_id'] = self.dd_sess.id
                 rv = c.post('/upload/', data={
                             'input_file': (open(join(fixtures_path, 
                                 'csv_example_messy_input.csv'),'rb'), 
@@ -129,12 +70,12 @@ class TrainerTest(unittest.TestCase):
 
     def test_select_fields_sid(self):
         fobj = open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb')
-        fieldnames = writeRawTable(session_id=self.session_id, file_obj=fobj)
+        fieldnames = writeRawTable(session_id=self.dd_sess.id, file_obj=fobj)
         fieldnames = [slugify(unicode(f)) for f in fieldnames]
         with self.app.test_request_context():
             self.login()
             with self.client as c:
-                rv = c.get('/select-fields/?session_id=' + self.session_id)
+                rv = c.get('/select-fields/?session_id=' + self.dd_sess.id)
                 assert set(session['fieldnames']) == set(fieldnames)
     
     def test_select_fields_post(self):
@@ -176,7 +117,7 @@ class TrainerTest(unittest.TestCase):
                 with c.session_transaction() as sess:
                     sess['field_list'] = field_list
                     sess['user_id'] = self.user.id
-                    sess['session_id'] = self.session_id
+                    sess['session_id'] = self.dd_sess.id
                 rv = c.get('/select-field-types/')
                 for field in field_list:
                     assert field in rv.data
@@ -194,7 +135,7 @@ class TrainerTest(unittest.TestCase):
                 with c.session_transaction() as sess:
                     sess['field_list'] = field_list
                     sess['user_id'] = self.user.id
-                    sess['session_id'] = self.session_id
+                    sess['session_id'] = self.dd_sess.id
                 post_data = {
                     'phone_type': 'ShortString', 
                     'phone_missing': 'on',
@@ -222,7 +163,7 @@ class TrainerTest(unittest.TestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
-                    sess['session_id'] = self.session_id
+                    sess['session_id'] = self.dd_sess.id
                 rv = c.get('/training-run/')
                 assert 'still working on finishing up processing your upload' in rv.data
     
@@ -247,7 +188,7 @@ class TrainerTest(unittest.TestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     del sess['session_id']
-                rv = c.get('/training-run/?session_id=' + self.session_id)
+                rv = c.get('/training-run/?session_id=' + self.dd_sess.id)
                 assert 'still working on finishing up processing your upload' in rv.data
     
     def test_training_run_qparam(self):
@@ -279,7 +220,7 @@ class TrainerTest(unittest.TestCase):
     def test_mark_pair(self):
         fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
         sample = open(join(fixtures_path, 'sample.dump'), 'rb').read()
-        self.dd_sess.field_defs = fds
+        self.dd_sess.training_data = None
         self.session.add(self.dd_sess)
         self.session.commit()
         deduper = dedupe.Dedupe(json.loads(fds), cPickle.loads(sample))
@@ -288,7 +229,7 @@ class TrainerTest(unittest.TestCase):
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
-                    sess['session_id'] = self.session_id
+                    sess['session_id'] = self.dd_sess.id
                     sess['deduper'] = deduper
                     sess['current_pair'] = record_pair
                 rv = c.get('/mark-pair/?action=yes')
