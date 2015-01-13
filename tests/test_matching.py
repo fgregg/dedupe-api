@@ -159,20 +159,81 @@ class MatchingTest(unittest.TestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_sessions'] = [self.dd_sess.id]
-                unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
-                obj = json.loads(unmatched.data)['object']
+
+                # First, get an unmatched record and try to find matches
                 matches = []
-                post_data = {
-                    'api_key': self.user.id,
-                    'session_key': self.dd_sess.id,
-                    'object': obj
-                }
                 while not matches:
+                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    obj = json.loads(unmatched.data)['object']
+                    post_data = {
+                        'api_key': self.user.id,
+                        'session_key': self.dd_sess.id,
+                        'object': obj
+                    }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data)['matches']
                 post_data['object'] = obj
                 post_data['match_id'] = matches[0]['record_id']
                 del post_data['session_key']
-                add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', data=json.dumps(post_data))
-                assert json.loads(add_entity.data)['status'] == 'ok'
 
+                # Second, add a matched record to the entity map
+                add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', 
+                                    data=json.dumps(post_data))
+                rows = []
+                with self.engine.begin() as conn:
+                    rows = list(conn.execute(text(''' 
+                        SELECT entity_id 
+                          FROM "entity_{0}"
+                        WHERE record_id = :record_id
+                    '''.format(self.dd_sess.id)), record_id=obj['record_id']))
+                entity_id = rows[0][0]
+
+                # Check to see that the status is OK and that the new entry is
+                # associated with the correct entity
+                assert json.loads(add_entity.data)['status'] == 'ok'
+                assert entity_id == matches[0]['entity_id']
+                rows = []
+
+                # Now, get all of the entity IDs
+                with self.engine.begin() as conn:
+                    rows = list(conn.execute('''
+                        SELECT entity_id FROM "entity_{0}"
+                        '''.format(self.dd_sess.id)))
+                existing = [r[0] for r in rows]
+                post_data = {}
+                obj = {}
+
+                # Find a record that doesn't match anything
+                while matches:
+                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    obj = json.loads(unmatched.data)['object']
+                    post_data = {
+                        'api_key': self.user.id,
+                        'session_key': self.dd_sess.id,
+                        'object': obj
+                    }
+                    rv = c.post('/match/', data=json.dumps(post_data))
+                    matches = json.loads(rv.data)['matches']
+                    del post_data['session_key']
+                    if matches:
+                        # Have to make entries when we do find matches otherwise 
+                        # we keep getting the same record over and over
+                        post_data['match_id'] = matches[0]['record_id']
+                        add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', 
+                                            data=json.dumps(post_data))
+
+                # Last, add an new entry to the entity map (that doesn't
+                # reference any existing entity)
+                add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', 
+                                    data=json.dumps(post_data))
+                rows = []
+                with self.engine.begin() as conn:
+                    rows = list(conn.execute(text(''' 
+                        SELECT entity_id 
+                          FROM "entity_{0}"
+                        WHERE record_id = :record_id
+                    '''.format(self.dd_sess.id)), record_id=obj['record_id']))
+                entity_id = rows[0][0]
+
+                # Check to make sure that a new entity was indeed made
+                assert entity_id not in existing

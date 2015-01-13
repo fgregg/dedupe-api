@@ -254,7 +254,7 @@ def add_entity(session_id):
             row = db_session.query(proc_table)\
                 .filter(proc_table.c.record_id == record_id)\
                 .first()
-            if not row:
+            if not row: # pragma: no cover
                 raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
                     autoload=True, autoload_with=engine, keep_existing=True)
                 proc_ins = 'INSERT INTO "processed_{0}" (SELECT record_id, '\
@@ -290,10 +290,14 @@ def add_entity(session_id):
                 'clustered': True,
                 'checked_out': False,
             }
-            if match_id:
-                entity['target_record_id'] = match_id
             entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
+            if match_id:
+                entity['target_record_id'] = match_id
+                entity_id = db_session.query(entity_table.c.entity_id)\
+                    .filter(entity_table.c.record_id == match_id)\
+                    .first()
+                entity['entity_id'] = entity_id.entity_id
             with engine.begin() as conn:
                 conn.execute(entity_table.insert(), **entity)
     resp = make_response(json.dumps(r), status_code)
@@ -380,96 +384,4 @@ def get_unmatched(session_id):
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
-
-@matching.route('/match-demo/<session_id>/')
-@login_required
-@check_roles(roles=['admin', 'reviewer'])
-def match_demo(session_id):
-    user = db_session.query(User).get(flask_session['user_id'])
-    sess = db_session.query(DedupeSession).get(session_id)
-    return render_template('match-demo.html', sess=sess, user=user)
-
-@matching.route('/bulk-match-demo/<session_id>/', methods=['GET', 'POST'])
-@login_required
-def bulk_match_demo(session_id):
-    user = db_session.query(User).get(flask_session['user_id'])
-    sess = db_session.query(DedupeSession).get(session_id)
-    context = {
-        'user': user,
-        'sess': sess
-    }
-    if request.method == 'POST':
-        try:
-            upload = request.files.values()[0]
-        except IndexError:
-            upload = None
-            flash('File upload is required')
-        if upload:
-            context['field_defs'] = list(set([f['field'] for f in json.loads(sess.field_defs)]))
-            reader = UnicodeCSVReader(upload)
-            context['header'] = reader.next()
-            upload.seek(0)
-            flask_session['bulk_match_upload'] = upload.read()
-            flask_session['bulk_match_filename'] = upload.filename
-    return render_template('bulk-match.html', **context)
-
-@csrf.exempt
-@matching.route('/bulk-match/<session_id>/', methods=['POST'])
-@check_sessions()
-def bulk_match(session_id):
-    """ 
-    field_map looks like:
-        {
-            '<dataset_field_name>': '<uploaded_field_name>',
-            '<dataset_field_name>': '<uploaded_field_name>',
-        }
-    """
-    resp = {
-        'status': 'ok',
-        'message': ''
-    }
-    status_code = 200
-    files = request.files.values()
-    if not files:
-        try:
-            files = flask_session['bulk_match_upload']
-            filename = flask_session['bulk_match_filename']
-        except KeyError:
-            resp['status'] = 'error'
-            resp['message'] = 'File upload required'
-            status_code = 400
-    else:
-        files = files[0].read()
-        filename = files.filename
-    field_map = request.form.get('field_map')
-    if not field_map:
-        resp['status'] = 'error'
-        resp['message'] = 'field_map is required'
-        status_code = 400
-    if status_code is 200:
-        field_map = json.loads(field_map)
-        token = bulkMatchWorker.delay(
-            session_id,
-            files, 
-            field_map, 
-            filename
-        )
-        resp['token'] = token.key
-    resp = make_response(json.dumps(resp), status_code)
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
-
-@matching.route('/check-bulk-match/<token>/')
-@check_sessions()
-def check_bulk_match(token):
-    rv = DelayedResult(token)
-    if rv.return_value is None:
-        return jsonify(ready=False)
-    redis.delete(token)
-    result = rv.return_value
-    if result['status'] == 'ok':
-        result['result'] = '/downloads/%s' % result['result']
-    resp = make_response(json.dumps(result))
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
 
