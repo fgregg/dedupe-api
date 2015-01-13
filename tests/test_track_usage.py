@@ -103,7 +103,6 @@ class TrackUsageTest(unittest.TestCase):
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
-                    matches = json.loads(rv.data)['matches']
                     i += 1
             rows = []
             with self.engine.begin() as conn:
@@ -148,7 +147,6 @@ class TrackUsageTest(unittest.TestCase):
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
-                    matches = json.loads(rv.data)['matches']
                     i += 1
         with self.app.test_request_context():
             self.login()
@@ -165,7 +163,6 @@ class TrackUsageTest(unittest.TestCase):
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
-                    matches = json.loads(rv.data)['matches']
                     i += 1
           
         rows = []
@@ -179,4 +176,4 @@ class TrackUsageTest(unittest.TestCase):
         assert int(rows[0][0]) == 10
         assert int(rows[1][0]) == 10
         api_keys = [r[1] for r in rows]
-        assert api_keys == [extra_user_id, self.user.id]
+        assert set(api_keys) == set([extra_user_id, self.user.id])
