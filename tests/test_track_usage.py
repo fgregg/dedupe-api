@@ -9,14 +9,174 @@ from api.database import init_engine, app_session, worker_session
 from test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
-from api.track_usage import TrackUserUsage, UserSQLStorage
-from tests import DedupeAPITestCase
+from api.utils.helpers import STATUS_LIST
+from api.utils.delayed_tasks import initializeSession, initializeModel, \
+    dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
-class TrackUsageTest(DedupeAPITestCase):
+class TrackUsageTest(unittest.TestCase):
     ''' 
     Test the track_usage module
     '''
-    def test_count(self):
-        assert 'a' == 'a'
+    @classmethod
+    def setUpClass(cls):
+        cls.app = create_app(config='tests.test_config')
+        cls.client = cls.app.test_client()
+        cls.engine = init_engine(cls.app.config['DB_CONN'])
+   
+        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
+                                              autocommit=False, 
+                                              autoflush=False))
+        cls.user = cls.session.query(User).first()
+        cls.group = cls.user.groups[0]
+        cls.user_pw = DEFAULT_USER['user']['password']
+        cls.field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
+        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
+        cls.dd_sess = DedupeSession(
+                        id=unicode(uuid4()), 
+                        name='test_filename.csv',
+                        group=cls.group,
+                        status=STATUS_LIST[0],
+                        settings_file=settings,
+                        field_defs=cls.field_defs,
+                        training_data=training
+                      )
+        cls.session.add(cls.dd_sess)
+        cls.session.commit()
+        
+        # Go through dedupe process
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(cls.dd_sess.id)), 'wb') as outp:
+                outp.write(inp.read())
+        initializeSession(cls.dd_sess.id)
+        initializeModel(cls.dd_sess.id)
+        dedupeRaw(cls.dd_sess.id)
+        bulkMarkClusters(cls.dd_sess.id, user=cls.user.name)
+        bulkMarkCanonClusters(cls.dd_sess.id, user=cls.user.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.session.close()
+        app_session.close()
+        worker_session.close()
+        worker_session.bind.dispose()
+        cls.engine.dispose()
+    
+    def login(self, email=None, pw=None):
+        if not email: 
+            email = self.user.email
+        if not pw:
+            pw = self.user_pw
+        return self.client.post('/login/', data=dict(
+                    email=email,
+                    password=pw,
+                ), follow_redirects=True)
+
+    def logout(self):
+        return self.client.get('/logout/')
+    
+    def setUp(self):
+        with self.engine.begin() as conn:
+            conn.execute('DELETE FROM dedupe_usage')
+    
+    def add_user(self, data):
+        return self.client.post('/add-user/', 
+                                  data=data, 
+                                  follow_redirects=True)
+
+    def test_increment(self):
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+
+                i = 0
+                while i < 10:
+                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    obj = json.loads(unmatched.data)['object']
+                    post_data = {
+                        'api_key': self.user.id,
+                        'session_key': self.dd_sess.id,
+                        'object': obj
+                    }
+                    rv = c.post('/match/', data=json.dumps(post_data))
+                    matches = json.loads(rv.data)['matches']
+                    i += 1
+            rows = []
+            with self.engine.begin() as conn:
+                rows = list(conn.execute('SELECT count(*) FROM dedupe_usage'))
+            assert int(rows[0][0]) == 10
+
+    def test_user_increment(self):
+        extra_user_id = None
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                data = {'name': 'harry',
+                        'email': 'harry@harry.com',
+                        'password': 'harryspw',
+                        'roles': [1],
+                        'groups': [self.group.id],
+                    }
+                c.post('/add-user/', 
+                    data=data, 
+                    follow_redirects=True)
+                
+                rows = []
+                with self.engine.begin() as conn:
+                    rows = list(conn.execute(
+                                  text('select id from dedupe_user where name = :name limit 1'), 
+                                  name='harry')
+                                )
+                extra_user_id = rows[0][0]
+
+        with self.app.test_request_context():
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                    sess['user_id'] = extra_user_id
+                i = 0
+                while i < 10:
+                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    obj = json.loads(unmatched.data)['object']
+                    post_data = {
+                        'api_key': extra_user_id,
+                        'session_key': self.dd_sess.id,
+                        'object': obj
+                    }
+                    rv = c.post('/match/', data=json.dumps(post_data))
+                    matches = json.loads(rv.data)['matches']
+                    i += 1
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                i = 0
+                while i < 10:
+                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    obj = json.loads(unmatched.data)['object']
+                    post_data = {
+                        'api_key': self.user.id,
+                        'session_key': self.dd_sess.id,
+                        'object': obj
+                    }
+                    rv = c.post('/match/', data=json.dumps(post_data))
+                    matches = json.loads(rv.data)['matches']
+                    i += 1
+          
+        rows = []
+        with self.engine.begin() as conn:
+            rows = list(conn.execute(''' 
+                SELECT count(*), api_key
+                FROM dedupe_usage
+                GROUP BY api_key
+                '''))
+
+        assert int(rows[0][0]) == 10
+        assert int(rows[1][0]) == 10
+        api_keys = [r[1] for r in rows]
+        assert api_keys == [extra_user_id, self.user.id]

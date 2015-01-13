@@ -57,7 +57,7 @@ class TrackUserUsage(TrackUsage):
 
 class UserSQLStorage(Storage):
     
-    def set_up(self, engine=None, table_name="flask_usage"):
+    def set_up(self, engine=None, table_name="dedupe_usage"):
 
         self._eng = engine
         meta = sql.MetaData()

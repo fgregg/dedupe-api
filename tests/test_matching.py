@@ -12,7 +12,6 @@ from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
-from tests import DedupeAPITestCase
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
