@@ -86,6 +86,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
             JOIN "{2}" as e 
                 ON r.record_id = e.record_id
             WHERE e.entity_id = :entity_id
+            ORDER BY e.confidence
             '''.format(raw_cols, raw_name, ent_name))
         records = []
         with engine.begin() as conn:

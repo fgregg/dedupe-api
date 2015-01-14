@@ -248,7 +248,7 @@ def add_entity(session_id):
             r['message'] = "The fields in the object do not match the fields in the model"
             status_code = 400
         else:
-            engine = init_engine(current_app.config['DB_CONN'])
+            engine = db_session.bind
             proc_table = Table('processed_{0}'.format(session_id), Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
             row = db_session.query(proc_table)\
