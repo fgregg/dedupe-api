@@ -233,14 +233,19 @@ class TrainerTest(DedupeAPITestCase):
                     sess['deduper'] = deduper
                     sess['current_pair'] = record_pair
                 rv = c.get('/mark-pair/?action=yes')
-                assert json.loads(rv.data)['counter']['yes'] == 1
-                
+                counter = json.loads(rv.data)['counter']
+                assert counter['yes'] == 1
+                with c.session_transaction() as sess:
+                    sess['counter'] = counter
                 self.session.refresh(self.dd_sess)
                 assert self.dd_sess.status == 'training started'
                 
                 rv = c.get('/mark-pair/?action=no')
-                assert json.loads(rv.data)['counter']['yes'] == 1
-                assert json.loads(rv.data)['counter']['no'] == 1
+                counter.update(json.loads(rv.data)['counter'])
+                assert counter['yes'] == 1
+                assert counter['no'] == 1
+                with c.session_transaction() as sess:
+                    sess['counter'] = counter
                 
                 rv = c.get('/mark-pair/?action=unsure')
                 assert json.loads(rv.data)['counter']['yes'] == 1
