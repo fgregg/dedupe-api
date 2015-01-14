@@ -50,11 +50,15 @@
             <tbody>
                 <tr>
                     <td>Yes</td>
-                    <td class='warning' id='num-yes'><span>0</span> / 10 </td>
+                    <td class='warning' id='num-yes'>
+                        <span>{{session.counter.yes|default('0')}}</span> / 10
+                    </td>
                 </tr>
                 <tr>
                     <td>No</td>
-                    <td class='warning' id='num-no'><span>0</span> / 10 </td>
+                    <td class='warning' id='num-no'>
+                        <span>{{session.counter.no|default('0')}}</span> / 10
+                    </td>
                 </tr>
                 <tr>
                     <td>Unsure</td>

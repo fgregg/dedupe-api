@@ -184,10 +184,6 @@ def training_run():
     if request.args.get('session_id'):
         session_id = request.args['session_id']
         flask_session['session_id'] = request.args['session_id']
-        try:
-            del flask_session['counter']
-        except KeyError:
-            pass
     elif flask_session.get('session_id'):
         session_id = flask_session['session_id']
     else:
@@ -198,6 +194,13 @@ def training_run():
     else:
         sess = db_session.query(DedupeSession).get(flask_session['session_id'])
         user = db_session.query(User).get(flask_session['user_id'])
+        if sess.training_data:
+            td = json.loads(sess.training_data)
+            flask_session['counter'] = {
+                    'yes': len(td['match']),
+                    'no': len(td['distinct']),
+                    'unsure': 0
+                }
         error = None
         status_code = 200
         field_defs = json.loads(sess.field_defs)
@@ -241,7 +244,9 @@ def get_pair():
 def mark_pair():
     action = request.args['action']
     flask_session['last_interaction'] = datetime.now()
-    counter = {'yes': 0, 'no': 0, 'unsure': 0}
+    counter = flask_session.get('counter')
+    if not counter:
+        counter = {'yes': 0, 'no': 0, 'unsure': 0}
     sess = db_session.query(DedupeSession).get(flask_session['session_id'])
     deduper = flask_session['deduper']
 
@@ -271,8 +276,6 @@ def mark_pair():
     current_pair = [l_d, r_d]
     if sess.training_data:
         labels = json.loads(sess.training_data)
-        counter['yes'] = len(labels['match'])
-        counter['no'] = len(labels['distinct'])
     else:
         labels = {'distinct' : [], 'match' : []}
     if sess.status != 'training started':
