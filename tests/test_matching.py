@@ -9,7 +9,7 @@ from api.database import init_engine, app_session, worker_session
 from test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
-from api.utils.helpers import STATUS_LIST
+from api.utils.helpers import STATUS_LIST, preProcess
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
 
@@ -152,6 +152,45 @@ class MatchingTest(unittest.TestCase):
                 assert json.loads(rv.data)['status'] == 'ok'
                 assert len(json.loads(rv.data)['matches']) == 0
 
+    def test_train(self):
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+
+                # First, get an unmatched record and try to find matches
+                matches = []
+                while not matches:
+                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    obj = json.loads(unmatched.data)['object']
+                    post_data = {
+                        'api_key': self.user.id,
+                        'session_key': self.dd_sess.id,
+                        'object': obj
+                    }
+                    rv = c.post('/match/', data=json.dumps(post_data))
+                    matches = json.loads(rv.data)['matches']
+            matches[0]['match'] = 1
+            del matches[0]['record_id']
+            del matches[0]['entity_id']
+            for match in matches[1:]:
+                match['match'] = 0
+                del match['record_id']
+                del match['entity_id']
+            post_data['matches'] = matches
+            del post_data['object']['record_id']
+            rv = c.post('/train/', data=json.dumps(post_data))
+            self.session.refresh(self.dd_sess)
+            td = json.loads(self.dd_sess.training_data)
+            del matches[0]['match']
+            matched = {k:preProcess(unicode(v)) for k,v in matches[0].items()}
+            assert [matched, obj] in td['match']
+            for match in matches[1:]:
+                m = {k:preProcess(unicode(v)) for k,v in match.items()}
+                del m['match']
+                assert [m, obj] in td['distinct']
+
     def test_matches_add_entity_getunmatched(self):
         with self.app.test_request_context():
             self.login()
@@ -216,7 +255,8 @@ class MatchingTest(unittest.TestCase):
                     del post_data['session_key']
                     if matches:
                         # Have to make entries when we do find matches otherwise 
-                        # we keep getting the same record over and over
+                        # we keep getting the same record over and over. This also
+                        # gives us an opportunity to test training
                         post_data['match_id'] = matches[0]['record_id']
                         add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', 
                                             data=json.dumps(post_data))

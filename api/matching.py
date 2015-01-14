@@ -313,7 +313,8 @@ def train():
     except ValueError:
         post = json.loads(request.form.keys()[0])
     user_sessions = flask_session['user_sessions']
-    r, status_code, user, sess = validate_post(post)
+    r, status_code, sess = validate_post(post, user_sessions)
+    # TODO: Check if model fields are present in matches
     if not post.get('matches'):
         r['status'] = 'error'
         r['message'] = 'List of matches is required'
@@ -331,7 +332,6 @@ def train():
                 negative.append(match)
             for k,v in match.items():
                 match[k] = preProcess(unicode(v))
-            del match['match_confidence']
             del match['match']
         if len(positive) > 1:
             r['status'] = 'error'
