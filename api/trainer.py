@@ -108,7 +108,7 @@ def train():
             del flask_session[k]
         except KeyError:
             pass
-    return make_response(render_template('upload.html', error=error, user=user), status_code)
+    return make_response(render_template('dedupe_session/upload.html', error=error, user=user), status_code)
 
 @trainer.route('/select-fields/', methods=['GET', 'POST'])
 @login_required
@@ -139,7 +139,7 @@ def select_fields():
             error = 'You must select at least one field to compare on.'
             status_code = 400
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('select_fields.html', error=error, fields=fields, user=user)
+    return render_template('dedupe_session/select_fields.html', error=error, fields=fields, user=user)
 
 @trainer.route('/select-field-types/', methods=['GET', 'POST'])
 @login_required
@@ -176,7 +176,7 @@ def select_field_types():
         updateSessionStatus(sess.id)
         flask_session['init_key'] = initializeModel.delay(sess.id).key
         return redirect(url_for('trainer.training_run'))
-    return render_template('select_field_types.html', user=user, field_list=field_list)
+    return render_template('dedupe_session/select_field_types.html', user=user, field_list=field_list)
 
 @trainer.route('/training-run/')
 @login_required
@@ -219,7 +219,7 @@ def training_run():
             flask_session['deduper'] = deduper
             init_status = 'finished'
     return make_response(render_template(
-                            'training_run.html', 
+                            'dedupe_session/training_run.html', 
                             user=user, error=error, 
                             init_status=init_status), status_code)
 
@@ -316,23 +316,7 @@ def mark_pair():
 @check_roles(roles=['admin'])
 def dedupe_finished(): # pragma: no cover
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_template("dedupe_finished.html", user=user)
-
-@trainer.route('/upload_formats/')
-def upload_formats(): # pragma: no cover
-    user_id = flask_session.get('user_id')
-    user = None
-    if user_id:
-        user = db_session.query(User).get(flask_session['user_id'])
-    return render_template("upload-formats.html", user=user)
-
-@trainer.route('/about/')
-def about(): # pragma: no cover
-    user_id = flask_session.get('user_id')
-    user = None
-    if user_id:
-        user = db_session.query(User).get(flask_session['user_id'])
-    return render_template("about.html", user=user)
+    return render_template("dedupe_session/dedupe_finished.html", user=user)
 
 @trainer.route('/working/')
 @login_required
@@ -351,3 +335,18 @@ def working():
         end = time.time()
     return jsonify(ready=True, result=rv.return_value)
 
+@trainer.route('/upload_formats/')
+def upload_formats(): # pragma: no cover
+    user_id = flask_session.get('user_id')
+    user = None
+    if user_id:
+        user = db_session.query(User).get(flask_session['user_id'])
+    return render_template("upload-formats.html", user=user)
+
+@trainer.route('/about/')
+def about(): # pragma: no cover
+    user_id = flask_session.get('user_id')
+    user = None
+    if user_id:
+        user = db_session.query(User).get(flask_session['user_id'])
+    return render_template("about.html", user=user)

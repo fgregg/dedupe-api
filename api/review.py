@@ -17,7 +17,7 @@ review = Blueprint('review', __name__)
 @check_roles(roles=['admin', 'reviewer'])
 def match_review(session_id): # pragma: no cover
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('match-review.html', 
+    return render_template('dedupe_session/match-review.html', 
                             session_id=session_id, 
                             user=user)
 
@@ -29,7 +29,7 @@ def session_review(session_id):
     if request.args.get('second_review'):
         first_review = False
     user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('session-review.html', 
+    return render_template('dedupe_session/session-review.html', 
                             session_id=session_id, 
                             user=user, 
                             first_review=first_review)
