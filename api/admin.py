@@ -108,6 +108,7 @@ def session_admin(session_id):
         flash("You don't have access to session {0}".format(session_id))
         return redirect(url_for('admin.index'))
     else:
+        user = db_session.query(User).get(flask_session['user_id'])
         sess = db_session.query(DedupeSession).get(session_id)
         predicates = None
         session_info = {}
@@ -168,7 +169,8 @@ def session_admin(session_id):
                             dd_session=sess, 
                             session_info=session_info, 
                             predicates=predicates,
-                            training_data=training_data)
+                            training_data=training_data,
+                            user=user)
 
 @admin.route('/training-data/<session_id>/')
 @check_sessions()
