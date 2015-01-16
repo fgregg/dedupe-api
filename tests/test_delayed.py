@@ -39,14 +39,13 @@ class DelayedTest(DedupeAPITestCase):
             rows = list(conn.execute('select count(*) from "raw_{0}"'\
                 .format(self.dd_sess.id)))
         self.get_table_names()
-        assert self.dd_sess.status == STATUS_LIST[1]
+        assert self.dd_sess.status == STATUS_LIST[0]
         assert self.dd_sess.record_count == int(rows[0][0])
         assert 'raw_{0}'.format(self.dd_sess.id) in self.table_names
 
         initializeModel(self.dd_sess.id)
         self.session.refresh(self.dd_sess)
         self.get_table_names()
-        assert self.dd_sess.status == STATUS_LIST[2]
         assert self.dd_sess.sample is not None
         assert 'processed_{0}'.format(self.dd_sess.id) in self.table_names
         assert 'entity_{0}'.format(self.dd_sess.id) in self.table_names
@@ -54,7 +53,6 @@ class DelayedTest(DedupeAPITestCase):
         dedupeRaw(self.dd_sess.id)
         self.session.refresh(self.dd_sess)
         self.get_table_names()
-        assert self.dd_sess.status == STATUS_LIST[3]
         assert self.dd_sess.entity_count > 0
         assert self.dd_sess.review_count > 0
         assert 'small_cov_{0}'.format(self.dd_sess.id) in self.table_names
@@ -62,7 +60,6 @@ class DelayedTest(DedupeAPITestCase):
         dedupeCanon(self.dd_sess.id)
         self.session.refresh(self.dd_sess)
         self.get_table_names()
-        assert self.dd_sess.status == STATUS_LIST[4]
         assert 'processed_{0}_cr'.format(self.dd_sess.id) in self.table_names
         assert 'entity_{0}_cr'.format(self.dd_sess.id) in self.table_names
         assert 'small_cov_{0}_cr'.format(self.dd_sess.id) in self.table_names

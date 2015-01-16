@@ -130,7 +130,11 @@
             $.when(getMatches(JSON.stringify(obj))).then(
                 function(matches){
                     $('#group-display').spin(false);
-                    displayRecord(matches.matches, obj)
+                    if(matches.matches.length > 0){
+                        displayRecord(matches.matches, obj)
+                    } else {
+                        console.log('NO MORE RECORDS TO MATCH')
+                    }
                 }
             )
         });

@@ -282,8 +282,6 @@ def mark_pair():
         labels = json.loads(sess.training_data)
     else:
         labels = {'distinct' : [], 'match' : []}
-    if sess.status != 'training started':
-        sess.status = 'training started'
     if action == 'yes':
         labels['match'].append(current_pair)
         counter['yes'] += 1
@@ -293,7 +291,6 @@ def mark_pair():
         counter['no'] += 1
         resp = {'counter': counter}
     elif action == 'finish':
-        updateSessionStatus(flask_session['session_id'])
         rv = dedupeRaw.delay(flask_session['session_id'])
         flask_session['deduper_key'] = rv.key
         resp = {'finished': True}

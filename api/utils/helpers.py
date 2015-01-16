@@ -18,15 +18,12 @@ from unidecode import unidecode
 import cPickle
 
 STATUS_LIST = [
-    'dataset uploaded',       # File stored, waiting for raw tables to be written
-    'session initialized',    # Raw and processed tables written
-    'model defined',          # User gave us a model
-    'entity map initialized', # Looked for exact duplicates and made entity map from that
-    'training started',       # User started training
-    'clustering started',     # User finished training and clustering process is running
-    'entity map updated',     # Entity map updated with results of clustering
-    'canon clustered',        # First cluster review complete and results of canonical dedupe are ready
-    'matching ready',         # Canonical clusters are reviewed and Gazetteer settings are saved
+    'dataset uploaded',
+    'model defined',
+    'entity map updated',
+    'canon clustered',
+    'matching ready',
+    'canonical',
 ]
 
 def updateTraining(session_id, record_ids, distinct=False):

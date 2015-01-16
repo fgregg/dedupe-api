@@ -60,6 +60,7 @@ class DedupeSession(Base):
     record_count = Column(Integer)
     entity_count = Column(Integer)
     review_count = Column(Integer)
+    processing = Column(Boolean, default=False)
     group_id = Column(String(36), ForeignKey('dedupe_group.id'))
     group = relationship('Group', backref=backref('sessions'))
 
