@@ -2,53 +2,46 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 <div class="row">
-    <div class="col-md-6">
+    <div class="col-md-12">
         <h2>{{ dd_session.name }}</h2>
+
         <div class="row">
-            <div class="col-md-12">
-                <h4>
-                    Downloads: <br />
-                    {% if dd_session.field_defs %}
-                      <span class="label label-info">
-                        <a href="{{url_for('admin.field_definitions', session_id=dd_session.id)}}">Data Model</a>
-                      </span>
-                    {% endif %}
-                    {% if dd_session.settings_file %}
-                      &nbsp;<span class="label label-info">
-                        <a href="{{url_for('admin.settings_file', session_id=dd_session.id)}}">Settings File</a>
-                      </span>
-                    {% endif %}
-                    {% if dd_session.training_data %}
-                      &nbsp;<span class="label label-info">
-                        <a href="{{url_for('admin.training_data', session_id=dd_session.id)}}">Training Data</a>
-                      </span>
-                    {% endif %}
-                      &nbsp;<span class="label label-info">
-                        <a href="{{url_for('admin.entity_map_dump', session_id=dd_session.id)}}">Entity Map</a>
-                      </span>
-                </h4>
+            <div class="col-md-6">
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Entities</th>
+                            <th>Records</th>
+                            <th>Review</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>{{ dd_session.status|title }}</td>
+                            <td>{{ dd_session.entity_count }}</td>
+                            <td>{{ dd_session.record_count }}</td>
+                            <td>{{ dd_session.review_count }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
-    </div>
-    <div class="col-md-6">
-        <table class="table table-bordered table-striped">
-            <thead>
-                <tr>
-                    <th>Status</th>
-                    <th>Entities</th>
-                    <th>Records</th>
-                    <th>Review</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>{{ dd_session.status|title }}</td>
-                    <td>{{ dd_session.entity_count }}</td>
-                    <td>{{ dd_session.record_count }}</td>
-                    <td>{{ dd_session.review_count }}</td>
-                </tr>
-            </tbody>
-        </table>
+
+        <h4>Download</h4>
+        <p>
+            {% if dd_session.field_defs %}
+                <a class='btn btn-info' href="{{url_for('admin.field_definitions', session_id=dd_session.id)}}">Data Model</a>
+            {% endif %}
+            {% if dd_session.settings_file %}
+                <a  class='btn btn-info' href="{{url_for('admin.settings_file', session_id=dd_session.id)}}">Settings File</a>
+            {% endif %}
+            {% if dd_session.training_data %}
+                <a class='btn btn-info' href="{{url_for('admin.training_data', session_id=dd_session.id)}}">Training Data</a>
+              </span>
+            {% endif %}
+                <a class='btn btn-info' href="{{url_for('admin.entity_map_dump', session_id=dd_session.id)}}">Entity Map</a>
+        </p>
     </div>
 </div>
 {% if session_info %}
