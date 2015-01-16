@@ -57,10 +57,7 @@ def get_cluster(session_id):
             resp['entity_id'] = entity_id 
             resp['objects'] = cluster
         else:
-            sess.status = 'first pass review complete'
             dedupeCanon.delay(sess.id)
-            db_session.add(sess)
-            db_session.commit()
         resp['total_clusters'] = sess.entity_count
         resp['review_remainder'] = sess.review_count
     response = make_response(json.dumps(resp), status_code)

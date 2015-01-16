@@ -1,9 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Review Queue {% endblock %}
+{% block title %}
+    {% if first_review %}
+        First review
+    {% else %}
+        Second review
+    {% endif %}
+{% endblock %}
 {% block content %}
     <div class="row">
       {% include "partials/dedupe_steps.html" %}
-      <h3>4. First review</h3>
+      {% if first_review %}
+          <h3>4. First review</h3>
+          <p>Based on the training you provided, we've identified clusters of records that refer to the same thing. In this next step, we'd like you to review the ones we are the least confident about. After reviewing 20 of them, you will have the option to automatically accept the rest.</p>
+      {% else %}
+          <h3>5. Second review</h3>
+          <p>Some of the clusters identified in the <strong>First review</strong> can be merged. In this next step, we'd like you to review the ones we are the least confident about. If they look good, you can automatically accept the rest.</p>
+      {% endif %}
       <div class="col-md-12" id="group-display"></div>
     </div>
 {% endblock %}
@@ -14,7 +26,7 @@
 <script type="text/EJS" id="reviewTemplate">
     <div class="row">
         <div id="counter" class="col-md-12">
-            <p>Reviewing <strong><%= resp.review_remainder %></strong> of <%= resp.total_clusters %> clusters</p>
+            <p>Reviewing cluster <strong><%= resp.review_remainder %></strong> of <%= resp.total_clusters %> </p>
         </div>
     </div>
     <div class="row">
@@ -26,7 +38,9 @@
                             <tr>
                                 <th></th>
                                 <% $.each(resp.objects[0], function(k,v){ %>
-                                    <th><%= k %></th>
+                                    <% if (k != 'record_id') { %>
+                                        <th><%= k %></th>
+                                    <% } %>
                                 <% }) %>
                             </tr>
                         </thead>
@@ -37,7 +51,9 @@
                                           <input checked type="checkbox" />
                                       </td>
                                       <% $.each(item, function(i, val){ %>
-                                          <% if (i != 'record_id') { %>
+                                          <% if (i == 'confidence') { %>
+                                            <td class='active'><%= val %></td>
+                                          <% } else if (i != 'record_id') { %>
                                               <td><%= val %></td>
                                           <% } %>
                                       <% }) %>
@@ -55,13 +71,13 @@
             <div class="row">
                 <div class="col-md-9">
                     <div id="review-buttons">
-                        <button class="btn btn-success mark-entity">
-                            Next &gt;
+                        <button class="btn btn-primary mark-entity">
+                            Next cluster &raquo;
                         </button>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-danger accept-all">
+                    <button class="btn btn-success accept-all">
                         <i class='fa fa-check'></i>
                         Accept the rest
                     </button>

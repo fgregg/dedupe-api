@@ -4,47 +4,52 @@
 <div class="row">
   <div class="col-md-12">
   {% include "partials/dedupe_steps.html" %}
-  <h3>1. Upload a spreadsheet</h3>
+  <h3>1. Upload data</h3>
   {% include "error.html" %}
   </div>
 </div>
 <div class="row">
-  <div class="col-md-12">
-    <form role="form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-        <div class="row">
-            <div class="form-group col-md-6">
-                <p>Session name:</p>
+  <div class="col-md-6">
+    <p>Select a spreadsheet that contains data you want to deduplicate.</p>
+    <div class='well'>
+        <form role="form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <div class="form-group">
+                <p>Name</p>
                 <input type="text" id="id_name" name="name" class="form-control">
-            </div>
-            <div class="form-group col-md-6">
-                <p>Description:</p>
+
+                <p>Description</p>
                 <textarea class="form-control"></textarea>
             </div>
-        </div>
-        <div class="upload row">
-            <div class="form-group col-md-12">
-                <p>Select a spreadsheet you want to upload</p>
-                <input type="file" id="id_input_file" name="input_file">
-                <p class="help-block">
-                    Only <strong>.csv, .xls or .xlsx</strong> files.
-                </p>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-12" id="progress" style="display: none;">
-                <p id='upload_message'>Uploading ...</p>
-                <div class="progress">
-                    <div class="progress-bar progress-bar-info"></div>
+            <div class="upload row">
+                <div class="form-group col-md-12">
+                    <input type="file" id="id_input_file" name="input_file">
+                    <p class="help-block">
+                        Only <strong>.csv, .xls or .xlsx</strong> files.
+                    </p>
                 </div>
             </div>
-        </div>
-        <a href="{{ url_for('trainer.select_fields') }}" id="next-step" class="btn btn-primary" style="display:none;">
-            Next &raquo;
-        </a>
-    </form>
+        </form>
+    </div>
+  </div>
+  <div class="col-sm-6">
+    <p>Spreadsheet format (<a href="{{ url_for('trainer.upload_formats') }}" target="_blank">learn more</a>)</p>
+    <a href="{{ url_for('trainer.upload_formats') }}" target="_blank">
+        <img src="/static/images/spreadsheet_format.jpg" id="format-example" class='img-responsive img-thumbnail'>
+    </a>
   </div>
 </div>
+<div class="row">
+    <div class="col-md-6" id="progress" style="display: none;">
+        <p id='upload_message'>Uploading ...</p>
+        <div class="progress">
+            <div class="progress-bar progress-bar-info"></div>
+        </div>
+    </div>
+</div>
+<a href="{{ url_for('trainer.select_fields') }}" id="next-step" class="btn btn-primary" style="display:none;">
+    Next &raquo;
+</a>
 {% endblock %}
 {% block extra_javascript %}
     <script src="{{ url_for('static', filename='js/jquery.ui.widget.js') }}"></script>

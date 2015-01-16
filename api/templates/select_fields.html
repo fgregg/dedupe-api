@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% block title %}Fields to compare{% endblock %}
+{% block title %}Define model{% endblock %}
 {% block content %}
     <div class="col-md-12">
     {% include "partials/dedupe_steps.html" %}
     {% if fields %}
-    <h3>2. Fields to compare</h3>
+    <h3>2. Define model <small>Select fields to compare</small></h3>
     {% else %}
     <h3>Generating random sample...</h3>
     {% endif %}

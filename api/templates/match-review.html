@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Match Queue {% endblock %}
+{% block title %}Final review {% endblock %}
 {% block content %}
     <div class="row">
         <div class="col-md-12">
             {% include "partials/dedupe_steps.html" %}
+            <h3>6. Final review <small>Review unmatched records</small></h3>
             <div class="row">
                 <div id="counter" class="col-md-12"></div>
             </div>
@@ -14,14 +15,9 @@
                     </div>
                     <div class="row">
                         <div class="col-md-12">
-                            <h4>Select the records that match</h4>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12">
                             <div id="review-buttons">
-                                <button class="btn btn-success mark-match">
-                                    Next &gt;
+                                <button class="btn btn-primary mark-match">
+                                    Next &raquo;
                                 </button>
                             </div>
                         </div>
@@ -43,7 +39,7 @@
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
 <script type="text/EJS" id="matchTemplate">
-    <h4>Unmatched Record</h4>
+    <h4>Unmatched record</h4>
     <table class="table">
         <thead>
             <tr>
@@ -61,7 +57,7 @@
         </tbody>
     </table>
     <% if(matches.length > 0){ %>
-        <h4>Possible Matches</h4>
+        <h4>Select the matching cluster</h4>
         <table class="table">
             <thead>
                 <tr>
@@ -75,7 +71,7 @@
                 <% $.each(matches, function(i, match){ %>
                     <tr>
                         <td data-record_id="<%= match.record_id %>">
-                            <input type="checkbox" />
+                            <input type="checkbox"/>
                         </td>
                         <% $.each(match, function(field, val){ %>
                             <td><%= val %></td>
@@ -85,7 +81,7 @@
             </tbody>
         </table>
     <% } else { %>
-        <h4>No Matches found</h4>
+        <h4>No matches found</h4>
     <% } %>
 </script>
 <script type="text/javascript">

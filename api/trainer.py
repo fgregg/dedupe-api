@@ -318,6 +318,14 @@ def dedupe_finished(): # pragma: no cover
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template("dedupe_finished.html", user=user)
 
+@trainer.route('/upload_formats/')
+def upload_formats(): # pragma: no cover
+    user_id = flask_session.get('user_id')
+    user = None
+    if user_id:
+        user = db_session.query(User).get(flask_session['user_id'])
+    return render_template("upload-formats.html", user=user)
+
 @trainer.route('/about/')
 def about(): # pragma: no cover
     user_id = flask_session.get('user_id')
