@@ -451,5 +451,12 @@ def dedupeCanon(session_id):
     else: # pragma: no cover
         print 'did not find clusters'
         updateSessionStatus(session_id)
+    review_count = worker_session.query(entity_table.c.entity_id.distinct())\
+        .filter(entity_table.c.clustered == False)\
+        .count()
+    dd = worker_session.query(DedupeSession).get(session_id)
+    dd.review_count = review_count
+    worker_session.add(dd)
+    worker_session.commit()
     updateSessionStatus(session_id)
     return 'ok'

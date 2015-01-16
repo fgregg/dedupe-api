@@ -27,32 +27,34 @@ class TrackUserUsage(TrackUsage):
 
     def after_request(self, response):
         ctx = _request_ctx_stack.top
-        view_func = self.app.view_functions.get(ctx.request.endpoint).func_name
-        if view_func in self._include_views and \
-            ctx.request.endpoint != 'static':
-            
-            now = datetime.utcnow()
-            speed = (now - g.start_time).total_seconds()
-            remote_addr = ctx.request.remote_addr
-            if ctx.request.headers.get('X-Forwarded-For', None):
-                remote_addr = ctx.request.headers['X-Forwarded-For']
-            
-            data = {
-                'url': ctx.request.url,
-                'user_agent': ctx.request.user_agent,
-                'blueprint': ctx.request.blueprint,
-                'view_args': ctx.request.view_args,
-                'status': response.status_code,
-                'remote_addr': remote_addr,
-                'authorization': bool(ctx.request.authorization),
-                'ip_info': None,
-                'path': ctx.request.path,
-                'speed': float(speed),
-                'date': int(time.mktime(now.timetuple())),
-                'api_key': session.get('api_key', None),
-            }
-         
-            self._storage(data)
+        view_func = self.app.view_functions.get(ctx.request.endpoint)
+        if view_func:
+            view_func = view_func.func_name
+            if view_func in self._include_views and \
+                ctx.request.endpoint != 'static':
+                
+                now = datetime.utcnow()
+                speed = (now - g.start_time).total_seconds()
+                remote_addr = ctx.request.remote_addr
+                if ctx.request.headers.get('X-Forwarded-For', None):
+                    remote_addr = ctx.request.headers['X-Forwarded-For']
+                
+                data = {
+                    'url': ctx.request.url,
+                    'user_agent': ctx.request.user_agent,
+                    'blueprint': ctx.request.blueprint,
+                    'view_args': ctx.request.view_args,
+                    'status': response.status_code,
+                    'remote_addr': remote_addr,
+                    'authorization': bool(ctx.request.authorization),
+                    'ip_info': None,
+                    'path': ctx.request.path,
+                    'speed': float(speed),
+                    'date': int(time.mktime(now.timetuple())),
+                    'api_key': session.get('api_key', None),
+                }
+             
+                self._storage(data)
         return response
 
 class UserSQLStorage(Storage):

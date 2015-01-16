@@ -89,6 +89,8 @@ def get_canon_cluster(session_id):
         if cluster:
             resp['entity_id'] = entity_id
             resp['objects'] = cluster
+        else:
+            getMatchingReady.delay(session_id)
         resp['total_clusters'] = sess.entity_count
         resp['review_remainder'] = sess.review_count
     response = make_response(json.dumps(resp), status_code)
@@ -265,6 +267,10 @@ def mark_canon_cluster(session_id):
             '''.format(session_id))
             with engine.begin() as c:
                 c.execute(delete, entity_id=entity_id, record_ids=distinct_ids)
+        sess = db_session.query(DedupeSession).get(session_id)
+        sess.review_count = sess.review_count - 1
+        db_session.add(sess)
+        db_session.commit()
         resp = {
             'session_id': session_id, 
             'entity_id': entity_id,

@@ -201,6 +201,12 @@ def training_run():
                     'no': len(td['distinct']),
                     'unsure': 0
                 }
+        else:
+            flask_session['counter'] = {
+                'yes': 0,
+                'no': 0 ,
+                'unsure': 0,
+            }
         error = None
         status_code = 200
         field_defs = json.loads(sess.field_defs)
@@ -245,8 +251,6 @@ def mark_pair():
     action = request.args['action']
     flask_session['last_interaction'] = datetime.now()
     counter = flask_session.get('counter')
-    if not counter:
-        counter = {'yes': 0, 'no': 0, 'unsure': 0}
     sess = db_session.query(DedupeSession).get(flask_session['session_id'])
     deduper = flask_session['deduper']
 
