@@ -20,33 +20,33 @@ import cPickle
 STATUS_LIST = [
     {
         'machine_name' : 'dataset uploaded',
-        'human_name': '', 
-        'next_step': ''
+        'human_name': 'Dataset uploaded', 
+        'next_step': '/select-fields/?session_id={0}'
     },
     {
         'machine_name': 'model defined',
-        'name': '', 
-        'next_step': ''
+        'name': 'Model defined', 
+        'next_step': '/training-run/?session_id={0}'
     },
     {
         'machine_name': 'entity map updated',
-        'name': '', 
-        'next_step': ''
+        'name': 'Clustering done', 
+        'next_step': '/session-review/{0}/'
     },
     {
         'machine_name': 'canon clustered',
-        'name': '', 
-        'next_step': ''
+        'name': 'Canonical forms of clusters deduplicated', 
+        'next_step': '/session-review/{0}/?second_review=True'
     },
     {
         'machine_name': 'matching ready',
-        'name': '', 
-        'next_step': ''
+        'name': 'Ready to match records that are not in already in the entity map', 
+        'next_step': '/match-review/{0}/'
     },
     {
         'machine_name':'canonical',
-        'name': '', 
-        'next_step': ''
+        'name': 'Dataset is canonical', 
+        'next_step': '/session-admin/{0}/'
     },
 ]
 
@@ -117,8 +117,6 @@ def getCluster(session_id, entity_pattern, raw_pattern):
             d = {}
             for k,v in zip(raw_fields, thing):
                 d[k] = v
-
-            d['confidence'] = formatPercentage(d['confidence'])
             cluster_list.append(d)
         one_minute = datetime.now() + timedelta(minutes=1)
         upd = text(''' 
@@ -269,5 +267,3 @@ def checkinSessions():
             pass
     return None
 
-def formatPercentage(num):
-  return "{0:.0f}%".format(float(num) * 100)
