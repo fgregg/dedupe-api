@@ -67,7 +67,7 @@ def upload():
         description=request.form.get('description'),
         filename=f.filename,
         group=group,
-        status=STATUS_LIST[0])
+        status=STATUS_LIST[0]['machine_name'])
     db_session.add(sess)
     db_session.commit()
     u.seek(0)

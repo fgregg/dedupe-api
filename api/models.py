@@ -70,6 +70,7 @@ class DedupeSession(Base):
         return '<DedupeSession %r >' % (self.name)
     
     def as_dict(self):
+        from api.utils.helpers import STATUS_LIST
         d = {
             'id': self.id,
             'name': self.name,
@@ -80,6 +81,7 @@ class DedupeSession(Base):
         }
         if self.field_defs:
             d['field_defs'] = json.loads(self.field_defs)
+        d['status_info'] = [i for i in STATUS_LIST if i['machine_name'] == self.status]
         return d
 
 roles_users = Table('role_users', Base.metadata,

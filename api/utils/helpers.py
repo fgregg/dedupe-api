@@ -18,12 +18,36 @@ from unidecode import unidecode
 import cPickle
 
 STATUS_LIST = [
-    'dataset uploaded',
-    'model defined',
-    'entity map updated',
-    'canon clustered',
-    'matching ready',
-    'canonical',
+    {
+        'machine_name' : 'dataset uploaded',
+        'human_name': '', 
+        'next_step': ''
+    },
+    {
+        'machine_name': 'model defined',
+        'name': '', 
+        'next_step': ''
+    },
+    {
+        'machine_name': 'entity map updated',
+        'name': '', 
+        'next_step': ''
+    },
+    {
+        'machine_name': 'canon clustered',
+        'name': '', 
+        'next_step': ''
+    },
+    {
+        'machine_name': 'matching ready',
+        'name': '', 
+        'next_step': ''
+    },
+    {
+        'machine_name':'canonical',
+        'name': '', 
+        'next_step': ''
+    },
 ]
 
 def updateTraining(session_id, record_ids, distinct=False):
@@ -38,15 +62,15 @@ def updateSessionStatus(session_id, increment=True):
     '''
     dd = worker_session.query(DedupeSession).get(session_id)
     try:
-        current = STATUS_LIST.index(dd.status)
-    except ValueError:
+        current = [i for i,v in enumerate(STATUS_LIST) if v['machine_name'] == dd.status][0]
+    except IndexError:
         current = 0
     print 'CURRENT STATUS {0}'.format(STATUS_LIST[current])
     if increment:
-        dd.status = STATUS_LIST[current + 1]
+        dd.status = STATUS_LIST[current + 1]['machine_name']
         print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
     else: # pragma: no cover
-        dd.status = STATUS_LIST[current - 1]
+        dd.status = STATUS_LIST[current - 1]['machine_name']
         print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
     worker_session.add(dd)
     worker_session.commit()
