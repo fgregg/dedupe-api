@@ -49,6 +49,8 @@ class DedupeSession(Base):
     __tablename__ = 'dedupe_session'
     id = Column(String, default=get_uuid, primary_key=True)
     name = Column(String, nullable=False)
+    filename = Column(String, nullable=False)
+    description = Column(Text)
     training_data = Column(LargeBinary)
     settings_file = Column(LargeBinary)
     gaz_settings_file = Column(LargeBinary)

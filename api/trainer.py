@@ -62,8 +62,10 @@ def upload():
     user = db_session.query(User).get(user_id)
     group = user.groups[0]
     sess = DedupeSession(
-        id=session_id, 
-        name=f.filename,
+        id=session_id,
+        name=request.form.get('name'),
+        description=request.form.get('description'),
+        filename=f.filename,
         group=group,
         status=STATUS_LIST[0])
     db_session.add(sess)
