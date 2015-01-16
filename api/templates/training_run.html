@@ -2,8 +2,8 @@
 {% block title %}Training{% endblock %}
 {% block content %}
     <div class="col-md-12">
-    {% include "dedupe_steps.html" %}
-    <h3>3. Training</h3>
+    {% include "partials/dedupe_steps.html" %}
+    <h3>3. Train</h3>
     {% include "error.html" %}
   </div>
     {% if init_status == 'finished' %}
@@ -42,7 +42,7 @@
     {% else %}
     <div class="col-md-8">
         <h3>We're still working on finishing up processing your upload</h3>
-        <p>This should be done in a couple minutes...<span id="spinner"></span></p>
+        <p>This should be done in a couple minutes... <span id="spinner"></span></p>
     </div>
     {% endif %}
     <div class='col-md-4'>
@@ -51,13 +51,13 @@
                 <tr>
                     <td>Yes</td>
                     <td class='warning' id='num-yes'>
-                        <span>{{session.counter.yes|default('0')}}</span> / 10
+                        <span></span> / 10
                     </td>
                 </tr>
                 <tr>
                     <td>No</td>
                     <td class='warning' id='num-no'>
-                        <span>{{session.counter.no|default('0')}}</span> / 10
+                        <span></span> / 10
                     </td>
                 </tr>
                 <tr>
@@ -151,7 +151,7 @@
             }
 
             if (counter.no >= (training_threshold / 2) && counter.yes >= (training_threshold / 2)) {
-                console.log('blah!');
+                // console.log('blah!');
                 $("#finish").removeClass('hidden');
             }
 
@@ -180,6 +180,10 @@
         });
 
         render_training_pair();
+
+        var init_counter = {{session.counter|tojson|safe}}
+        update_your_training(init_counter);
+
     </script>
 {% else %}
   <script type="text/javascript">
@@ -196,7 +200,7 @@
               dataType: 'json',
           })
       }
-      $('#spinner').spin({'right': 0});
+      $('#spinner').spin({'top': 50});
       $(document).ready(function(){
           poll_worker();
       })

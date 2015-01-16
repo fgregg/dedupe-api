@@ -1,7 +1,9 @@
 {% extends "base.html" %}
-{% block title %} | Review Queue {% endblock %}
+{% block title %}Review Queue {% endblock %}
 {% block content %}
     <div class="row">
+      {% include "partials/dedupe_steps.html" %}
+      <h3>4. First review</h3>
       <div class="col-md-12" id="group-display"></div>
     </div>
 {% endblock %}
@@ -12,7 +14,7 @@
 <script type="text/EJS" id="reviewTemplate">
     <div class="row">
         <div id="counter" class="col-md-12">
-            <p><%= resp.review_remainder %> out of <%= resp.total_clusters %> left to review</p>
+            <p>Reviewing <strong><%= resp.review_remainder %></strong> of <%= resp.total_clusters %> clusters</p>
         </div>
     </div>
     <div class="row">

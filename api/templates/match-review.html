@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %} | Match Queue {% endblock %}
+{% block title %}Match Queue {% endblock %}
 {% block content %}
     <div class="row">
         <div class="col-md-12">
+            {% include "partials/dedupe_steps.html" %}
             <div class="row">
                 <div id="counter" class="col-md-12"></div>
             </div>
