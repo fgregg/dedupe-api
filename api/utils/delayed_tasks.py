@@ -29,9 +29,6 @@ from api.app_config import TIME_ZONE
 @queuefunc
 def bulkMarkClusters(session_id, user=None):
     dd = worker_session.query(DedupeSession).get(session_id)
-    dd.processing = True
-    worker_session.add(dd)
-    worker_session.commit()
     engine = worker_session.bind
     now =  datetime.now().replace(tzinfo=TIME_ZONE)
     upd_vals = {
@@ -95,9 +92,6 @@ def bulkMarkClusters(session_id, user=None):
 @queuefunc
 def bulkMarkCanonClusters(session_id, user=None):
     sess = worker_session.query(DedupeSession).get(session_id)
-    sess.processing = True
-    worker_session.add(sess)
-    worker_session.commit()
     engine = worker_session.bind
     upd_vals = {
         'user_name': user, 
@@ -197,9 +191,6 @@ def getMatchingReady(session_id):
               ON "match_blocks_{0}" (block_key)
             '''.format(session_id)
         )
-    sess.processing = False
-    worker_session.add(sess)
-    worker_session.commit()
     updateSessionStatus(session_id)
     return None
 
@@ -208,7 +199,6 @@ def cleanupTables(session_id, tables=None):
     engine = worker_session.bind
     if not tables:
         tables = [
-            'entity_{0}_cr',
             'processed_{0}_cr',
             'block_{0}_cr',
             'plural_block_{0}_cr',
@@ -250,9 +240,6 @@ def drawSample(session_id):
 @queuefunc
 def initializeSession(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
-    sess.processing = True
-    worker_session.add(sess)
-    worker_session.commit()
     file_obj = open('/tmp/{0}_raw.csv'.format(session_id), 'rb')
     kwargs = {
         'session_id':session_id,
@@ -264,7 +251,6 @@ def initializeSession(session_id):
     raw_table = Table('raw_{0}'.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     sess.record_count = worker_session.query(raw_table).count()
-    sess.processing = False
     worker_session.add(sess)
     worker_session.commit()
     print 'session initialized'
@@ -278,9 +264,6 @@ def initializeModel(session_id):
         if not sess.field_defs: # pragma: no cover
             time.sleep(3)
         else:
-            sess.processing = True
-            worker_session.add(sess)
-            worker_session.commit()
             field_defs = json.loads(sess.field_defs)
             fields = list(set([f['field'] for f in field_defs]))
             writeProcessedTable(session_id)
@@ -295,9 +278,6 @@ def initializeModel(session_id):
             worker_session.commit()
             initializeEntityMap(session_id, fields)
             drawSample(session_id)
-            sess.processing = False
-            worker_session.add(sess)
-            worker_session.commit()
             print 'got sample'
             break
     return 'woo'
@@ -386,11 +366,16 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
     return clustered_dupes
 
 @queuefunc
+def reDedupeRaw(session_id, threshold=0.75):
+    sess = worker_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(sess.field_defs)
+    fields = list(set([f['field'] for f in field_defs]))
+    initializeEntityMap(session_id, fields)
+    dedupeRaw(session_id, threshold=threshold)
+    return 'ok'
+
+@queuefunc
 def dedupeRaw(session_id, threshold=0.75):
-    dd = worker_session.query(DedupeSession).get(session_id)
-    dd.processing = True
-    worker_session.add(dd)
-    worker_session.commit()
     trainDedupe(session_id)
     block_gen = blockDedupe(session_id)
     writeBlockingMap(session_id, block_gen, canonical=False)
@@ -408,13 +393,12 @@ def dedupeRaw(session_id, threshold=0.75):
     dd = worker_session.query(DedupeSession).get(session_id)
     dd.entity_count = entity_count
     dd.review_count = review_count
-    dd.processing= False
     worker_session.add(dd)
     worker_session.commit()
     return 'ok'
 
 @queuefunc
-def dedupeCanon(session_id):
+def dedupeCanon(session_id, threshold=0.25):
     engine = worker_session.bind
     metadata = MetaData()
     writeCanonRep(session_id)
@@ -429,7 +413,7 @@ def dedupeCanon(session_id):
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
     writeBlockingMap(session_id, block_gen, canonical=True)
-    clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=0.15)
+    clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
         with open(fname, 'wb') as f:
@@ -480,7 +464,6 @@ def dedupeCanon(session_id):
         .filter(entity_table.c.clustered == False)\
         .count()
     dd = worker_session.query(DedupeSession).get(session_id)
-    dd.processing = False
     dd.review_count = review_count
     worker_session.add(dd)
     worker_session.commit()

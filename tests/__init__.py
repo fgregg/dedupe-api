@@ -49,9 +49,10 @@ class DedupeAPITestCase(unittest.TestCase):
         training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
         self.dd_sess = DedupeSession(
                         id=unicode(uuid4()), 
-                        name='test_filename.csv',
+                        filename='test_filename.csv',
+                        name='Test Session',
                         group=self.group,
-                        status=STATUS_LIST[0],
+                        status=STATUS_LIST[0]['machine_name'],
                         settings_file=settings,
                         field_defs=self.field_defs,
                         training_data=training

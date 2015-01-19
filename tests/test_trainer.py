@@ -26,8 +26,8 @@ class TrainerTest(DedupeAPITestCase):
                 rv = c.post('/upload/', data={
                             'input_file': (open(join(fixtures_path, 
                                 'csv_example_messy_input.csv'),'rb'), 
-                                'csv_example_messy_input.csv')
-                            })
+                                'csv_example_messy_input.csv'),
+                            'name': 'Test Session'})
                 assert session.has_key('init_key')
                 assert json.loads(rv.data)['ready']
 

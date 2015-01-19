@@ -25,27 +25,27 @@ STATUS_LIST = [
     },
     {
         'machine_name': 'model defined',
-        'name': 'Model defined', 
+        'human_name': 'Model defined', 
         'next_step': '/training-run/?session_id={0}'
     },
     {
         'machine_name': 'entity map updated',
-        'name': 'Clustering done', 
+        'human_name': 'Clustering done', 
         'next_step': '/session-review/{0}/'
     },
     {
         'machine_name': 'canon clustered',
-        'name': 'Canonical forms of clusters deduplicated', 
+        'human_name': 'Canonical forms of clusters deduplicated', 
         'next_step': '/session-review/{0}/?second_review=True'
     },
     {
         'machine_name': 'matching ready',
-        'name': 'Ready to match records that are not in already in the entity map', 
+        'human_name': 'Ready to match records that are not in already in the entity map', 
         'next_step': '/match-review/{0}/'
     },
     {
         'machine_name':'canonical',
-        'name': 'Dataset is canonical', 
+        'human_name': 'Dataset is canonical', 
         'next_step': '/session-admin/{0}/'
     },
 ]
@@ -65,13 +65,13 @@ def updateSessionStatus(session_id, increment=True):
         current = [i for i,v in enumerate(STATUS_LIST) if v['machine_name'] == dd.status][0]
     except IndexError:
         current = 0
-    print 'CURRENT STATUS {0}'.format(STATUS_LIST[current])
+    print 'CURRENT STATUS {0}'.format(STATUS_LIST[current]['machine_name'])
     if increment:
         dd.status = STATUS_LIST[current + 1]['machine_name']
-        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
+        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1]['machine_name'])
     else: # pragma: no cover
         dd.status = STATUS_LIST[current - 1]['machine_name']
-        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1])
+        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1]['machine_name'])
     worker_session.add(dd)
     worker_session.commit()
 

@@ -18,7 +18,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td>{{ dd_session.status|title }}</td>
+                            <td>{{ status_info.human_name }}</td>
                             <td>{{ dd_session.entity_count }}</td>
                             <td>{{ dd_session.record_count }}</td>
                             <td>{{ dd_session.review_count }}</td>
@@ -26,6 +26,62 @@
                     </tbody>
                 </table>
             </div>
+            {% if dd_session.status not in ['dataset uploaded', 'model defined'] %}
+            <div class="col-md-6">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Select threshold</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>
+                                <a class='btn btn-info clustering' href="javascript://" data-run="first">
+                                    Re-run first clustering
+                                </a>
+                            </td>
+                            <td>
+                                <select id="first-threshold">
+                                    <option val="0.10">0.10</option>
+                                    <option val="0.20">0.20</option>
+                                    <option val="0.30">0.30</option>
+                                    <option val="0.40">0.40</option>
+                                    <option val="0.50">0.50</option>
+                                    <option val="0.60">0.60</option>
+                                    <option val="0.70">0.70</option>
+                                    <option val="0.80">0.80</option>
+                                    <option val="0.90">0.90</option>
+                                </select>
+                            </td>
+                        </tr>
+                        {% if dd_session.status in ['canon clustered', 'matching ready', 'canonical'] %}
+                        <tr>
+                            <td>
+                                <a class='btn btn-info clustering' href="javascript://" data-run="second">
+                                    Re-run second clustering
+                                </a>
+                            </td>
+                            <td>
+                                <select id="second-threshold">
+                                    <option val="0.10">0.10</option>
+                                    <option val="0.20">0.20</option>
+                                    <option val="0.30">0.30</option>
+                                    <option val="0.40">0.40</option>
+                                    <option val="0.50">0.50</option>
+                                    <option val="0.60">0.60</option>
+                                    <option val="0.70">0.70</option>
+                                    <option val="0.80">0.80</option>
+                                    <option val="0.90">0.90</option>
+                                </select>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
         </div>
 
         <h4>Download</h4>

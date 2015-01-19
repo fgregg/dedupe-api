@@ -4,8 +4,10 @@ from uuid import uuid4
 import sys
 import os
 from api.app_config import REDIS_QUEUE_KEY, DB_CONN
-from api.database import init_engine
+from api.database import init_engine, worker_session
+from api.models import DedupeSession
 import traceback
+from sqlalchemy.exc import ProgrammingError, InternalError
 
 try:
     from raven import Client
@@ -48,7 +50,20 @@ def processMessage(rv_ttl=500, qkey=None):
     msg = redis.blpop(qkey)
     func, key, args, kwargs = loads(msg[1])
     try:
+        try:
+            sess = worker_session.query(DedupeSession).get(args[0])
+            if sess:
+                sess.processing = True
+                worker_session.add(sess)
+                worker_session.commit()
+        except (IndexError, ProgrammingError, InternalError):
+            sess = None
+            pass
         rv = func(*args, **kwargs)
+        if sess:
+            sess.processing = False
+            worker_session.add(sess)
+            worker_session.commit()
     except Exception, e:
         if client: # pragma: no cover
             client.captureException()

@@ -244,11 +244,26 @@ def mark_canon_cluster(session_id):
                     WHERE entity_id = :entity_id
                         AND record_id IN :record_ids
                 )
-                RETURNING record_id
                 '''.format(session_id))
+            upd_cr = text(''' 
+                UPDATE "entity_{0}_cr" SET
+                    target_record_id = :entity_id,
+                    clustered = :clustered,
+                    checked_out = :checked_out,
+                    last_update = :last_update,
+                    reviewer = :user_name
+                WHERE record_id IN :record_ids
+            '''.format(session_id))
             last_update = datetime.now().replace(tzinfo=TIME_ZONE)
             with engine.begin() as c:
-                ids = c.execute(upd, 
+                c.execute(upd, 
+                          entity_id=entity_id, 
+                          last_update=last_update,
+                          user_name=user.name,
+                          record_ids=match_ids,
+                          clustered=True,
+                          checked_out=False)
+                c.execute(upd_cr, 
                           entity_id=entity_id, 
                           last_update=last_update,
                           user_name=user.name,

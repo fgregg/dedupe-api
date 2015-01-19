@@ -113,6 +113,7 @@ def session_admin(session_id):
         predicates = None
         session_info = {}
         training_data = None
+        status_info = sess.as_dict()['status_info']
         if sess.field_defs:
             field_defs = json.loads(sess.field_defs)
             for fd in field_defs:
@@ -170,7 +171,8 @@ def session_admin(session_id):
                             session_info=session_info, 
                             predicates=predicates,
                             training_data=training_data,
-                            user=user)
+                            user=user,
+                            status_info=status_info)
 
 @admin.route('/training-data/<session_id>/')
 @check_sessions()

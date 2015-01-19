@@ -81,7 +81,7 @@ class DedupeSession(Base):
         }
         if self.field_defs:
             d['field_defs'] = json.loads(self.field_defs)
-        d['status_info'] = [i for i in STATUS_LIST if i['machine_name'] == self.status]
+        d['status_info'] = [i for i in STATUS_LIST if i['machine_name'] == self.status][0]
         d['status_info']['next_step'].format(self.id)
         return d
 

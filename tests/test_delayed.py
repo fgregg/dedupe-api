@@ -39,7 +39,7 @@ class DelayedTest(DedupeAPITestCase):
             rows = list(conn.execute('select count(*) from "raw_{0}"'\
                 .format(self.dd_sess.id)))
         self.get_table_names()
-        assert self.dd_sess.status == STATUS_LIST[0]
+        assert self.dd_sess.status == STATUS_LIST[0]['machine_name']
         assert self.dd_sess.record_count == int(rows[0][0])
         assert 'raw_{0}'.format(self.dd_sess.id) in self.table_names
 
