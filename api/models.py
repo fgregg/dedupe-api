@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
-    Column, Table, Float, DateTime, Text, BigInteger, text
+    Column, Table, Float, DateTime, Text, BigInteger, text, func
 from sqlalchemy.orm import relationship, backref, synonym
 from api.database import Base, app_session as session
 from flask_bcrypt import Bcrypt
@@ -51,6 +51,10 @@ class DedupeSession(Base):
     name = Column(String, nullable=False)
     filename = Column(String, nullable=False)
     description = Column(Text)
+    date_added = Column(DateTime(timezone=True),
+                server_default=text('CURRENT_TIMESTAMP'))
+    date_updated = Column(DateTime(timezone=True),
+                onupdate=func.now())
     training_data = Column(LargeBinary)
     settings_file = Column(LargeBinary)
     gaz_settings_file = Column(LargeBinary)
@@ -78,11 +82,18 @@ class DedupeSession(Base):
             'record_count': self.record_count,
             'entity_count': self.entity_count,
             'review_count': self.review_count,
+            'description': self.description,
+            'date_added': None,
+            'date_updated': None,
         }
+        if self.date_added:
+            d['date_added'] = self.date_added.isoformat()
+        if self.date_updated:
+            d['date_updated'] = self.date_updated.isoformat()
         if self.field_defs:
             d['field_defs'] = json.loads(self.field_defs)
         d['status_info'] = [i for i in STATUS_LIST if i['machine_name'] == self.status][0]
-        d['status_info']['next_step'].format(self.id)
+        d['status_info']['next_step'] = d['status_info']['next_step'].format(self.id)
         return d
 
 roles_users = Table('role_users', Base.metadata,
