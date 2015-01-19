@@ -21,36 +21,42 @@ STATUS_LIST = [
     {
         'machine_name' : 'dataset uploaded',
         'human_name': 'Dataset uploaded', 
+        'next_step_name': 'Define model',
         'next_step': '/select-fields/?session_id={0}',
         'step': 1
     },
     {
         'machine_name': 'model defined',
         'human_name': 'Model defined', 
+        'next_step_name': 'Train',
         'next_step': '/training-run/?session_id={0}',
         'step': 2
     },
     {
         'machine_name': 'entity map updated',
-        'human_name': 'Clustering done', 
+        'human_name': 'Training processed', 
+        'next_step_name': 'First review',
         'next_step': '/session-review/{0}/',
         'step': 3
     },
     {
         'machine_name': 'canon clustered',
-        'human_name': 'Canonical forms of clusters deduplicated', 
+        'human_name': 'Clustering complete', 
+        'next_step_name': 'Second review',
         'next_step': '/session-review/{0}/?second_review=True',
         'step': 4
     },
     {
         'machine_name': 'matching ready',
-        'human_name': 'Ready to match records that are not in already in the entity map', 
+        'human_name': 'Clusters merged', 
+        'next_step_name': 'Final review',
         'next_step': '/match-review/{0}/',
         'step': 5
     },
     {
         'machine_name':'canonical',
         'human_name': 'Dataset is canonical', 
+        'next_step_name': 'Ready for matching!',
         'next_step': '/session-admin/{0}/',
         'step': 6
     },

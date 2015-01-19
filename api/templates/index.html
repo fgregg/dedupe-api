@@ -9,29 +9,25 @@
             <div id='start-session' style='display: none;'>
                 <h3>Hi there {{user.name|title}} Welcome to dedupe!</h3>
                 <p>Let's get started on your first dedupe session.</p>
-                <a role="button" href="{{url_for('trainer.train')}}" class="btn btn-info btn-lg"><i class='fa fa-plus-circle'></i> Start a new dedupe session</a>
+                <a role="button" href="{{url_for('trainer.train')}}" class="btn btn-primary btn-lg">Start a new session &raquo;</a>
             </div>
         {% endif %}
         <div id='dedupe-sessions' style='display: none;'>
             <div class="row">
-                <div class="col-md-9">
-                    <h2>Dedupe sessions</h2>
-                </div>
-                <div class="col-md-3">
-                    <a role="button" href="{{url_for('trainer.train')}}" class="btn btn-info">
-                        <i class='fa fa-plus-circle'></i>
-                        Start a new dedupe session
-                    </a>
-                </div>
-            </div>
-            <div class="row">
                 <div class="col-md-12">
+
+                    <h2>Dedupe sessions</h2>
+                    <p><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-primary">
+                        Start a new session &raquo;
+                    </a></p>
+
                     <table class="table table-bordered table-striped">
                         <thead>
                             <tr id="review-header">
                                 <th>Name</th>
-                                <th>Actions</th>
-                                <th>Entity count</th>
+                                <th>Status</th>
+                                <th>Next step</th>
+                                <th>Created at</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -44,30 +40,44 @@
 </div>
 {% endblock %}
 {% block extra_javascript %}
+
+<script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
+<script type="text/EJS" id="sessionTemplate">
+
+    <tr>
+        <td>
+            <a href="/session-admin/<%= object.id %>/"><%= object.name %></a><br />
+            <small><%= object.description %></small>
+        </td>
+        <td>
+            Step <%= object.status_info.step %> of 7: <%= object.status_info.human_name %>
+            <div class="progress">
+                <div class="progress-bar progress-bar-success" role="progressbar" aria-valuenow="<%= (object.status_info.step * 100.0 / 7) %>" aria-valuemin="0" aria-valuemax="100" style="width: <%= (object.status_info.step * 100.0 / 7) %>%;">
+                    <span class="sr-only"><%= (object.status_info.step * 100.0 / 7) %>% Complete</span>
+                </div>
+            </div>
+        </td>
+        <td>
+            <% if (object.status == 'processing') { %>
+                <em>Processing. Please wait ...</em>
+            <% } else { %>
+                Step <%= object.status_info.step + 1 %>: <a href="<%= object.status_info.next_step %>"><%= object.status_info.next_step_name %></a>
+            <% } %>
+        </td>
+        <td><%= object.date_added %></td>
+        <td><a class="btn btn-info" href="/session-admin/<%= object.id %>/">Details &raquo;</a></td>
+    </tr>
+</script>
+
+
 <script type='text/javascript'>
     function make_display(resp){
         var rows = ''
+        var tpl = new EJS({'text': $('#sessionTemplate').html()});
         if (resp.objects.length > 0) {
             $.each(resp.objects, function(i, object){
-                rows += '<tr><td><a href="/session-admin/' + object.id + '/">' + object.name + '</td>';
-                rows += '<td>';
-                if (object.status == 'entity map updated'){
-                    rows += '<a href="/session-review/' + object.id + '/">Review Queue</a><br />';
-                } else if (object.status == 'dataset uploaded'){
-                    rows += '<a href="/select-fields/?session_id=' + object.id + '">Define Model</a><br />';
-                } else if (object.status == 'canon clustered'){
-                    rows += '<a href="/session-review/' + object.id + '/?second_review=true">Second Review</a><br />';
-                } else if (object.status == 'matching ready'){
-                    rows += '<a href="/match-review/' + object.id + '/?second_review=true">Final Review</a><br />';
-                }
-                if (object.status && object.status != 'session initialized'){
-                    rows += '<a href="/training-run/?session_id=' + object.id + '">Add training</a><br />';
-                }
-                rows += '<a class="delete-model" href="javascript://" data-session_id="' + object.id + '">Delete Data Model</a><br/>';
-                rows += '</td>';
-                rows += '<td>' + object.entity_count + '</td>';
-                rows += '<td><a class="delete-session" href="javascript://" data-session_id="' + object.id + '">Delete</a></td>';
-                rows += '</tr>';
+                //console.log(object);
+                rows += tpl.render({object: object});
             });
             $('#dedupe-sessions').show();
             $('#session-list').html(rows);

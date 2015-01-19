@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
-{% block title %}Home{% endblock %}
+{% block title %}{{ dd_session.name }}{% endblock %}
 {% block content %}
 <div class="row">
     <div class="col-md-12">
+        <p><a href='/'>&laquo; back to home</a></p>
         <h2>{{ dd_session.name }}</h2>
 
         <div class="row">
@@ -226,6 +227,13 @@
         </div>
     </div>
 {% endif %}
+
+<hr />
+<h4>Danger zone!</h4>
+
+<a id="delete-model" class='btn btn-primary' href="javascript://" data-session_id="{{ dd_session.id }}"><i class='fa fa-times'></i> Delete data model</a>
+
+<a id="delete-session" class='btn btn-primary' href="javascript://" data-session_id="{{ dd_session.id }}"><i class='fa fa-times'></i> Delete session</a>
 {% endblock %}
 {% block extra_javascript %}
     <script type="text/javascript">
@@ -234,6 +242,34 @@
                 e.preventDefault();
                 var fname = $(this).data('fieldname');
                 $('.parent-' + fname).toggle();
+            })
+
+            $('#delete-session').on('click', function(e){
+                e.preventDefault();
+                var sess_id = $(this).data('session_id');
+                console.log(sess_id);
+                var row = $(this).parent().parent()
+                $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
+                    function(data){
+                        $(row).remove();
+                    }
+                )
+            })
+
+            $('#delete-model').on('click', function(e){
+                e.preventDefault();
+                var sess_id = $(this).data('session_id');
+                console.log(sess_id);
+                var row = $(this).parent()
+                $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
+                    function(data){
+                        $.when($.getJSON('/session-list/')).then(
+                          function(resp){
+                              make_display(resp)
+                          }
+                        )
+                    }
+                )
             })
         })
     </script>
