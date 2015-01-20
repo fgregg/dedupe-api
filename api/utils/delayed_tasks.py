@@ -108,6 +108,7 @@ def bulkMarkCanonClusters(session_id, user=None):
             last_update = :last_update
         FROM (
             SELECT 
+                c.record_id as canon_record_id,
                 c.entity_id, 
                 e.record_id 
             FROM "entity_{0}" as e
@@ -118,11 +119,19 @@ def bulkMarkCanonClusters(session_id, user=None):
                 ) AS s 
                 ON e.record_id = s.target_record_id
             ) as subq 
-        WHERE "entity_{0}".record_id=subq.record_id 
-        RETURNING "entity_{0}".entity_id
+        WHERE "entity_{0}".record_id=subq.record_id
+        RETURNING "entity_{0}".entity_id, subq.canon_record_id
         '''.format(session_id))
     with engine.begin() as c:
         updated = c.execute(upd,**upd_vals)
+        for row in updated:
+            c.execute(text(''' 
+                    UPDATE "entity_{0}_cr" SET
+                        target_record_id = :target,
+                        clustered = TRUE
+                    WHERE record_id = :record_id
+                '''.format(session_id)),
+                target=row[0], record_id=row[1])
     getMatchingReady(session_id)
 
 @queuefunc
@@ -372,6 +381,36 @@ def reDedupeRaw(session_id, threshold=0.75):
     fields = list(set([f['field'] for f in field_defs]))
     initializeEntityMap(session_id, fields)
     dedupeRaw(session_id, threshold=threshold)
+    sess.status = 'entity map updated'
+    worker_session.add(sess)
+    worker_session.commit()
+    return 'ok'
+
+@queuefunc
+def reDedupeCanon(session_id, threshold=0.25):
+    upd = text(''' 
+        UPDATE "entity_{0}" SET
+            entity_id = subq.old_entity_id,
+            last_update = :last_update
+        FROM (
+            SELECT 
+               c.record_id AS old_entity_id,
+               e.entity_id AS new_entity_id
+            FROM "entity_{0}_cr" AS c
+            JOIN "entity_{0}" AS e
+                ON c.target_record_id = e.entity_id
+            WHERE c.clustered = TRUE
+            ) AS subq
+        WHERE "entity_{0}".entity_id = subq.new_entity_id
+    '''.format(session_id))
+    engine = worker_session.bind
+    last_update = datetime.now().replace(tzinfo=TIME_ZONE)
+    with engine.begin() as c:
+        c.execute(upd, last_update=last_update)
+    dedupeCanon(session_id, threshold=threshold)
+    sess.status = 'canon clustered'
+    worker_session.add(sess)
+    worker_session.commit()
     return 'ok'
 
 @queuefunc
