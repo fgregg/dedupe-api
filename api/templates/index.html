@@ -25,9 +25,10 @@
                         <thead>
                             <tr id="review-header">
                                 <th>Name</th>
-                                <th>Status</th>
+                                <th>Updated</th>
+                                <th>Session status</th>
                                 <th>Next step</th>
-                                <th>Created at</th>
+                                <th>Stats</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -49,10 +50,11 @@
             <a href="/session-admin/<%= object.id %>/"><%= object.name %></a><br />
             <small><%= object.description %></small>
         </td>
+        <td><%= object.date_updated %></td>
         <td>
             Step <%= object.status_info.step %> of 7: <%= object.status_info.human_name %>
             <div class="progress">
-                <div class="progress-bar progress-bar-success" role="progressbar" aria-valuenow="<%= (object.status_info.step * 100.0 / 7) %>" aria-valuemin="0" aria-valuemax="100" style="width: <%= (object.status_info.step * 100.0 / 7) %>%;">
+                <div class="progress-bar progress-bar-info" role="progressbar" aria-valuenow="<%= (object.status_info.step * 100.0 / 7) %>" aria-valuemin="0" aria-valuemax="100" style="width: <%= (object.status_info.step * 100.0 / 7) %>%;">
                     <span class="sr-only"><%= (object.status_info.step * 100.0 / 7) %>% Complete</span>
                 </div>
             </div>
@@ -61,10 +63,13 @@
             <% if (object.status == 'processing') { %>
                 <em>Processing. Please wait ...</em>
             <% } else { %>
-                Step <%= object.status_info.step + 1 %>: <a href="<%= object.status_info.next_step %>"><%= object.status_info.next_step_name %></a>
+                Step <%= object.status_info.step + 1 %>: <a href="<%= object.status_info.next_step %>"><%= object.status_info.next_step_name %> &raquo;</a>
             <% } %>
         </td>
-        <td><%= object.date_added %></td>
+        <td>
+            Rows: <%= object.record_count %><br />
+            Unique entities: <%= object.entity_count %>
+        </td>
         <td><a class="btn btn-info" href="/session-admin/<%= object.id %>/">Details &raquo;</a></td>
     </tr>
 </script>
@@ -76,7 +81,7 @@
         var tpl = new EJS({'text': $('#sessionTemplate').html()});
         if (resp.objects.length > 0) {
             $.each(resp.objects, function(i, object){
-                //console.log(object);
+                console.log(object);
                 rows += tpl.render({object: object});
             });
             $('#dedupe-sessions').show();

@@ -21,7 +21,7 @@ STATUS_LIST = [
     {
         'machine_name' : 'dataset uploaded',
         'human_name': 'Dataset uploaded', 
-        'next_step_name': 'Define model',
+        'next_step_name': 'Fields to compare',
         'next_step': '/select-fields/?session_id={0}',
         'step': 1
     },

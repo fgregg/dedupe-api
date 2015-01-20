@@ -41,5 +41,18 @@ def create_app(config='api.app_config'):
     app.register_blueprint(auth)
     app.register_blueprint(trainer)
     app.register_blueprint(matching)
+
+    @app.template_filter('format_number')
+    def reverse_filter(s):
+        return '{:,}'.format(s)
+    
+    @app.template_filter('format_date_sort')
+    def reverse_filter(s):
+        if s:
+            return s.strftime('%Y%m%d%H%M')
+        else:
+            return '0'
+
+
     return app
 
