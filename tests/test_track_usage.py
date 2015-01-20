@@ -100,7 +100,7 @@ class TrackUsageTest(unittest.TestCase):
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,
-                        'session_key': self.dd_sess.id,
+                        'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
@@ -144,7 +144,7 @@ class TrackUsageTest(unittest.TestCase):
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': extra_user_id,
-                        'session_key': self.dd_sess.id,
+                        'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
@@ -160,7 +160,7 @@ class TrackUsageTest(unittest.TestCase):
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,
-                        'session_key': self.dd_sess.id,
+                        'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
