@@ -68,25 +68,6 @@ def updateTraining(session_id, record_ids, distinct=False):
     '''
     return None
 
-def updateSessionStatus(session_id, increment=True):
-    ''' 
-    Advance or reverse the status of a session by one step
-    '''
-    dd = worker_session.query(DedupeSession).get(session_id)
-    try:
-        current = [i for i,v in enumerate(STATUS_LIST) if v['machine_name'] == dd.status][0]
-    except IndexError:
-        current = 0
-    print 'CURRENT STATUS {0}'.format(STATUS_LIST[current]['machine_name'])
-    if increment:
-        dd.status = STATUS_LIST[current + 1]['machine_name']
-        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1]['machine_name'])
-    else: # pragma: no cover
-        dd.status = STATUS_LIST[current - 1]['machine_name']
-        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1]['machine_name'])
-    worker_session.add(dd)
-    worker_session.commit()
-
 def getCluster(session_id, entity_pattern, raw_pattern):
     ent_name = entity_pattern.format(session_id)
     raw_name = raw_pattern.format(session_id)

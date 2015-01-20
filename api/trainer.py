@@ -17,8 +17,7 @@ import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable
-from api.utils.helpers import getDistinct, slugify, updateSessionStatus, \
-    STATUS_LIST
+from api.utils.helpers import getDistinct, slugify, STATUS_LIST
 from api.models import DedupeSession, User, Group
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
@@ -166,9 +165,9 @@ def select_field_types():
             field_defs.extend(fs)
         dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
         dedupe_session.field_defs = json.dumps(field_defs)
+        dedupe_session.status = 'model defined'
         db_session.add(dedupe_session)
         db_session.commit()
-        updateSessionStatus(dedupe_session.id)
         flask_session['init_key'] = initializeModel.delay(dedupe_session.id).key
         return redirect(url_for('trainer.training_run'))
     return render_template('dedupe_session/select_field_types.html', field_list=field_list, dedupe_session=dedupe_session)
