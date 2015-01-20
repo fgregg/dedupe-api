@@ -286,17 +286,21 @@ def delete_session():
 @admin.route('/session-list/')
 @login_required
 def review():
-    user_sessions = flask_session['user_sessions']
+    
+    sess_id = request.args.get('session_id')
+    user = db_session.query(User).get(flask_session['user_id'])
+    flask_session['user'] = user
+
     resp = {
         'status': 'ok',
         'message': ''
     }
     status_code = 200
-    sess_id = request.args.get('session_id')
     all_sessions = []
     if not sess_id:
         sessions = db_session.query(DedupeSession)\
-            .filter(DedupeSession.id.in_(user_sessions))\
+            .filter(DedupeSession.group.has(
+                Group.id.in_([i.id for i in user.groups])))\
             .all()
         for sess in sessions:
             s = sess.as_dict()

@@ -1,6 +1,6 @@
 {% macro dedupe_steps(dedupe_session) -%}
     {% if (dedupe_session) %}
-        <p>{{dedupe_session.name}} <span class='pull-right'><a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Settings</a></span></p>
+        <p>{{dedupe_session.name}} <span class='pull-right'><a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a></span></p>
     {% else %}
         <p>New dedupe session</p>
     {% endif %}

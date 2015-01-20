@@ -25,10 +25,10 @@
                         <thead>
                             <tr id="review-header">
                                 <th>Name</th>
-                                <th>Updated</th>
                                 <th>Session status</th>
                                 <th>Next step</th>
                                 <th>Stats</th>
+                                <th>Updated</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -50,7 +50,6 @@
             <a href="/session-admin/?session_id=<%= object.id %>"><%= object.name %></a><br />
             <small><%= object.description %></small>
         </td>
-        <td><%= object.date_updated %></td>
         <td>
             Step <%= object.status_info.step %> of 7: <%= object.status_info.human_name %>
             <div class="progress">
@@ -72,7 +71,12 @@
                 Unique entities: <%= object.entity_count %>
             <% } %>
         </td>
-        <td><a class="btn btn-info" href="/session-admin/?session_id=<%= object.id %>">Details &raquo;</a></td>
+        <td>
+            <% if (object.date_updated) { %>
+                <%= moment(object.date_updated).format("M/D/YYYY") %>
+            <% } %>
+        </td>
+        <td><a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a></td>
     </tr>
 </script>
 
