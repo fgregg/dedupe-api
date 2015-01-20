@@ -47,7 +47,7 @@
 
     <tr>
         <td>
-            <a href="/session-admin/<%= object.id %>/"><%= object.name %></a><br />
+            <a href="/session-admin/?session_id=<%= object.id %>"><%= object.name %></a><br />
             <small><%= object.description %></small>
         </td>
         <td><%= object.date_updated %></td>
@@ -72,7 +72,7 @@
                 Unique entities: <%= object.entity_count %>
             <% } %>
         </td>
-        <td><a class="btn btn-info" href="/session-admin/<%= object.id %>/">Details &raquo;</a></td>
+        <td><a class="btn btn-info" href="/session-admin/?session_id=<%= object.id %>">Details &raquo;</a></td>
     </tr>
 </script>
 

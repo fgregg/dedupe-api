@@ -16,10 +16,10 @@ class ReviewTest(DedupeAPITestCase):
         with self.app.test_request_context():
             self.login()
             with self.client as c:
-                rv = c.get('/session-review/' + self.dd_sess.id + '/')
-                assert "var mark_cluster_url = '/mark-cluster/' + session_id + '/';" in rv.data
-                rv = c.get('/session-review/' + self.dd_sess.id + '/?second_review=true')
-                assert "var mark_cluster_url = '/mark-canon-cluster/' + session_id + '/';" in rv.data
+                rv = c.get('/session-review/?session_id=' + self.dd_sess.id)
+                assert "var mark_cluster_url = '/mark-cluster/?session_id=' + session_id;" in rv.data
+                rv = c.get('/session-review/?session_id=' + self.dd_sess.id + '&second_review=true')
+                assert "var mark_cluster_url = '/mark-canon-cluster/?session_id=' + session_id;" in rv.data
     
     def review_wrapper(self, canonical=False):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
