@@ -25,9 +25,7 @@
                         <thead>
                             <tr id="review-header">
                                 <th>Name</th>
-                                <th>Session status</th>
-                                <th>Next step</th>
-                                <th>Stats</th>
+                                <th>Progress</th>
                                 <th>Updated</th>
                                 <th></th>
                             </tr>
@@ -51,29 +49,20 @@
             <small><%= object.description %></small>
         </td>
         <td>
-            Step <%= object.status_info.step %> of 7: <%= object.status_info.human_name %>
-            <div class="progress">
-                <div class="progress-bar progress-bar-info" role="progressbar" aria-valuenow="<%= (object.status_info.step * 100.0 / 7) %>" aria-valuemin="0" aria-valuemax="100" style="width: <%= (object.status_info.step * 100.0 / 7) %>%;">
-                    <span class="sr-only"><%= (object.status_info.step * 100.0 / 7) %>% Complete</span>
-                </div>
-            </div>
-        </td>
-        <td>
             <% if (object.processing == true) { %>
                 <em><i class='fa fa-refresh fa-spin'></i> Processing</em>
             <% } else { %>
                 Step <%= object.status_info.step + 1 %>: <a href="<%= object.status_info.next_step %>"><%= object.status_info.next_step_name %> &raquo;</a>
             <% } %>
-        </td>
-        <td>
-            Rows: <%= object.record_count %><br />
-            <% if (object.entity_count) { %>
-                Unique entities: <%= object.entity_count %>
-            <% } %>
+            <div class="progress">
+                <div class="progress-bar progress-bar-info" role="progressbar" aria-valuenow="<%= (object.status_info.step * 100.0 / 6) %>" aria-valuemin="0" aria-valuemax="100" style="width: <%= (object.status_info.step * 100.0 / 6) %>%;">
+                    <span class="sr-only"><%= (object.status_info.step * 100.0 / 6) %>% Complete</span>
+                </div>
+            </div>
         </td>
         <td>
             <% if (object.date_updated) { %>
-                <%= moment(object.date_updated).format("M/D/YYYY") %>
+                <%= moment(object.date_updated + "+0000").from(moment()) %>
             <% } %>
         </td>
         <td><a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a></td>
