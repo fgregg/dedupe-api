@@ -36,7 +36,7 @@
             </button>
             &nbsp;&nbsp;&nbsp;
             <button class="btn btn-success hidden" id="finish">
-                Finished training &raquo;
+                Next &raquo;
             </button>
         </p>
     </div>
@@ -174,7 +174,7 @@
                         update_your_training(data.counter);
                         render_training_pair();
                     } else {
-                        window.location = "{{ url_for('trainer.dedupe_finished') }}";
+                        window.location = "{{ url_for('admin.index') }}";
                     }
                 }
             )

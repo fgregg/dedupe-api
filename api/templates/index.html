@@ -60,8 +60,8 @@
             </div>
         </td>
         <td>
-            <% if (object.status == 'processing') { %>
-                <em>Processing. Please wait ...</em>
+            <% if (object.processing == true) { %>
+                <em><i class='fa fa-refresh fa-spin'></i> Processing</em>
             <% } else { %>
                 Step <%= object.status_info.step + 1 %>: <a href="<%= object.status_info.next_step %>"><%= object.status_info.next_step_name %> &raquo;</a>
             <% } %>

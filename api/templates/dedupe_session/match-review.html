@@ -140,7 +140,7 @@
         $('#group-display').html(tpl.render({matches: matches, obj: obj.object}))
     }
     function getRecord(){
-        return $.getJSON('/get-unmatched-record/' + session_id + '/')
+        return $.getJSON('/get-unmatched-record/?session_id=' + session_id)
     }
     function getMatches(data){
         return $.ajax({

@@ -163,7 +163,7 @@ class MatchingTest(unittest.TestCase):
                 # First, get an unmatched record and try to find matches
                 matches = []
                 while not matches:
-                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,
@@ -202,7 +202,7 @@ class MatchingTest(unittest.TestCase):
                 # First, get an unmatched record and try to find matches
                 matches = []
                 while not matches:
-                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,
@@ -244,7 +244,7 @@ class MatchingTest(unittest.TestCase):
 
                 # Find a record that doesn't match anything
                 while matches:
-                    unmatched = c.get('/get-unmatched-record/' + self.dd_sess.id + '/')
+                    unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,

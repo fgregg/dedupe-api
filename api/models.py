@@ -83,6 +83,7 @@ class DedupeSession(Base):
             'entity_count': self.entity_count,
             'review_count': self.review_count,
             'description': self.description,
+            'processing': self.processing,
             'date_added': None,
             'date_updated': None,
         }

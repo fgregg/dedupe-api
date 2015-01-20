@@ -296,13 +296,6 @@ def mark_pair():
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@trainer.route('/dedupe_finished/')
-@login_required
-@check_roles(roles=['admin'])
-def dedupe_finished(): # pragma: no cover
-    user = db_session.query(User).get(flask_session['user_id'])
-    return render_template("dedupe_session/dedupe_finished.html", user=user)
-
 @trainer.route('/working/')
 @login_required
 @check_roles(roles=['admin'])

@@ -6,7 +6,7 @@ from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import checkinSessions, getCluster
-from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters
+from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters, dedupeCanon
 from api.app_config import TIME_ZONE
 from sqlalchemy import text, Table
 

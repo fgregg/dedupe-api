@@ -129,6 +129,8 @@ def getCluster(session_id, entity_pattern, raw_pattern):
             d = {}
             for k,v in zip(raw_fields, thing):
                 d[k] = v
+
+            d['confidence'] = formatPercentage(d['confidence'])
             cluster_list.append(d)
         one_minute = datetime.now() + timedelta(minutes=1)
         upd = text(''' 
@@ -279,3 +281,5 @@ def checkinSessions():
             pass
     return None
 
+def formatPercentage(num):
+    return "{0:.0f}%".format(float(num) * 100)
