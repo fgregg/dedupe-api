@@ -99,12 +99,28 @@ def check_sessions():
                 return response
             else:
                 user = db_session.query(User).get(api_key)
+                flask_session['user'] = user
+
                 sess = db_session.query(DedupeSession)\
                     .filter(DedupeSession.group.has(
                         Group.id.in_([i.id for i in user.groups])))\
                     .all()
                 flask_session['user_sessions'] = [s.id for s in sess]
                 flask_session['api_key'] = api_key
+
+                dedupe_session = None
+                if request.args.get('session_id'):
+                    session_id = request.args['session_id']
+                    flask_session['session_id'] = request.args['session_id']
+                elif flask_session.get('session_id'):
+                    session_id = flask_session['session_id']
+                else:
+                    flash("Sorry, could not find a session id")
+                    return redirect(url_for('admin.index'))
+                if flask_session['session_id'] not in flask_session['user_sessions']:
+                    flash("Sorry, you don't have access to that session")
+                    return redirect(url_for('admin.index'))
+                
             return f(*args, **kwargs)
         return decorated
     return decorator

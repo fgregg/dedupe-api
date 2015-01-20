@@ -117,19 +117,15 @@ def train():
 def select_fields():
     status_code = 200
     error = None
+    dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     fields = flask_session.get('fieldnames')
-    if request.args.get('session_id'):
-        session_id = request.args['session_id']
-        flask_session['session_id'] = session_id
-        if session_id not in flask_session['user_sessions']:
-            flash("Sorry, you don't have access to that session")
-            return redirect(url_for('admin.index'))
-        meta = MetaData()
-        engine = db_session.bind
-        raw = Table('raw_{0}'.format(session_id), meta, 
-            autoload=True, autoload_with=engine, keep_existing=True)
-        fields = [r for r in raw.columns.keys() if r != 'record_id']
-        flask_session['fieldnames'] = fields
+    meta = MetaData()
+    engine = db_session.bind
+    raw = Table('raw_{0}'.format(flask_session['session_id']), meta, 
+        autoload=True, autoload_with=engine, keep_existing=True)
+    fields = [r for r in raw.columns.keys() if r != 'record_id']
+    flask_session['fieldnames'] = fields
+    
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         flask_session['field_list'] = field_list
@@ -138,15 +134,14 @@ def select_fields():
         else:
             error = 'You must select at least one field to compare on.'
             status_code = 400
-    user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('dedupe_session/select_fields.html', error=error, fields=fields, user=user)
+
+    return render_template('dedupe_session/select_fields.html', error=error, fields=fields, dedupe_session=dedupe_session)
 
 @trainer.route('/select-field-types/', methods=['GET', 'POST'])
 @login_required
 @check_roles(roles=['admin'])
 def select_field_types():
-    user = db_session.query(User).get(flask_session['user_id'])
-    sess = db_session.query(DedupeSession).get(flask_session['session_id'])
+    dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     field_list = flask_session['field_list']
     if request.method == 'POST':
         field_defs = []
@@ -169,59 +164,49 @@ def select_field_types():
                 if has_missing:
                     f.update({'has_missing': True})
             field_defs.extend(fs)
-        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
-        sess.field_defs = json.dumps(field_defs)
-        db_session.add(sess)
+        dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
+        dedupe_session.field_defs = json.dumps(field_defs)
+        db_session.add(dedupe_session)
         db_session.commit()
-        updateSessionStatus(sess.id)
-        flask_session['init_key'] = initializeModel.delay(sess.id).key
+        updateSessionStatus(dedupe_session.id)
+        flask_session['init_key'] = initializeModel.delay(dedupe_session.id).key
         return redirect(url_for('trainer.training_run'))
-    return render_template('dedupe_session/select_field_types.html', user=user, field_list=field_list)
+    return render_template('dedupe_session/select_field_types.html', field_list=field_list, dedupe_session=dedupe_session)
 
 @trainer.route('/training-run/')
 @login_required
 @check_roles(roles=['admin'])
 @check_sessions()
 def training_run():
-    if request.args.get('session_id'):
-        session_id = request.args['session_id']
-        flask_session['session_id'] = request.args['session_id']
-    elif flask_session.get('session_id'):
-        session_id = flask_session['session_id']
-    else:
-        return redirect(url_for('trainer.train'))
-    if flask_session['session_id'] not in flask_session['user_sessions']:
-        flash("Sorry, you don't have access to that session")
-        return redirect(url_for('admin.index'))
-    else:
-        sess = db_session.query(DedupeSession).get(flask_session['session_id'])
-        user = db_session.query(User).get(flask_session['user_id'])
-        if sess.training_data:
-            td = json.loads(sess.training_data)
-            flask_session['counter'] = {
-                    'yes': len(td['match']),
-                    'no': len(td['distinct']),
-                    'unsure': 0
-                }
-        else:
-            flask_session['counter'] = {
-                'yes': 0,
-                'no': 0 ,
-                'unsure': 0,
+    dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
+
+    if dedupe_session.training_data:
+        td = json.loads(dedupe_session.training_data)
+        flask_session['counter'] = {
+                'yes': len(td['match']),
+                'no': len(td['distinct']),
+                'unsure': 0
             }
-        error = None
-        status_code = 200
-        field_defs = json.loads(sess.field_defs)
-        init_status = 'processing'
-        if sess.sample:
-            sample = cPickle.loads(sess.sample)
-            deduper = dedupe.Dedupe(field_defs, data_sample=sample)
-            flask_session['deduper'] = deduper
-            init_status = 'finished'
+    else:
+        flask_session['counter'] = {
+            'yes': 0,
+            'no': 0 ,
+            'unsure': 0,
+        }
+    error = None
+    status_code = 200
+    field_defs = json.loads(dedupe_session.field_defs)
+    init_status = 'processing'
+    if dedupe_session.sample:
+        sample = cPickle.loads(dedupe_session.sample)
+        deduper = dedupe.Dedupe(field_defs, data_sample=sample)
+        flask_session['deduper'] = deduper
+        init_status = 'finished'
     return make_response(render_template(
                             'dedupe_session/training_run.html', 
-                            user=user, error=error, 
-                            init_status=init_status), status_code)
+                            error=error, 
+                            init_status=init_status, 
+                            dedupe_session=dedupe_session), status_code)
 
 @trainer.route('/get-pair/')
 @login_required

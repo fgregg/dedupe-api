@@ -1,11 +1,10 @@
 {% extends 'base.html' %}
+{% from "partials/dedupe_steps.html" import dedupe_steps %}
 {% block title %}Define model{% endblock %}
 {% block content %}
     <div class="col-md-12">
-    {% include "partials/dedupe_steps.html" %}
-    {% if fields %}
-    <h3>2. Fields to compare <small>Select fields</small></h3>
-    {% else %}
+    {{ dedupe_steps( dedupe_session ) }}
+    {% if not fields %}
     <h3>Generating random sample...</h3>
     {% endif %}
     {% include "partials/error.html" %}
@@ -14,7 +13,7 @@
         <div class="row">
             <div class="col-md-8">
                 {% if fields %}
-                <p>Select the columns that you think tell the most information about each row in your spreadsheet.</p>
+                <p><strong>Select the columns</strong> that you think tell the most information about each row in your spreadsheet.</p>
                 
                 <form id="fields" role="form" action="{{ url_for('trainer.select_fields')}}" method="post" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />

@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
+{% from "partials/dedupe_steps.html" import dedupe_steps %}
 {% block title %}Train{% endblock %}
 {% block content %}
     <div class="col-md-12">
-    {% include "partials/dedupe_steps.html" %}
-    <h3>3. Train <small>Identify some similar and different records</small></h3>
+    {{ dedupe_steps( dedupe_session ) }}
     {% include "partials/error.html" %}
   </div>
     {% if init_status == 'finished' %}
     <div class='col-md-8'>
-        <p>In this step, we'll present you with pairs of records (Record A and Record B) we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
+        <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
         <table id='labeler' class='table table-bordered'>
             <thead>
                 <tr>

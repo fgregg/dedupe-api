@@ -68,7 +68,9 @@
         </td>
         <td>
             Rows: <%= object.record_count %><br />
-            Unique entities: <%= object.entity_count %>
+            <% if (object.entity_count) { %>
+                Unique entities: <%= object.entity_count %>
+            <% } %>
         </td>
         <td><a class="btn btn-info" href="/session-admin/<%= object.id %>/">Details &raquo;</a></td>
     </tr>
