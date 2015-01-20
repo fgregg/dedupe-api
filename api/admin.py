@@ -65,9 +65,7 @@ class AddUserForm(Form):
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
 def index():
-    user = db_session.query(User).get(flask_session['user_id'])
-    roles = [r.name for r in user.roles]
-    return render_template('index.html', user=user, roles=roles)
+    return render_template('index.html')
 
 @admin.route('/add-user/', methods=['GET', 'POST'])
 @login_required
@@ -100,222 +98,193 @@ def user_list():
     user = db_session.query(User).get(flask_session['user_id'])
     return render_template('user_list.html', users=users, user=user)
 
-@admin.route('/session-admin/<session_id>/')
+@admin.route('/session-admin/')
 @login_required
 @check_sessions()
-def session_admin(session_id):
-    if session_id not in flask_session['user_sessions']:
-        flash("You don't have access to session {0}".format(session_id))
-        return redirect(url_for('admin.index'))
-    else:
-        user = db_session.query(User).get(flask_session['user_id'])
-        sess = db_session.query(DedupeSession).get(session_id)
-        predicates = None
-        session_info = {}
-        training_data = None
-        status_info = sess.as_dict()['status_info']
-        if sess.field_defs:
-            field_defs = json.loads(sess.field_defs)
-            for fd in field_defs:
-                try:
-                    session_info[fd['field']]['types'].append(fd['type'])
-                    session_info[fd['field']]['has_missing'] = fd.get('has_missing', '')
-                    session_info[fd['field']]['children'] = []
-                except KeyError:
-                    session_info[fd['field']] = {
-                                                  'types': [fd['type']],
-                                                  'has_missing': fd.get('has_missing', ''),
-                                                }
-                    session_info[fd['field']]['children'] = []
-        if sess.settings_file:
-            dd = dedupe.StaticDedupe(StringIO(sess.settings_file))
-            for field in dd.data_model.primary_fields:
-                name, ftype = field.field, field.type
-                if ftype in ['Categorical', 'Address', 'Set']:
-                    children = []
-                    for f in field.higher_vars:
-                        children.append((f.name, f.type, f.has_missing, f.weight,) )
-                    session_info[name]['children'] = children
-                try:
-                    session_info[name]['learned_weight'] = field.weight
-                except KeyError: # pragma: no cover
-                    session_info[name] = {'learned_weight': field.weight}
-            predicates = dd.predicates
-        if sess.training_data:
-            td = json.loads(sess.training_data)
-            training_data = {'distinct': [], 'match': []}
-            for left, right in td['distinct']:
-                keys = left.keys()
-                pair = []
-                for key in keys:
-                    d = {
-                        'field': key,
-                        'left': left[key],
-                        'right': right[key]
-                    }
-                    pair.append(d)
-                training_data['distinct'].append(pair)
-            for left, right in td['match']:
-                keys = left.keys()
-                pair = []
-                for key in keys:
-                    d = {
-                        'field': key,
-                        'left': left[key],
-                        'right': right[key]
-                    }
-                    pair.append(d)
-                training_data['match'].append(pair)
+def session_admin():
+    
+    session_id = flask_session['session_id']
+
+    user = db_session.query(User).get(flask_session['user_id'])
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    predicates = None
+    session_info = {}
+    training_data = None
+    status_info = dedupe_session.as_dict()['status_info']
+    if dedupe_session.field_defs:
+        field_defs = json.loads(dedupe_session.field_defs)
+        for fd in field_defs:
+            try:
+                session_info[fd['field']]['types'].append(fd['type'])
+                session_info[fd['field']]['has_missing'] = fd.get('has_missing', '')
+                session_info[fd['field']]['children'] = []
+            except KeyError:
+                session_info[fd['field']] = {
+                                              'types': [fd['type']],
+                                              'has_missing': fd.get('has_missing', ''),
+                                            }
+                session_info[fd['field']]['children'] = []
+    if dedupe_session.settings_file:
+        dd = dedupe.StaticDedupe(StringIO(dedupe_session.settings_file))
+        for field in dd.data_model.primary_fields:
+            name, ftype = field.field, field.type
+            if ftype in ['Categorical', 'Address', 'Set']:
+                children = []
+                for f in field.higher_vars:
+                    children.append((f.name, f.type, f.has_missing, f.weight,) )
+                session_info[name]['children'] = children
+            try:
+                session_info[name]['learned_weight'] = field.weight
+            except KeyError: # pragma: no cover
+                session_info[name] = {'learned_weight': field.weight}
+        predicates = dd.predicates
+    if dedupe_session.training_data:
+        td = json.loads(dedupe_session.training_data)
+        training_data = {'distinct': [], 'match': []}
+        for left, right in td['distinct']:
+            keys = left.keys()
+            pair = []
+            for key in keys:
+                d = {
+                    'field': key,
+                    'left': left[key],
+                    'right': right[key]
+                }
+                pair.append(d)
+            training_data['distinct'].append(pair)
+        for left, right in td['match']:
+            keys = left.keys()
+            pair = []
+            for key in keys:
+                d = {
+                    'field': key,
+                    'left': left[key],
+                    'right': right[key]
+                }
+                pair.append(d)
+            training_data['match'].append(pair)
     return render_template('session-admin.html', 
-                            dd_session=sess, 
+                            dedupe_session=dedupe_session, 
                             session_info=session_info, 
                             predicates=predicates,
                             training_data=training_data,
                             user=user,
                             status_info=status_info)
 
-@admin.route('/training-data/<session_id>/')
+@admin.route('/training-data/')
+@login_required
 @check_sessions()
-def training_data(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        r = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(json.dumps(r), 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        training_data = data.training_data
-        resp = make_response(training_data, 200)
-        resp.headers['Content-Type'] = 'text/plain'
-        resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.id
+def training_data():
+
+    session_id = flask_session['session_id']
+    data = db_session.query(DedupeSession).get(session_id)
+    training_data = data.training_data
+    
+    resp = make_response(training_data, 200)
+    resp.headers['Content-Type'] = 'text/plain'
+    resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.id
     return resp
 
-@admin.route('/settings-file/<session_id>/')
+@admin.route('/settings-file/')
+@login_required
 @check_sessions()
-def settings_file(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        r = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(json.dumps(r), 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        settings_file = data.settings_file
-        resp = make_response(settings_file, 200)
-        resp.headers['Content-Disposition'] = 'attachment; filename=%s.dedupe_settings' % data.id
+def settings_file():
+    session_id = flask_session['session_id']
+    data = db_session.query(DedupeSession).get(session_id)
+    settings_file = data.settings_file
+    resp = make_response(settings_file, 200)
+    resp.headers['Content-Disposition'] = 'attachment; filename=%s.dedupe_settings' % data.id
     return resp
 
-@admin.route('/field-definitions/<session_id>/')
+@admin.route('/field-definitions/')
+@login_required
 @check_sessions()
-def field_definitions(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        r = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(json.dumps(r), 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        field_defs = data.field_defs
-        resp = make_response(field_defs, 200)
-        resp.headers['Content-Type'] = 'application/json'
+def field_definitions():
+    session_id = flask_session['session_id']
+    data = db_session.query(DedupeSession).get(session_id)
+    field_defs = data.field_defs
+    
+    resp = make_response(field_defs, 200)
+    resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@admin.route('/delete-data-model/<session_id>/')
+@admin.route('/delete-data-model/')
+@login_required
 @check_sessions()
-def delete_data_model(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        resp = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        status_code = 401
-    else:
-        sess = db_session.query(DedupeSession).get(session_id)
-        sess.field_defs = None
-        sess.training_data = None
-        sess.sample = None
-        sess.status = 'session initialized'
-        db_session.add(sess)
-        db_session.commit()
-        tables = [
-            'entity_{0}',
-            'block_{0}',
-            'plural_block_{0}',
-            'covered_{0}',
-            'plural_key_{0}',
-            'small_cov_{0}',
-        ]
-        engine = db_session.bind
-        for table in tables: # pragma: no cover
-            try:
-                data_table = Table(table.format(session_id), 
-                    Base.metadata, autoload=True, autoload_with=engine)
-                data_table.drop(engine)
-            except NoSuchTableError:
-                pass
-            except ProgrammingError:
-                pass
-        resp = {
-            'status': 'ok',
-            'message': 'Data model for session {0} deleted'.format(session_id)
-        }
-        status_code = 200
+def delete_data_model():
+
+    session_id = flask_session['session_id']
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    dedupe_session.field_defs = None
+    dedupe_session.training_data = None
+    dedupe_session.sample = None
+    dedupe_session.status = 'session initialized'
+    db_session.add(dedupe_session)
+    db_session.commit()
+    tables = [
+        'entity_{0}',
+        'block_{0}',
+        'plural_block_{0}',
+        'covered_{0}',
+        'plural_key_{0}',
+        'small_cov_{0}',
+    ]
+    engine = db_session.bind
+    for table in tables: # pragma: no cover
+        try:
+            data_table = Table(table.format(session_id), 
+                Base.metadata, autoload=True, autoload_with=engine)
+            data_table.drop(engine)
+        except NoSuchTableError:
+            pass
+        except ProgrammingError:
+            pass
+    resp = {
+        'status': 'ok',
+        'message': 'Data model for session {0} deleted'.format(session_id)
+    }
+    status_code = 200
+
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@admin.route('/delete-session/<session_id>/')
+@admin.route('/delete-session/')
+@login_required
 @check_sessions()
-def delete_session(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions:
-        r = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(json.dumps(r), 401)
-        resp.headers['Content-Type'] = 'application/json'
-    else:
-        data = db_session.query(DedupeSession).get(session_id)
-        db_session.delete(data)
-        db_session.commit()
-        tables = [
-            'entity_{0}',
-            'entity_{0}_cr',
-            'raw_{0}',
-            'processed_{0}',
-            'processed_{0}_cr',
-            'block_{0}',
-            'block_{0}_cr',
-            'plural_block_{0}',
-            'plural_block_{0}_cr',
-            'cr_{0}',
-            'covered_{0}',
-            'covered_{0}_cr',
-            'plural_key_{0}',
-            'plural_key_{0}_cr',
-            'small_cov_{0}',
-            'small_cov_{0}_cr',
-            'canon_{0}',
-            'exact_match_{0}',
-        ]
-        cleanupTables.delay(session_id, tables=tables)
-        resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
-        resp.headers['Content-Type'] = 'application/json'
+def delete_session():
+
+    session_id = flask_session['session_id']
+    data = db_session.query(DedupeSession).get(session_id)
+    db_session.delete(data)
+    db_session.commit()
+    tables = [
+        'entity_{0}',
+        'entity_{0}_cr',
+        'raw_{0}',
+        'processed_{0}',
+        'processed_{0}_cr',
+        'block_{0}',
+        'block_{0}_cr',
+        'plural_block_{0}',
+        'plural_block_{0}_cr',
+        'cr_{0}',
+        'covered_{0}',
+        'covered_{0}_cr',
+        'plural_key_{0}',
+        'plural_key_{0}_cr',
+        'small_cov_{0}',
+        'small_cov_{0}_cr',
+        'canon_{0}',
+        'exact_match_{0}',
+    ]
+    cleanupTables.delay(session_id, tables=tables)
+    resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
+    resp.headers['Content-Type'] = 'application/json'
     return resp
 
 @admin.route('/session-list/')
-@check_sessions()
+@login_required
 def review():
     user_sessions = flask_session['user_sessions']
     resp = {
@@ -342,18 +311,12 @@ def review():
     response.headers['Content-Type'] = 'application/json'
     return response
 
-@admin.route('/dump-entity-map/<session_id>/')
+@admin.route('/dump-entity-map/')
+@login_required
 @check_sessions()
-def entity_map_dump(session_id):
-    user_sessions = flask_session['user_sessions']
-    if session_id not in user_sessions: # pragma: no cover
-        r = {
-            'status': 'error', 
-            'message': "You don't have access to session %s" % session_id
-        }
-        resp = make_response(json.dumps(r), 401)
-        resp.headers['Content-Type'] = 'application/json'
-        return resp
+def entity_map_dump():
+
+    session_id = flask_session['session_id']
     outp = StringIO()
     copy = """ 
         COPY (

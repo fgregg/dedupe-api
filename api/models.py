@@ -132,9 +132,9 @@ class User(Base):
     active = Column(Boolean())
     _password = Column('password', String, nullable=False)
     roles = relationship('Role', secondary=roles_users,
-        backref=backref('users', lazy='dynamic'))
+        backref=backref('users', lazy='joined'))
     groups = relationship('Group', secondary=groups_users,
-        backref=backref('users', lazy='dynamic'))
+        backref=backref('users', lazy='joined'))
     
     def __repr__(self): # pragma: no cover
         return '<User %r>' % self.name

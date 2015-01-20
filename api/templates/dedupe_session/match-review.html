@@ -5,7 +5,6 @@
     <div class="row">
         <div class="col-md-12">
             {{ dedupe_steps( dedupe_session ) }}
-            <h3>6. Final review <small>Review unmatched records</small></h3>
             <div class="row">
                 <div id="counter" class="col-md-12"></div>
             </div>
@@ -87,7 +86,7 @@
 </script>
 <script type="text/javascript">
     var session_id = "{{ session_id }}"
-    var api_key = "{{ user.id }}"
+    var api_key = "{{ session.get('user').id }}"
     var match_obj;
     $(document).ready(function(){
         getAndMatch();

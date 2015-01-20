@@ -11,10 +11,8 @@
     <div class="row">
       {{ dedupe_steps( dedupe_session ) }}
       {% if first_review %}
-          <h3>4. First review</h3>
           <p>Based on the training you provided, we've identified clusters of records that refer to the same thing. In this next step, we'd like you to review the ones we are the least confident about. After reviewing 20 of them, you will have the option to automatically accept the rest.</p>
       {% else %}
-          <h3>5. Second review</h3>
           <p>Some of the clusters identified in the <strong>First review</strong> can be merged. In this next step, we'd like you to review the ones we are the least confident about. If they look good, you can automatically accept the rest.</p>
       {% endif %}
       <div class="col-md-12" id="group-display"></div>

@@ -177,9 +177,9 @@ def match():
     return resp
 
 @csrf.exempt
-@matching.route('/add-entity/<session_id>/', methods=['POST'])
+@matching.route('/add-entity/', methods=['POST'])
 @check_sessions()
-def add_entity(session_id):
+def add_entity():
     ''' 
     Add an entry to the entity map. 
     POST data should be a string encoded JSON object which looks like:
@@ -211,95 +211,92 @@ def add_entity(session_id):
         'message': ""
     }
     status_code = 200
-    if session_id not in flask_session['user_sessions']: # pragma: no cover
-        r['status'] = 'error'
-        r['message'] = "You don't have access to session {0}".format(session_id)
-        status_code = 401
-    else:
-        try:
-            post = json.loads(request.data)
-        except ValueError:
-            r = {
-                'status': 'error',
-                'message': ''' 
-                    The content of your request should be a 
-                    string encoded JSON object.
-                ''',
-                'object': request.data,
-            }
-            resp = make_response(json.dumps(r), 400)
-            resp.headers['Content-Type'] = 'application/json'
-            return resp
-        obj = post['object']
-        record_id = obj.get('record_id')
-        if record_id:
-            del obj['record_id']
-        match_id = json.loads(request.data).get('match_id')
-        sess = db_session.query(DedupeSession).get(session_id)
-        field_defs = json.loads(sess.field_defs)
-        fds = {}
-        for fd in field_defs:
-            try:
-                fds[fd['field']].append(fd['type'])
-            except KeyError:
-                fds[fd['field']] = [fd['type']]
-        if not set(fds.keys()) == set(obj.keys()):
-            r['status'] = 'error'
-            r['message'] = "The fields in the object do not match the fields in the model"
-            status_code = 400
-        else:
-            engine = db_session.bind
-            proc_table = Table('processed_{0}'.format(session_id), Base.metadata, 
-                autoload=True, autoload_with=engine, keep_existing=True)
-            row = db_session.query(proc_table)\
-                .filter(proc_table.c.record_id == record_id)\
-                .first()
-            if not row: # pragma: no cover
-                raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
-                    autoload=True, autoload_with=engine, keep_existing=True)
-                proc_ins = 'INSERT INTO "processed_{0}" (SELECT record_id, '\
-                    .format(proc_table_name)
-                for idx, field in enumerate(fds.keys()):
-                    try:
-                        field_types = fds[field]
-                    except KeyError:
-                        field_types = ['String']
-                    # TODO: Need to figure out how to parse a LatLong field type
-                    if 'Price' in field_types:
-                        col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
-                    else:
-                        col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
-                    if idx < len(fds.keys()) - 1:
-                        proc_ins += '{0}, '.format(col_def)
-                    else:
-                        proc_ins += '{0} '.format(col_def)
-                else:
-                    proc_ins += 'FROM "raw_{0}" WHERE record_id = :record_id)'\
-                        .format(session_id)
+    session_id = flask_session['session_id']
 
-                with engine.begin() as conn:
-                    record_id = conn.execute(raw_table.insert()\
-                        .returning(raw_table.c.record_id) , **obj)
-                    conn.execute(text(proc_ins), record_id=record_id)
-            hash_me = ';'.join([preProcess(unicode(obj[i])) for i in fds.keys()])
-            md5_hash = md5(unidecode(hash_me)).hexdigest()
-            entity = {
-                'entity_id': unicode(uuid4()),
-                'record_id': record_id,
-                'source_hash': md5_hash,
-                'clustered': True,
-                'checked_out': False,
-            }
-            entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
+    try:
+        post = json.loads(request.data)
+    except ValueError:
+        r = {
+            'status': 'error',
+            'message': ''' 
+                The content of your request should be a 
+                string encoded JSON object.
+            ''',
+            'object': request.data,
+        }
+        resp = make_response(json.dumps(r), 400)
+        resp.headers['Content-Type'] = 'application/json'
+        return resp
+    obj = post['object']
+    record_id = obj.get('record_id')
+    if record_id:
+        del obj['record_id']
+    match_id = json.loads(request.data).get('match_id')
+    sess = db_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(sess.field_defs)
+    fds = {}
+    for fd in field_defs:
+        try:
+            fds[fd['field']].append(fd['type'])
+        except KeyError:
+            fds[fd['field']] = [fd['type']]
+    if not set(fds.keys()) == set(obj.keys()):
+        r['status'] = 'error'
+        r['message'] = "The fields in the object do not match the fields in the model"
+        status_code = 400
+    else:
+        engine = db_session.bind
+        proc_table = Table('processed_{0}'.format(session_id), Base.metadata, 
+            autoload=True, autoload_with=engine, keep_existing=True)
+        row = db_session.query(proc_table)\
+            .filter(proc_table.c.record_id == record_id)\
+            .first()
+        if not row: # pragma: no cover
+            raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
-            if match_id:
-                entity['target_record_id'] = match_id
-                entity_id = db_session.query(entity_table.c.entity_id)\
-                    .filter(entity_table.c.record_id == match_id)\
-                    .first()
-                entity['entity_id'] = entity_id.entity_id
+            proc_ins = 'INSERT INTO "processed_{0}" (SELECT record_id, '\
+                .format(proc_table_name)
+            for idx, field in enumerate(fds.keys()):
+                try:
+                    field_types = fds[field]
+                except KeyError:
+                    field_types = ['String']
+                # TODO: Need to figure out how to parse a LatLong field type
+                if 'Price' in field_types:
+                    col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
+                else:
+                    col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
+                if idx < len(fds.keys()) - 1:
+                    proc_ins += '{0}, '.format(col_def)
+                else:
+                    proc_ins += '{0} '.format(col_def)
+            else:
+                proc_ins += 'FROM "raw_{0}" WHERE record_id = :record_id)'\
+                    .format(session_id)
+
             with engine.begin() as conn:
-                conn.execute(entity_table.insert(), **entity)
+                record_id = conn.execute(raw_table.insert()\
+                    .returning(raw_table.c.record_id) , **obj)
+                conn.execute(text(proc_ins), record_id=record_id)
+        hash_me = ';'.join([preProcess(unicode(obj[i])) for i in fds.keys()])
+        md5_hash = md5(unidecode(hash_me)).hexdigest()
+        entity = {
+            'entity_id': unicode(uuid4()),
+            'record_id': record_id,
+            'source_hash': md5_hash,
+            'clustered': True,
+            'checked_out': False,
+        }
+        entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
+            autoload=True, autoload_with=engine, keep_existing=True)
+        if match_id:
+            entity['target_record_id'] = match_id
+            entity_id = db_session.query(entity_table.c.entity_id)\
+                .filter(entity_table.c.record_id == match_id)\
+                .first()
+            entity['entity_id'] = entity_id.entity_id
+        with engine.begin() as conn:
+            conn.execute(entity_table.insert(), **entity)
     resp = make_response(json.dumps(r), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -351,7 +348,7 @@ def train():
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
-@matching.route('/get-unmatched-record/<session_id>/')
+@matching.route('/get-unmatched-record/')
 @check_sessions()
 def get_unmatched(session_id):
     resp = {
@@ -360,29 +357,26 @@ def get_unmatched(session_id):
         'object': {},
     }
     status_code = 200
-    if session_id not in flask_session['user_sessions']:
-        resp['status'] = 'error'
-        resp['message'] = "You don't have access to session '{0}'".format(session_id)
-        status_code = 401
-    else:
-        sess = db_session.query(DedupeSession).get(session_id)
-        raw_fields = list(set([f['field'] for f in json.loads(sess.field_defs)]))
-        raw_fields.append('record_id')
-        fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
-        sel = ''' 
-          SELECT {0}
-          FROM "raw_{1}" as r
-          LEFT JOIN "entity_{1}" as e
-            ON r.record_id = e.record_id
-          WHERE e.record_id IS NULL
-          LIMIT 1
-        '''.format(fields, session_id)
-        engine = db_session.bind
-        with engine.begin() as conn:
-            rows = [dict(zip(raw_fields, r)) for r in conn.execute(sel)]
-        if not rows:
-            updateSessionStatus(session_id)
-        resp['object'] = rows[0]
+    session_id = flask_session['session_id']
+
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    raw_fields = list(set([f['field'] for f in json.loads(dedupe_session.field_defs)]))
+    raw_fields.append('record_id')
+    fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
+    sel = ''' 
+      SELECT {0}
+      FROM "raw_{1}" as r
+      LEFT JOIN "entity_{1}" as e
+        ON r.record_id = e.record_id
+      WHERE e.record_id IS NULL
+      LIMIT 1
+    '''.format(fields, session_id)
+    engine = db_session.bind
+    with engine.begin() as conn:
+        rows = [dict(zip(raw_fields, r)) for r in conn.execute(sel)]
+    if not rows:
+        updateSessionStatus(session_id)
+    resp['object'] = rows[0]
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
