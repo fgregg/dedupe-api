@@ -24,7 +24,6 @@ class AuthTest(DedupeAPITestCase):
         user = DEFAULT_USER['user']
         with self.app.test_request_context():
             rv = self.login(email=user['email'], pw=user['password'])
-            assert user['name'].title() in rv.data
             assert request.path == '/'
     
     def test_bad_login(self):
