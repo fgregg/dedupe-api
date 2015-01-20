@@ -350,7 +350,7 @@ def train():
 
 @matching.route('/get-unmatched-record/')
 @check_sessions()
-def get_unmatched(session_id):
+def get_unmatched():
     resp = {
         'status': 'ok',
         'message': '',

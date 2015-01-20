@@ -285,9 +285,9 @@
                 var sess_id = $(this).data('session_id');
                 console.log(sess_id);
                 var row = $(this).parent().parent()
-                $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
+                $.when($.getJSON('/delete-session/?session_id=' + sess_id)).then(
                     function(data){
-                        $(row).remove();
+                        window.location = '/'
                     }
                 )
             })
@@ -297,7 +297,7 @@
                 var sess_id = $(this).data('session_id');
                 console.log(sess_id);
                 var row = $(this).parent()
-                $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
+                $.when($.getJSON('/delete-data-model/?session_id=' + sess_id)).then(
                     function(data){
                         $.when($.getJSON('/session-list/')).then(
                           function(resp){

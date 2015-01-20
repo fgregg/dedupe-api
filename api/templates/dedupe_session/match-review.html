@@ -126,11 +126,11 @@
             $.when(getMatches(JSON.stringify(obj))).then(
                 function(matches){
                     $('#group-display').spin(false);
-                    if(matches.matches.length > 0){
+                    //if(matches.matches.length > 0){
                         displayRecord(matches.matches, obj)
-                    } else {
-                        console.log('NO MORE RECORDS TO MATCH')
-                    }
+                    //} else {
+                    //    console.log('NO MORE RECORDS TO MATCH')
+                    //}
                 }
             )
         });
