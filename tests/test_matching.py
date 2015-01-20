@@ -94,7 +94,7 @@ class MatchingTest(unittest.TestCase):
             match_record = dict(zip(model_fields, list(conn.execute(sel))[0]))
         post_data = {
             'api_key': self.user.id,
-            'session_key': self.dd_sess.id,
+            'session_id': self.dd_sess.id,
             'object': match_record
         }
         with self.app.test_request_context():
@@ -109,7 +109,7 @@ class MatchingTest(unittest.TestCase):
     def test_bad_fields(self):
         post_data = {
             'api_key': self.user.id,
-            'session_key': self.dd_sess.id,
+            'session_id': self.dd_sess.id,
             'object': {
                 'boo': 'foo',
                 'schmoo': 'schmoo'
@@ -141,7 +141,7 @@ class MatchingTest(unittest.TestCase):
         match_record = {a: unicode(i) for i,a in enumerate(model_fields)}
         post_data = {
             'api_key': self.user.id,
-            'session_key': self.dd_sess.id,
+            'session_id': self.dd_sess.id,
             'object': match_record
         }
         with self.app.test_request_context():
@@ -167,7 +167,7 @@ class MatchingTest(unittest.TestCase):
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,
-                        'session_key': self.dd_sess.id,
+                        'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
@@ -206,17 +206,17 @@ class MatchingTest(unittest.TestCase):
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,
-                        'session_key': self.dd_sess.id,
+                        'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data)['matches']
                 post_data['object'] = obj
                 post_data['match_id'] = matches[0]['record_id']
-                del post_data['session_key']
+                del post_data['session_id']
 
                 # Second, add a matched record to the entity map
-                add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', 
+                add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
                                     data=json.dumps(post_data))
                 rows = []
                 with self.engine.begin() as conn:
@@ -248,23 +248,23 @@ class MatchingTest(unittest.TestCase):
                     obj = json.loads(unmatched.data)['object']
                     post_data = {
                         'api_key': self.user.id,
-                        'session_key': self.dd_sess.id,
+                        'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data)['matches']
-                    del post_data['session_key']
+                    del post_data['session_id']
                     if matches:
                         # Have to make entries when we do find matches otherwise 
                         # we keep getting the same record over and over. This also
                         # gives us an opportunity to test training
                         post_data['match_id'] = matches[0]['record_id']
-                        add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', 
+                        add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
                                             data=json.dumps(post_data))
 
                 # Last, add an new entry to the entity map (that doesn't
                 # reference any existing entity)
-                add_entity = c.post('/add-entity/' + self.dd_sess.id + '/', 
+                add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
                                     data=json.dumps(post_data))
                 rows = []
                 with self.engine.begin() as conn:

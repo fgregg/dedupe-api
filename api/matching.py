@@ -25,7 +25,7 @@ matching = Blueprint('matching', __name__)
 dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
 
 def validate_post(post, user_sessions):
-    session_id = post.get('session_key')
+    session_id = post.get('session_id')
     obj = post.get('object')
     r = {'status': 'ok', 'message': '', 'object': obj}
     status_code = 200
@@ -72,7 +72,7 @@ def match():
     r, status_code, sess = validate_post(post, user_sessions)
     if r['status'] != 'error':
         api_key = post['api_key']
-        session_id = post['session_key']
+        session_id = post['session_id']
         n_matches = post.get('num_matches', 5)
         obj = post['object']
         field_defs = json.loads(sess.field_defs)
@@ -318,7 +318,7 @@ def train():
         status_code = 400
     if r['status'] != 'error':
         api_key = post['api_key']
-        session_id = post['session_key']
+        session_id = post['session_id']
         obj = post['object']
         positive = []
         negative = []
