@@ -35,14 +35,14 @@ STATUS_LIST = [
     {
         'machine_name': 'entity map updated',
         'human_name': 'Training processed', 
-        'next_step_name': 'First review',
+        'next_step_name': 'Review entites',
         'next_step': '/session-review/{0}/',
         'step': 3
     },
     {
         'machine_name': 'canon clustered',
         'human_name': 'Clustering complete', 
-        'next_step_name': 'Second review',
+        'next_step_name': 'Merge entities',
         'next_step': '/session-review/{0}/?second_review=True',
         'step': 4
     },
