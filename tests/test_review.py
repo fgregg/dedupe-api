@@ -29,17 +29,17 @@ class ReviewTest(DedupeAPITestCase):
         initializeModel(self.dd_sess.id)
         dedupeRaw(self.dd_sess.id)
         endpoints = {
-            'get': '/get-review-cluster/{0}/'.format(self.dd_sess.id),
-            'mark_one': '/mark-cluster/{0}/'.format(self.dd_sess.id),
-            'mark_all': '/mark-all-clusters/{0}/'.format(self.dd_sess.id),
+            'get': '/get-review-cluster/?session_id={0}'.format(self.dd_sess.id),
+            'mark_one': '/mark-cluster/?session_id={0}'.format(self.dd_sess.id),
+            'mark_all': '/mark-all-clusters/?session_id={0}'.format(self.dd_sess.id),
         }
         entity_table = 'entity_{0}'.format(self.dd_sess.id)
         if canonical:
             bulkMarkClusters(self.dd_sess.id, user=self.user.name)
             endpoints = {
-                'get': '/get-canon-review-cluster/{0}/'.format(self.dd_sess.id),
-                'mark_one': '/mark-canon-cluster/{0}/'.format(self.dd_sess.id),
-                'mark_all': '/mark-all-canon-clusters/{0}/'.format(self.dd_sess.id),
+                'get': '/get-canon-review-cluster/?session_id={0}'.format(self.dd_sess.id),
+                'mark_one': '/mark-canon-cluster/?session_id={0}'.format(self.dd_sess.id),
+                'mark_all': '/mark-all-canon-clusters/?session_id={0}'.format(self.dd_sess.id),
             }
             entity_table = 'entity_{0}_cr'.format(self.dd_sess.id)
         with self.app.test_request_context():
@@ -68,7 +68,7 @@ class ReviewTest(DedupeAPITestCase):
 
                 matches = ','.join([unicode(r['record_id']) for r in \
                                     json_resp['objects']])
-                params = '?match_ids={0}&entity_id={1}'\
+                params = '&match_ids={0}&entity_id={1}'\
                     .format(matches, json_resp['entity_id'])
                 rv = c.get('{0}{1}'\
                     .format(endpoints['mark_one'],params))
@@ -84,7 +84,7 @@ class ReviewTest(DedupeAPITestCase):
 
                 distinct = ','.join([unicode(r['record_id']) for r in \
                                      json_resp_2['objects']])
-                params = '?distinct_ids={0}&entity_id={1}'\
+                params = '&distinct_ids={0}&entity_id={1}'\
                     .format(distinct, json_resp_2['entity_id'])
                 rv = c.get('{0}{1}'.format(endpoints['mark_one'] ,params))
                 sel = 'select record_id from "{0}"'\
