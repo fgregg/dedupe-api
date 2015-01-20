@@ -297,16 +297,16 @@ def review():
     }
     status_code = 200
     all_sessions = []
+    sessions = db_session.query(DedupeSession)\
+        .filter(DedupeSession.group.has(
+            Group.id.in_([i.id for i in user.groups])))\
+        .all()
     if not sess_id:
-        sessions = db_session.query(DedupeSession)\
-            .filter(DedupeSession.group.has(
-                Group.id.in_([i.id for i in user.groups])))\
-            .all()
         for sess in sessions:
             s = sess.as_dict()
             all_sessions.append(s)
     else:
-        if sess_id in user_sessions:
+        if sess_id in sessions:
             sess = db_session.query(DedupeSession).get(sess_id)
             s = sess.as_dict()
             all_sessions.append(s)

@@ -20,65 +20,58 @@ class AdminTest(DedupeAPITestCase):
     '''
 
     def add_user(self, data):
-        return self.client.post('/add-user/', 
+        with self.app.test_request_context():
+            self.login()
+            return self.client.post('/add-user/', 
                                   data=data, 
                                   follow_redirects=True)
 
     def test_add_user(self):
-        with self.app.test_request_context():
-            self.login()
-            rv = self.add_user({'name': 'harry',
-                                'email': 'harry@harry.com',
-                                'password': 'harryspw',
-                                'roles': [1],
-                                'groups': [self.group.id],}) 
-            assert 'User harry added' in rv.data
+        rv = self.add_user({'name': 'harry',
+                            'email': 'harry@harry.com',
+                            'password': 'harryspw',
+                            'roles': [1],
+                            'groups': [self.group.id],}) 
+        assert 'User harry added' in rv.data
 
     def test_duplicate_name(self):
-        with self.app.test_request_context():
-            self.login()
-            rv = self.add_user({'name': 'eric',
-                                'email': 'harry@harry.com',
-                                'password': 'harryspw',
-                                'roles': [1],
-                                'groups': [self.group.id],})
-            assert 'Name is already registered' in rv.data
+        rv = self.add_user({'name': 'eric',
+                            'email': 'harry@harry.com',
+                            'password': 'harryspw',
+                            'roles': [1],
+                            'groups': [self.group.id],})
+        assert 'Name is already registered' in rv.data
     
     def test_duplicate_email(self):
-        with self.app.test_request_context():
-            self.login()
-            rv = self.add_user({'name': 'joe',
-                                'email': 'eric@eric.com',
-                                'password': 'harryspw',
-                                'roles': [1],
-                                'groups': [self.group.id],})
-            assert 'Email address is already registered' in rv.data
+        rv = self.add_user({'name': 'joe',
+                            'email': 'eric@eric.com',
+                            'password': 'harryspw',
+                            'roles': [1],
+                            'groups': [self.group.id],})
+        assert 'Email address is already registered' in rv.data
 
     def test_session_admin(self):
-        with self.app.test_request_context():
-            self.login()
-            with self.client as c:
-                with c.session_transaction() as sess:
-                    sess['user_id'] = self.user.id
-                rv = c.open('/session-admin/' + self.dd_sess.id + '/', follow_redirects=True)
-                assert 'session-admin' in request.path
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess['user_id'] = self.user.id
+            rv = c.open('/session-admin/' + self.dd_sess.id + '/', follow_redirects=True)
+            assert 'session-admin' in request.path
 
     def no_access(self, path):
-        user = self.session.query(User)\
-            .filter(User.name == 'harry')\
-            .first()
         dummy_group = self.session.query(Group)\
             .filter(Group.name == 'dummy')\
             .first()
-        user.groups = [dummy_group]
-        self.session.add(user)
-        self.session.commit()
+        self.add_user({'name': 'george',
+                       'email': 'george@harry.com',
+                       'password': 'harryspw',
+                       'roles': [1],
+                       'groups': [dummy_group.id],}) 
         with self.app.test_request_context():
-            self.login(email=user.email, pw='harryspw')
+            self.login(email='george@harry.com', pw='harryspw')
             with self.client as c:
-                with c.session_transaction() as sess:
-                    sess['user_id'] = user.id
-                return c.open(path + self.dd_sess.id + '/')
+               #with c.session_transaction() as sess:
+               #    sess['user_id'] = user.id
+                return c.open(path, follow_redirects=True)
 
     def test_training_data(self):
         with self.app.test_request_context():
@@ -86,13 +79,12 @@ class AdminTest(DedupeAPITestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
-                rv = c.open('/training-data/' + self.dd_sess.id + '/')
+                rv = c.open('/training-data/?session_id=' + self.dd_sess.id)
                 assert json.loads(rv.data).keys() == ['distinct', 'match']
 
     def test_td_no_access(self):
-        rv = self.no_access('/training-data/')
-        assert json.loads(rv.data)['message'] == \
-            "You don't have access to session {0}".format(self.dd_sess.id)
+        rv = self.no_access('/training-data/?session_id=' + self.dd_sess.id)
+        assert "Sorry, you don&#39;t have access to that session" in rv.data
     
     def test_settings_file(self):
         with self.app.test_request_context():
@@ -100,13 +92,12 @@ class AdminTest(DedupeAPITestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
-                rv = c.open('/settings-file/' + self.dd_sess.id + '/')
+                rv = c.open('/settings-file/?session_id=' + self.dd_sess.id)
                 assert str(type(cPickle.loads(rv.data))) == "<class 'dedupe.datamodel.DataModel'>"
     
     def test_sf_no_access(self):
-        rv = self.no_access('/settings-file/')
-        assert json.loads(rv.data)['message'] == \
-            "You don't have access to session {0}".format(self.dd_sess.id)
+        rv = self.no_access('/settings-file/?session_id=' + self.dd_sess.id)
+        assert "Sorry, you don&#39;t have access to that session" in rv.data
     
     def test_field_defs(self):
         with self.app.test_request_context():
@@ -114,15 +105,14 @@ class AdminTest(DedupeAPITestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
-                rv = c.open('/field-definitions/' + self.dd_sess.id + '/')
+                rv = c.open('/field-definitions/?session_id=' + self.dd_sess.id)
                 fds = set([f['field'] for f in json.loads(rv.data)])
                 expected = set([f['field'] for f in json.loads(self.field_defs)])
                 assert fds == expected
     
     def test_fd_no_access(self):
-        rv = self.no_access('/field-definitions/')
-        assert json.loads(rv.data)['message'] == \
-            "You don't have access to session {0}".format(self.dd_sess.id)
+        rv = self.no_access('/field-definitions/?session_id=' + self.dd_sess.id)
+        assert "Sorry, you don&#39;t have access to that session" in rv.data
 
     def test_delete_model(self):
         with self.app.test_request_context():
@@ -130,15 +120,14 @@ class AdminTest(DedupeAPITestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
-                rv = c.open('/delete-data-model/' + self.dd_sess.id + '/')
+                rv = c.open('/delete-data-model/?session_id=' + self.dd_sess.id)
                 self.session.refresh(self.dd_sess)
                 assert self.dd_sess.field_defs is None
                 assert self.dd_sess.training_data is None
     
     def test_delete_no_access(self):
-        rv = self.no_access('/delete-data-model/')
-        assert json.loads(rv.data)['message'] == \
-            "You don't have access to session {0}".format(self.dd_sess.id)
+        rv = self.no_access('/delete-data-model/?session_id=' + self.dd_sess.id)
+        assert "Sorry, you don&#39;t have access to that session" in rv.data
 
     def test_delete_session(self):
         with self.app.test_request_context():
@@ -146,20 +135,21 @@ class AdminTest(DedupeAPITestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
-                rv = c.open('/delete-session/' + self.dd_sess.id + '/')
+                rv = c.open('/delete-session/?session_id=' + self.dd_sess.id)
         conn = self.engine.connect()
         rows = conn.execute(text('select * from dedupe_session where id = :id'), id=self.dd_sess.id)
         assert list(rows) == []
     
     def test_delete_sess_no_access(self):
-        rv = self.no_access('/delete-session/')
-        assert json.loads(rv.data)['message'] == \
-            "You don't have access to session {0}".format(self.dd_sess.id)
+        rv = self.no_access('/delete-session/?session_id=' + self.dd_sess.id)
+        assert "Sorry, you don&#39;t have access to that session" in rv.data
 
     def test_session_list(self):
         with self.app.test_request_context():
             self.login()
             with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.open('/session-list/')
                 assert json.loads(rv.data)['status'] == 'ok'
     
@@ -167,6 +157,8 @@ class AdminTest(DedupeAPITestCase):
         with self.app.test_request_context():
             self.login()
             with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.open('/session-list/?session_id=' + self.dd_sess.id)
                 assert json.loads(rv.data)['status'] == 'ok'
     
@@ -180,8 +172,8 @@ class AdminTest(DedupeAPITestCase):
         with self.app.test_request_context():
             self.login()
             with self.client as c:
-                c.get('/mark-all-clusters/{0}/'.format(self.dd_sess.id))
-                rv = c.get('/dump-entity-map/' + self.dd_sess.id + '/')
+                c.get('/mark-all-clusters/?session_id={0}'.format(self.dd_sess.id))
+                rv = c.get('/dump-entity-map/?session_id=' + self.dd_sess.id)
                 row_count = ''' 
                     SELECT count(*) 
                     FROM "raw_{0}" AS r
