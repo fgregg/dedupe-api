@@ -44,7 +44,9 @@ def create_app(config='api.app_config'):
 
     @app.template_filter('format_number')
     def reverse_filter(s):
-        return '{:,}'.format(s)
+        if s:
+            return '{:,}'.format(s)
+        return s
     
     @app.template_filter('format_date_sort')
     def reverse_filter(s):
