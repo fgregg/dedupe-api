@@ -8,7 +8,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, clusterGen, \
-    makeSampleDict, windowed_query, updateSessionStatus, getDistinct
+    makeSampleDict, windowed_query, getDistinct
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash
@@ -200,7 +200,19 @@ def getMatchingReady(session_id):
               ON "match_blocks_{0}" (block_key)
             '''.format(session_id)
         )
-    updateSessionStatus(session_id)
+    sel = ''' 
+      SELECT COUNT(*)
+      FROM "raw_{0}" AS p
+      LEFT JOIN "entity_{0}" AS e
+        ON p.record_id = e.record_id
+      WHERE e.record_id IS NULL
+    '''.format(session_id)
+    with engine.begin() as conn:
+        count = list(conn.execute(sel))
+    sess.status = 'matching ready'
+    sess.review_count = count[0][0]
+    worker_session.add(sess)
+    worker_session.commit()
     return None
 
 @queuefunc
@@ -420,7 +432,6 @@ def dedupeRaw(session_id, threshold=0.75):
     writeBlockingMap(session_id, block_gen, canonical=False)
     clustered_dupes = clusterDedupe(session_id)
     updateEntityMap(clustered_dupes, session_id)
-    updateSessionStatus(session_id)
     engine = worker_session.bind
     metadata = MetaData()
     entity_table = Table('entity_{0}'.format(session_id), metadata,
@@ -432,6 +443,7 @@ def dedupeRaw(session_id, threshold=0.75):
     dd = worker_session.query(DedupeSession).get(session_id)
     dd.entity_count = entity_count
     dd.review_count = review_count
+    dd.status = 'entity map updated'
     worker_session.add(dd)
     worker_session.commit()
     return 'ok'
@@ -497,14 +509,13 @@ def dedupeCanon(session_id, threshold=0.25):
                 raise e
     else: # pragma: no cover
         print 'did not find clusters'
-        updateSessionStatus(session_id)
         getMatchingReady(session_id)
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
         .count()
     dd = worker_session.query(DedupeSession).get(session_id)
     dd.review_count = review_count
+    dd.status = 'canon clustered'
     worker_session.add(dd)
     worker_session.commit()
-    updateSessionStatus(session_id)
     return 'ok'

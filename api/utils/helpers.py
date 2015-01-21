@@ -34,30 +34,30 @@ STATUS_LIST = [
     },
     {
         'machine_name': 'entity map updated',
-        'human_name': 'Training processed', 
+        'human_name': 'Training finished', 
         'next_step_name': 'Review entites',
-        'next_step': '/session-review/{0}/',
+        'next_step': '/session-review/?session_id={0}',
         'step': 3
     },
     {
         'machine_name': 'canon clustered',
-        'human_name': 'Clustering complete', 
+        'human_name': 'Clusters reviewed', 
         'next_step_name': 'Merge entities',
-        'next_step': '/session-review/{0}/?second_review=True',
+        'next_step': '/session-review/?session_id={0}&second_review=True',
         'step': 4
     },
     {
         'machine_name': 'matching ready',
         'human_name': 'Clusters merged', 
         'next_step_name': 'Final review',
-        'next_step': '/match-review/{0}/',
+        'next_step': '/match-review/?session_id={0}',
         'step': 5
     },
     {
         'machine_name':'canonical',
         'human_name': 'Dataset is canonical', 
         'next_step_name': 'Ready for matching!',
-        'next_step': '/session-admin/{0}/',
+        'next_step': '/session-admin/?session_id={0}',
         'step': 6
     },
 ]
@@ -67,25 +67,6 @@ def updateTraining(session_id, record_ids, distinct=False):
     Update the sessions training data with the given record_ids
     '''
     return None
-
-def updateSessionStatus(session_id, increment=True):
-    ''' 
-    Advance or reverse the status of a session by one step
-    '''
-    dd = worker_session.query(DedupeSession).get(session_id)
-    try:
-        current = [i for i,v in enumerate(STATUS_LIST) if v['machine_name'] == dd.status][0]
-    except IndexError:
-        current = 0
-    print 'CURRENT STATUS {0}'.format(STATUS_LIST[current]['machine_name'])
-    if increment:
-        dd.status = STATUS_LIST[current + 1]['machine_name']
-        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1]['machine_name'])
-    else: # pragma: no cover
-        dd.status = STATUS_LIST[current - 1]['machine_name']
-        print 'NEW STATUS {0}'.format(STATUS_LIST[current + 1]['machine_name'])
-    worker_session.add(dd)
-    worker_session.commit()
 
 def getCluster(session_id, entity_pattern, raw_pattern):
     ent_name = entity_pattern.format(session_id)
@@ -129,6 +110,8 @@ def getCluster(session_id, entity_pattern, raw_pattern):
             d = {}
             for k,v in zip(raw_fields, thing):
                 d[k] = v
+
+            d['confidence'] = formatPercentage(d['confidence'])
             cluster_list.append(d)
         one_minute = datetime.now() + timedelta(minutes=1)
         upd = text(''' 
@@ -279,3 +262,5 @@ def checkinSessions():
             pass
     return None
 
+def formatPercentage(num):
+    return "{0:.0f}%".format(float(num) * 100)

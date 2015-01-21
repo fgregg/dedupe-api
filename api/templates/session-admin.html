@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% block title %}{{ dd_session.name }}{% endblock %}
+{% block title %}{{ dedupe_session.name }}{% endblock %}
 {% block content %}
 <div class="row">
     <div class="col-md-12">
         <p><a href='/'>&laquo; back to home</a></p>
-        <h2>{{ dd_session.name }}</h2>
-        {% if dd_session.description %}
-            <p>{{ dd_session.description }}</p>
+        <h2>{{ dedupe_session.name }}</h2>
+        {% if dedupe_session.description %}
+            <p>{{ dedupe_session.description }}</p>
         {% endif %}
 
         <div class="row">
@@ -16,10 +16,10 @@
                         <tr>
                             <td>Session status</td>
                             <td>
-                                Step {{ status_info.step }} of 7: {{ status_info.human_name }}
+                                Step {{ status_info.step }} of 6: {{ status_info.human_name }}
                                 <div class="progress">
-                                    <div class="progress-bar progress-bar-info" role="progressbar" aria-valuenow="{{ status_info.step * 100.0 / 7}}" aria-valuemin="0" aria-valuemax="100" style="width: {{ status_info.step * 100.0 / 7}}%;">
-                                        <span class="sr-only">{{ status_info.step * 100.0 / 7}}% Complete</span>
+                                    <div class="progress-bar progress-bar-info" role="progressbar" aria-valuenow="{{ status_info.step * 100.0 / 6}}" aria-valuemin="0" aria-valuemax="100" style="width: {{ status_info.step * 100.0 / 6}}%;">
+                                        <span class="sr-only">{{ status_info.step * 100.0 / 6}}% Complete</span>
                                     </div>
                                 </div>
                             </td>
@@ -36,28 +36,28 @@
                         </tr>
                         <tr>
                             <td>Created</td>
-                            <td>{{ dd_session.date_added }}</td>
+                            <td>{{ dedupe_session.date_added }}</td>
                         </tr>
                         <tr>
                             <td>Updated</td>
-                            <td>{{ dd_session.date_updated }}</td>
+                            <td>{{ dedupe_session.date_updated }}</td>
                         </tr>
                         <tr>
                             <td>Rows</td>
-                            <td>{{ dd_session.record_count | format_number }}</td>
+                            <td>{{ dedupe_session.record_count | format_number }}</td>
                         </tr>
                         <tr>
                             <td>Unique entities</td>
-                            <td>{{ dd_session.entity_count | format_number }}</td>
+                            <td>{{ dedupe_session.entity_count | format_number }}</td>
                         </tr>
                         <tr>
                             <td>Need review</td>
-                            <td>{{ dd_session.review_count | format_number }}</td>
+                            <td>{{ dedupe_session.review_count | format_number }}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            {% if dd_session.status not in ['dataset uploaded', 'model defined'] %}
+            {% if dedupe_session.status not in ['dataset uploaded', 'model defined'] %}
             <div class="col-md-6">
                 <table class="table table-bordered">
                     <thead>
@@ -87,7 +87,7 @@
                                 </select>
                             </td>
                         </tr>
-                        {% if dd_session.status in ['canon clustered', 'matching ready', 'canonical'] %}
+                        {% if dedupe_session.status in ['canon clustered', 'matching ready', 'canonical'] %}
                         <tr>
                             <td>
                                 <a class='btn btn-info clustering' href="javascript://" data-run="second">
@@ -247,25 +247,25 @@
 
 <h4>Download</h4>
 <p>
-    {% if dd_session.field_defs %}
-        <a class='btn btn-info' href="{{url_for('admin.field_definitions', session_id=dd_session.id)}}">Data Model</a>
+    {% if dedupe_session.field_defs %}
+        <a class='btn btn-info' href="{{url_for('admin.field_definitions', session_id=dedupe_session.id)}}">Data Model</a>
     {% endif %}
-    {% if dd_session.settings_file %}
-        <a  class='btn btn-info' href="{{url_for('admin.settings_file', session_id=dd_session.id)}}">Settings File</a>
+    {% if dedupe_session.settings_file %}
+        <a  class='btn btn-info' href="{{url_for('admin.settings_file', session_id=dedupe_session.id)}}">Settings File</a>
     {% endif %}
-    {% if dd_session.training_data %}
-        <a class='btn btn-info' href="{{url_for('admin.training_data', session_id=dd_session.id)}}">Training Data</a>
+    {% if dedupe_session.training_data %}
+        <a class='btn btn-info' href="{{url_for('admin.training_data', session_id=dedupe_session.id)}}">Training Data</a>
       </span>
     {% endif %}
-        <a class='btn btn-info' href="{{url_for('admin.entity_map_dump', session_id=dd_session.id)}}">Entity Map</a>
+        <a class='btn btn-info' href="{{url_for('admin.entity_map_dump', session_id=dedupe_session.id)}}">Entity Map</a>
 </p>
 
 <hr />
 <h4>Danger zone!</h4>
 
-<a id="delete-model" class='btn btn-primary' href="javascript://" data-session_id="{{ dd_session.id }}"><i class='fa fa-times'></i> Delete data model</a>
+<a id="delete-model" class='btn btn-primary' href="javascript://" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete data model</a>
 
-<a id="delete-session" class='btn btn-primary' href="javascript://" data-session_id="{{ dd_session.id }}"><i class='fa fa-times'></i> Delete session</a>
+<a id="delete-session" class='btn btn-primary' href="javascript://" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete session</a>
 {% endblock %}
 {% block extra_javascript %}
     <script type="text/javascript">
@@ -285,9 +285,9 @@
                 var sess_id = $(this).data('session_id');
                 console.log(sess_id);
                 var row = $(this).parent().parent()
-                $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
+                $.when($.getJSON('/delete-session/?session_id=' + sess_id)).then(
                     function(data){
-                        $(row).remove();
+                        window.location = '/'
                     }
                 )
             })
@@ -297,7 +297,7 @@
                 var sess_id = $(this).data('session_id');
                 console.log(sess_id);
                 var row = $(this).parent()
-                $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
+                $.when($.getJSON('/delete-data-model/?session_id=' + sess_id)).then(
                     function(data){
                         $.when($.getJSON('/session-list/')).then(
                           function(resp){

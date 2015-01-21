@@ -4,15 +4,16 @@ import dedupe
 from os.path import join, abspath, dirname
 from flask import request, session
 from api.utils.helpers import slugify
+from api.utils.delayed_tasks import initializeSession
 from api.utils.db_functions import writeRawTable
-from csvkit.unicsv import UnicodeCSVReader
+from csvkit.unicsv import UnicodeCSVReader, UnicodeCSVWriter
 from tests import DedupeAPITestCase
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
 class TrainerTest(DedupeAPITestCase):
     ''' 
-    Test the matching module
+    Test the training module
     '''
     
     def test_upload(self):
@@ -53,20 +54,28 @@ class TrainerTest(DedupeAPITestCase):
                 assert 'fieldnames' not in session.keys()
                 assert 'session_name' not in session.keys()
                 assert 'training_data' not in session.keys()
-    
-    def test_select_fields(self):
-        fieldnames = []
+   
+    def init_session(self):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as f:
             reader = UnicodeCSVReader(f)
             fieldnames = reader.next()
+            with open('/tmp/{0}_raw.csv'.format(self.dd_sess.id), 'wb') as outp:
+                writer = UnicodeCSVWriter(outp)
+                writer.writerow(fieldnames)
+                writer.writerows(reader)
+        initializeSession(self.dd_sess.id)
+        return fieldnames
+
+    def test_select_fields(self):
+        fieldnames = self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['fieldnames'] = fieldnames
-                rv = c.get('/select-fields/')
+                rv = c.get('/select-fields/?session_id=' + self.dd_sess.id)
                 for field in fieldnames:
-                    assert field in rv.data
+                    assert slugify(field) in rv.data
 
     def test_select_fields_sid(self):
         fobj = open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb')
@@ -79,29 +88,30 @@ class TrainerTest(DedupeAPITestCase):
                 assert set(session['fieldnames']) == set(fieldnames)
     
     def test_select_fields_post(self):
-        fieldnames = []
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as f:
-            reader = UnicodeCSVReader(f)
-            fieldnames = reader.next()
+        fieldnames = self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['fieldnames'] = fieldnames
+                    sess['session_id'] = self.dd_sess.id
                 post_data = {
                       'phone': ['on'],
                       'email': ['on'],
                       'site_name': ['on'],
                       'zip': ['on'],
                     }
-                rv = c.post('/select-fields/', data=post_data)
+                rv = c.post('/select-fields/', data=post_data, follow_redirects=True)
                 assert set(session['field_list']) == set(post_data.keys())
 
     def test_select_fields_nothing(self):
+        self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
-                rv = c.post('/select-fields/', data={})
+                with c.session_transaction() as sess:
+                    sess['session_id'] = self.dd_sess.id
+                rv = c.post('/select-fields/', data={}, follow_redirects=True)
                 assert 'You must select at least one field to compare on.' in rv.data
 
     def test_select_field_type(self):
@@ -176,7 +186,7 @@ class TrainerTest(DedupeAPITestCase):
                 rv = c.get('/training-run/', follow_redirects=False)
                 rd_path = rv.location.split('http://localhost')[1]
                 rd_path = rd_path.split('?')[0]
-                assert rd_path == '/train-start/'
+                assert rd_path == '/'
     
     def test_training_run_qparam(self):
         fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()

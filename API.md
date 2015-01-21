@@ -28,9 +28,9 @@ Sample Response:
 }
 ```
 
-**``/review-queue/<session_id>/``**
+**``/review-queue/``**
 
-Required params: ``api_key``
+Required params: ``api_key``, ``session_id``
 
 Return the entire review queue grouped by group ID.
 
@@ -105,9 +105,9 @@ Sample response:
 ```
 
 
-**``/get-review-cluster/<session_id>/``** 
+**``/get-review-cluster/``** 
 
-Required params: ``api_key``
+Required params: ``api_key``, ``session_id``
 
 Get a list of records that were clustered together during the training process.
 
@@ -144,12 +144,13 @@ Sample response
 }
 ```
 
-**``/mark-cluster/<session_id>/``** 
+**``/mark-cluster/``** 
 
 Required params: 
 
 ``api_key``
 ``group_id`` 
+``session_id``
 ``action`` Either ``yes`` or ``no``
 
 Send a descision about a cluster.

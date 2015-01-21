@@ -1,10 +1,10 @@
 {% extends "base.html" %}
+{% from "partials/dedupe_steps.html" import dedupe_steps %}
 {% block title %}Final review {% endblock %}
 {% block content %}
     <div class="row">
         <div class="col-md-12">
-            {% include "partials/dedupe_steps.html" %}
-            <h3>6. Final review <small>Review unmatched records</small></h3>
+            {{ dedupe_steps( dedupe_session ) }}
             <div class="row">
                 <div id="counter" class="col-md-12"></div>
             </div>
@@ -86,7 +86,7 @@
 </script>
 <script type="text/javascript">
     var session_id = "{{ session_id }}"
-    var api_key = "{{ user.id }}"
+    var api_key = "{{ session.get('user').id }}"
     var match_obj;
     $(document).ready(function(){
         getAndMatch();
@@ -104,7 +104,6 @@
             }
             if (valid){
                 data['match_id'] = $('input:checked').parent().data('record_id');
-                console.log(data);
                 $.when(addToEntityMap(JSON.stringify(data))).then(
                     function(resp){
                         getAndMatch();
@@ -121,7 +120,7 @@
                     'object': resp['object'],
                     'num_results': 5,
                     'api_key': api_key,
-                    'session_key': session_id
+                    'session_id': session_id
             }
             $.when(getMatches(JSON.stringify(obj))).then(
                 function(matches){
@@ -129,7 +128,17 @@
                     if(matches.matches.length > 0){
                         displayRecord(matches.matches, obj)
                     } else {
-                        console.log('NO MORE RECORDS TO MATCH')
+                        $('#group-display').html('')
+                        var data = {
+                            'api_key': api_key,
+                            'object': obj.object,
+                            'match_id': null
+                        }
+                        $.when(addToEntityMap(JSON.stringify(data))).then(
+                            function(resp){
+                                getAndMatch();
+                            }
+                        )
                     }
                 }
             )
@@ -140,7 +149,7 @@
         $('#group-display').html(tpl.render({matches: matches, obj: obj.object}))
     }
     function getRecord(){
-        return $.getJSON('/get-unmatched-record/' + session_id + '/')
+        return $.getJSON('/get-unmatched-record/?session_id=' + session_id)
     }
     function getMatches(data){
         return $.ajax({
@@ -153,7 +162,7 @@
     function addToEntityMap(data){
         return $.ajax({
             type: 'POST',
-            url: '/add-entity/' + session_id + '/',
+            url: '/add-entity/?session_id=' + session_id,
             data: data,
             contentType: 'application/json'
         })
