@@ -3,13 +3,24 @@
 {% block content %}
 <div class="row">
     <div class="col-md-12">
-        <h2 class='pull-right' id='start-session-btn' style='display: none;'><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-info"><i class='fa fa-plus-circle'></i> Start a new dedupe session</a></h2>
+        {% for role in current_user.roles %}
+            {% if role.name == 'admin' %}
+                <h2 class='pull-right' id='start-session-btn' style='display: none;'><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-info"><i class='fa fa-plus-circle'></i> Start a new dedupe session</a></h2>
 
-        <div id='start-session' style='display: none;'>
-            <h3>Hi there Welcome to dedupe!</h3>
-            <p>Let's get started on your first dedupe session.</p>
-            <a role="button" href="{{url_for('trainer.train')}}" class="btn btn-primary btn-lg">Start a new session &raquo;</a>
-        </div>
+                <div id='start-session' style='display: none;'>
+                    <div class='jumbotron'>
+                        <h1>
+                            <i class='fa fa-copy'></i>
+                            <i class='fa fa-long-arrow-right'></i>
+                            <i class='fa fa-file-o'></i>
+                        </h1>
+                        <h2>Welcome to Dedupe!</h2>
+                        <p>Let's get started on your first dedupe session.</p>
+                        <p><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-primary btn-lg">Let's get started &raquo;</a></p>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
         <div id='dedupe-sessions' style='display: none;'>
             <div class="row">
                 <div class="col-md-12">
