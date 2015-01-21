@@ -4,7 +4,7 @@ from api.database import app_session as db_session, Base
 from api.models import User, Role, DedupeSession, Group
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import preProcess
-from api.utils.delayed_tasks import cleanupTables
+from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, reDedupeCanon
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
@@ -345,3 +345,19 @@ def entity_map_dump():
     filedate = datetime.now().strftime('%Y-%m-%d')
     resp.headers['Content-Disposition'] = 'attachment; filename=entity_map_{0}.csv'.format(filedate)
     return resp
+
+@admin.route('/rewind/')
+@login_required
+@check_sessions()
+def rewind():
+
+    session_id = flask_session['session_id']
+    step = request.args.get('step')
+    threshold = request.args.get('threshold')
+    if step == 'first':
+        reDedupeRaw.delay(session_id, threshold=threshold)
+    if step == 'second':
+        reDedupeCanon.delay(session_id, threshold=threshold)
+    response = make_response(json.dumps({'status': 'ok'}))
+    response.headers['Content-Type'] = 'application/json'
+    return response

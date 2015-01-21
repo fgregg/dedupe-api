@@ -104,7 +104,6 @@
             }
             if (valid){
                 data['match_id'] = $('input:checked').parent().data('record_id');
-                console.log(data);
                 $.when(addToEntityMap(JSON.stringify(data))).then(
                     function(resp){
                         getAndMatch();
@@ -126,11 +125,21 @@
             $.when(getMatches(JSON.stringify(obj))).then(
                 function(matches){
                     $('#group-display').spin(false);
-                    //if(matches.matches.length > 0){
+                    if(matches.matches.length > 0){
                         displayRecord(matches.matches, obj)
-                    //} else {
-                    //    console.log('NO MORE RECORDS TO MATCH')
-                    //}
+                    } else {
+                        $('#group-display').html('')
+                        var data = {
+                            'api_key': api_key,
+                            'object': obj.object,
+                            'match_id': null
+                        }
+                        $.when(addToEntityMap(JSON.stringify(data))).then(
+                            function(resp){
+                                getAndMatch();
+                            }
+                        )
+                    }
                 }
             )
         });
@@ -153,7 +162,7 @@
     function addToEntityMap(data){
         return $.ajax({
             type: 'POST',
-            url: '/add-entity/' + session_id + '/',
+            url: '/add-entity/?session_id=' + session_id,
             data: data,
             contentType: 'application/json'
         })
