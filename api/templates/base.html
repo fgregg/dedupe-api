@@ -39,8 +39,8 @@
           <ul class="nav navbar-nav">
             <li><a href="/">Home</a></li>
             <li><a href="{{ url_for('trainer.about') }}">About</a></li>
-            {% if session.get('user') %}
-              {% for role in session.get('user').roles %}
+            {% if current_user.is_authenticated() %}
+              {% for role in current_user.roles %}
                 {% if role.name == 'admin' %}
                 <li><a href="{{ url_for('admin.user_list') }}">Users</a></li>
                 {% endif %}

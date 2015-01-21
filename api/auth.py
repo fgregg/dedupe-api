@@ -99,7 +99,6 @@ def check_sessions():
                 return response
             else:
                 user = db_session.query(User).get(api_key)
-                flask_session['user'] = user
 
                 sess = db_session.query(DedupeSession)\
                     .filter(DedupeSession.group.has(

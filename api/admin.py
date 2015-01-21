@@ -1,5 +1,6 @@
 from flask import Blueprint, request, session as flask_session, \
     render_template, make_response, flash, redirect, url_for, current_app
+from flask_login import current_user
 from api.database import app_session as db_session, Base
 from api.models import User, Role, DedupeSession, Group
 from api.auth import login_required, check_roles, check_sessions
@@ -72,7 +73,6 @@ def index():
 @check_roles(roles=['admin'])
 def add_user():
     form = AddUserForm()
-    user = db_session.query(User).get(flask_session['user_id'])
     if form.validate_on_submit():
         user_info = {
             'name': form.name.data,
@@ -88,15 +88,14 @@ def add_user():
         db_session.commit()
         flash('User %s added' % user.name)
         return redirect(url_for('admin.user_list'))
-    return render_template('add_user.html', form=form, user=user)
+    return render_template('add_user.html', form=form)
 
 @admin.route('/user-list/')
 @login_required
 @check_roles(roles=['admin'])
 def user_list():
     users = db_session.query(User).all()
-    user = db_session.query(User).get(flask_session['user_id'])
-    return render_template('user_list.html', users=users, user=user)
+    return render_template('user_list.html', users=users)
 
 @admin.route('/session-admin/')
 @login_required
@@ -105,7 +104,6 @@ def session_admin():
     
     session_id = flask_session['session_id']
 
-    user = db_session.query(User).get(flask_session['user_id'])
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     predicates = None
     session_info = {}
@@ -168,7 +166,6 @@ def session_admin():
                             session_info=session_info, 
                             predicates=predicates,
                             training_data=training_data,
-                            user=user,
                             status_info=status_info)
 
 @admin.route('/training-data/')
@@ -288,8 +285,6 @@ def delete_session():
 def review():
     
     sess_id = request.args.get('session_id')
-    user = db_session.query(User).get(flask_session['user_id'])
-    flask_session['user'] = user
 
     resp = {
         'status': 'ok',
@@ -299,7 +294,7 @@ def review():
     all_sessions = []
     sessions = db_session.query(DedupeSession)\
         .filter(DedupeSession.group.has(
-            Group.id.in_([i.id for i in user.groups])))\
+            Group.id.in_([i.id for i in current_user.groups])))\
         .order_by(DedupeSession.date_updated.desc())\
         .all()
     if not sess_id:

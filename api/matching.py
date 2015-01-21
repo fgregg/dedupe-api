@@ -24,18 +24,13 @@ matching = Blueprint('matching', __name__)
 
 dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
 
-def validate_post(post, user_sessions):
+def validate_post(post):
     session_id = post.get('session_id')
     obj = post.get('object')
     r = {'status': 'ok', 'message': '', 'object': obj}
     status_code = 200
-    # should probably validate if the user has access to the session
     sess = db_session.query(DedupeSession).get(session_id)
-    if session_id not in user_sessions:
-        r['status'] = 'error'
-        r['message'] = "You don't have access to session %s" % session_id
-        status_code = 401
-    elif not session_id:
+    if not session_id:
         r['status'] = 'error'
         r['message'] = 'Session ID is required'
         status_code = 401
@@ -68,8 +63,7 @@ def match():
         resp = make_response(json.dumps(r), 400)
         resp.headers['Content-Type'] = 'application/json'
         return resp
-    user_sessions = flask_session['user_sessions']
-    r, status_code, sess = validate_post(post, user_sessions)
+    r, status_code, sess = validate_post(post)
     if r['status'] != 'error':
         api_key = post['api_key']
         session_id = post['session_id']
@@ -297,6 +291,21 @@ def add_entity():
             entity['entity_id'] = entity_id.entity_id
         with engine.begin() as conn:
             conn.execute(entity_table.insert(), **entity)
+        deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+        for k,v in obj.items():
+            obj[k] = preProcess(unicode(v))
+        block_keys = tuple([b for b in list(deduper.blocker([(record_id, obj)]))])
+        with engine.begin() as conn:
+            conn.execute(text(''' 
+                INSERT INTO "match_blocks_{0}" (
+                    block_key,
+                    record_id
+                ) VALUES :values
+            '''.format(sess.id)), values=block_keys[0])
+    if sess.review_count:
+        sess.review_count = sess.review_count - 1
+        db_session.add(sess)
+        db_session.commit()
     resp = make_response(json.dumps(r), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -309,8 +318,7 @@ def train():
         post = json.loads(request.data)
     except ValueError:
         post = json.loads(request.form.keys()[0])
-    user_sessions = flask_session['user_sessions']
-    r, status_code, sess = validate_post(post, user_sessions)
+    r, status_code, sess = validate_post(post)
     # TODO: Check if model fields are present in matches
     if not post.get('matches'):
         r['status'] = 'error'
