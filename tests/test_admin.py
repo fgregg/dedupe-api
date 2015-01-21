@@ -11,6 +11,7 @@ from sqlalchemy import text
 from cStringIO import StringIO
 from csvkit.unicsv import UnicodeCSVReader
 from tests import DedupeAPITestCase
+from test_config import DEFAULT_USER
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -35,7 +36,7 @@ class AdminTest(DedupeAPITestCase):
         assert 'User harry added' in rv.data
 
     def test_duplicate_name(self):
-        rv = self.add_user({'name': 'eric',
+        rv = self.add_user({'name': DEFAULT_USER['user']['name'],
                             'email': 'harry@harry.com',
                             'password': 'harryspw',
                             'roles': [1],
@@ -44,7 +45,7 @@ class AdminTest(DedupeAPITestCase):
     
     def test_duplicate_email(self):
         rv = self.add_user({'name': 'joe',
-                            'email': 'eric@eric.com',
+                            'email': DEFAULT_USER['user']['email'],
                             'password': 'harryspw',
                             'roles': [1],
                             'groups': [self.group.id],})

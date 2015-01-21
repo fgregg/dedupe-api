@@ -17,8 +17,9 @@ fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 host = DB_CONFIG['host']
 port = DB_CONFIG['port']
 dbname = DB_CONFIG['name']
-conn_str = 'user=postgres host={host} port={port}'\
-    .format(host=host, port=port)
+dbuser = DB_CONFIG['user']
+conn_str = 'user={dbuser} host={host} port={port} dbname=postgres'\
+    .format(dbuser=dbuser, host=host, port=port)
 
 engine = create_engine(DB_CONN, 
                        convert_unicode=True, 
@@ -98,8 +99,8 @@ def setUpPackage():
     try:
         curs.execute('CREATE DATABASE {0}'.format(dbname))
     except psycopg2.ProgrammingError:
-        cstr = 'user=postgres host={host} port={port} dbname=dedupe_test'\
-            .format(host=host, port=port)
+        cstr = 'user={dbuser} host={host} port={port} dbname={dbname}'\
+            .format(dbuser=dbuser, host=host, port=port, dbname=dbname)
         with psycopg2.connect(cstr) as conn:
             with conn.cursor() as curs:
                 curs.execute('''
