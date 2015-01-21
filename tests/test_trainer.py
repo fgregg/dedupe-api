@@ -4,15 +4,16 @@ import dedupe
 from os.path import join, abspath, dirname
 from flask import request, session
 from api.utils.helpers import slugify
+from api.utils.delayed_tasks import initializeSession
 from api.utils.db_functions import writeRawTable
-from csvkit.unicsv import UnicodeCSVReader
+from csvkit.unicsv import UnicodeCSVReader, UnicodeCSVWriter
 from tests import DedupeAPITestCase
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
 class TrainerTest(DedupeAPITestCase):
     ''' 
-    Test the matching module
+    Test the training module
     '''
     
     def test_upload(self):
@@ -59,14 +60,19 @@ class TrainerTest(DedupeAPITestCase):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as f:
             reader = UnicodeCSVReader(f)
             fieldnames = reader.next()
+            with open('/tmp/{0}_raw.csv'.format(self.dd_sess.id), 'wb') as outp:
+                writer = UnicodeCSVWriter(outp)
+                writer.writerow(fieldnames)
+                writer.writerows(reader)
+        initializeSession(self.dd_sess.id)
         with self.app.test_request_context():
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['fieldnames'] = fieldnames
-                rv = c.get('/select-fields/')
+                rv = c.get('/select-fields/?session_id=' + self.dd_sess.id)
                 for field in fieldnames:
-                    assert field in rv.data
+                    assert slugify(field) in rv.data
 
     def test_select_fields_sid(self):
         fobj = open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb')
