@@ -200,7 +200,17 @@ def getMatchingReady(session_id):
               ON "match_blocks_{0}" (block_key)
             '''.format(session_id)
         )
+    sel = ''' 
+      SELECT COUNT(*)
+      FROM "raw_{0}" AS p
+      LEFT JOIN "entity_{0}" AS e
+        ON p.record_id = e.record_id
+      WHERE e.record_id IS NULL
+    '''.format(session_id)
+    with engine.begin() as conn:
+        count = list(conn.execute(sel))
     sess.status = 'matching ready'
+    sess.review_count = count[0][0]
     worker_session.add(sess)
     worker_session.commit()
     return None
