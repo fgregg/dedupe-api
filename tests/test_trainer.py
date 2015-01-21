@@ -54,9 +54,8 @@ class TrainerTest(DedupeAPITestCase):
                 assert 'fieldnames' not in session.keys()
                 assert 'session_name' not in session.keys()
                 assert 'training_data' not in session.keys()
-    
-    def test_select_fields(self):
-        fieldnames = []
+   
+    def init_session(self):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as f:
             reader = UnicodeCSVReader(f)
             fieldnames = reader.next()
@@ -65,6 +64,10 @@ class TrainerTest(DedupeAPITestCase):
                 writer.writerow(fieldnames)
                 writer.writerows(reader)
         initializeSession(self.dd_sess.id)
+        return fieldnames
+
+    def test_select_fields(self):
+        fieldnames = self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
@@ -85,29 +88,30 @@ class TrainerTest(DedupeAPITestCase):
                 assert set(session['fieldnames']) == set(fieldnames)
     
     def test_select_fields_post(self):
-        fieldnames = []
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as f:
-            reader = UnicodeCSVReader(f)
-            fieldnames = reader.next()
+        fieldnames = self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['fieldnames'] = fieldnames
+                    sess['session_id'] = self.dd_sess.id
                 post_data = {
                       'phone': ['on'],
                       'email': ['on'],
                       'site_name': ['on'],
                       'zip': ['on'],
                     }
-                rv = c.post('/select-fields/', data=post_data)
+                rv = c.post('/select-fields/', data=post_data, follow_redirects=True)
                 assert set(session['field_list']) == set(post_data.keys())
 
     def test_select_fields_nothing(self):
+        self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
-                rv = c.post('/select-fields/', data={})
+                with c.session_transaction() as sess:
+                    sess['session_id'] = self.dd_sess.id
+                rv = c.post('/select-fields/', data={}, follow_redirects=True)
                 assert 'You must select at least one field to compare on.' in rv.data
 
     def test_select_field_type(self):
@@ -182,7 +186,7 @@ class TrainerTest(DedupeAPITestCase):
                 rv = c.get('/training-run/', follow_redirects=False)
                 rd_path = rv.location.split('http://localhost')[1]
                 rd_path = rd_path.split('?')[0]
-                assert rd_path == '/train-start/'
+                assert rd_path == '/'
     
     def test_training_run_qparam(self):
         fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
