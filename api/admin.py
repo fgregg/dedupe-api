@@ -300,6 +300,7 @@ def review():
     sessions = db_session.query(DedupeSession)\
         .filter(DedupeSession.group.has(
             Group.id.in_([i.id for i in user.groups])))\
+        .order_by(DedupeSession.date_updated.desc())\
         .all()
     if not sess_id:
         for sess in sessions:

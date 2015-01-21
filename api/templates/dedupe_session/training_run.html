@@ -35,9 +35,14 @@
                 Unsure
             </button>
             &nbsp;&nbsp;&nbsp;
-            <button class="btn btn-success hidden" id="finish">
-                Next &raquo;
-            </button>
+            <div id="show-next-step" class='hidden'>
+                <div class='clearfix'></div>
+                <br />
+                <p>You've provided enough training to proceed to the next step.</p>
+                <button class="btn btn-primary" id="finish">
+                    Next &raquo;
+                </button>
+            </div>
         </p>
     </div>
     {% else %}
@@ -153,7 +158,7 @@
 
             if (counter.no >= (training_threshold / 2) && counter.yes >= (training_threshold / 2)) {
                 // console.log('blah!');
-                $("#finish").removeClass('hidden');
+                $("#show-next-step").removeClass('hidden');
             }
 
             $("#num-yes span").html(counter.yes);
