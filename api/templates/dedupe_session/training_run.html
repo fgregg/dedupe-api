@@ -6,7 +6,7 @@
     {{ dedupe_steps( dedupe_session ) }}
     {% include "partials/error.html" %}
   </div>
-    {% if init_status == 'finished' %}
+    {% if not dedupe_session.processing %}
     <div class='col-md-8'>
         <h3>3. Train</h3>
         <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
@@ -105,7 +105,7 @@
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
-{% if init_status == 'finished' %}
+{% if not dedupe_session.processing %}
     <script type="text/javascript">
 
         $('#your-training').popover();
@@ -197,7 +197,7 @@
   <script type="text/javascript">
       function poll_worker(){
           $.ajax({
-              url: '/get-init-status/{{session["init_key"]}}/',
+              url: '/session-list/?session_id={{dedupe_session.id}}',
               success: function(data){
                   if (data.ready){
                       if(data.status == 'ok'){

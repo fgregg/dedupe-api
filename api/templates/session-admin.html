@@ -36,11 +36,11 @@
                         </tr>
                         <tr>
                             <td>Created</td>
-                            <td>{{ dedupe_session.date_added }}</td>
+                            <td>{{ dedupe_session.date_added | format_date_sort(fmt='%B %d, %Y at %I:%M%p (%z)') }}</td>
                         </tr>
                         <tr>
                             <td>Updated</td>
-                            <td>{{ dedupe_session.date_updated }}</td>
+                            <td>{{ dedupe_session.date_updated | format_date_sort(fmt='%B %d, %Y at %I:%M%p (%z)') }}</td>
                         </tr>
                         <tr>
                             <td>Rows</td>

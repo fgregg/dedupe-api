@@ -3,7 +3,7 @@
 {
 
     "field": "address",
-    "type": "String",
+    "type": "Address",
     "has_missing": true
 
 },

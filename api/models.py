@@ -107,6 +107,15 @@ groups_users = Table('group_users', Base.metadata,
     Column('group_id', String(36), ForeignKey('dedupe_group.id'))
 )
 
+class WorkTable(Base):
+    __tablename__ = 'work_table'
+    key = Column(String(36), default=get_uuid, primary_key=True)
+    value = Column(LargeBinary)
+    traceback = Column(Text)
+
+    def __repr__(self):
+        return '<WorkTable {0}>'.format(unicode(self.key))
+
 class Role(Base):
     __tablename__ = 'dedupe_role'
     id = Column(Integer, primary_key=True)

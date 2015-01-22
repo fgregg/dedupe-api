@@ -6,7 +6,6 @@ from flask import Flask, make_response, request, Blueprint, \
     current_app
 from api.models import DedupeSession, User
 from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
-from api.queue import DelayedResult, redis
 from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
 from api.utils.helpers import preProcess

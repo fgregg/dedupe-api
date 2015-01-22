@@ -1,13 +1,13 @@
 from pickle import loads, dumps
-from redis import Redis
 from uuid import uuid4
 import sys
 import os
 from api.app_config import REDIS_QUEUE_KEY, DB_CONN, WORKER_SENTRY
 from api.database import init_engine, worker_session
-from api.models import DedupeSession
+from api.models import DedupeSession, WorkTable
 import traceback
 from sqlalchemy.exc import ProgrammingError, InternalError
+from sqlalchemy import text
 
 try:
     from raven import Client
@@ -17,76 +17,71 @@ except ImportError: # pragma: no cover
 except KeyError:
     client = None
 
-redis = Redis()
-
-class DelayedResult(object):
-    def __init__(self, key):
-        self.key = key
-        self._rv = None
-
-    @property
-    def return_value(self):
-        if self._rv is None:
-            rv = redis.get(self.key)
-            if rv is not None:
-                self._rv = loads(rv)
-        return self._rv
-    
 def queuefunc(f):
     def delay(*args, **kwargs):
-        qkey = kwargs.get('qkey', REDIS_QUEUE_KEY)
-        try:
-            del kwargs['qkey']
-        except KeyError:
-            pass
-        key = '%s:result:%s' % (qkey, str(uuid4()))
-        s = dumps((f, key, args, kwargs))
-        redis.rpush(qkey, s)
-        return DelayedResult(key)
+        engine = worker_session.bind
+        s = dumps((f, args, kwargs))
+        key = unicode(uuid4())
+        with engine.begin() as conn:
+            conn.execute(text(''' 
+                INSERT INTO work_table(key, value) 
+                VALUES (:key, :value)
+            '''), key=key, value=s)
+        return key
     f.delay = delay
     return f
 
-def processMessage(rv_ttl=5000, qkey=None):
-    msg = redis.blpop(qkey)
-    func, key, args, kwargs = loads(msg[1])
-    try:
+def processMessage():
+    engine = worker_session.bind
+    sel = "SELECT * FROM work_table LIMIT 1"
+    work = engine.execute(sel).first()
+    if work:
+        func, args, kwargs = loads(work.value)
         try:
-            sess = worker_session.query(DedupeSession).get(args[0])
+            try:
+                sel = text('SELECT id from dedupe_session WHERE id = :id')
+                sess = engine.execute(sel, id=args[0]).first()
+                if sess:
+                    with engine.begin() as conn:
+                        conn.execute(text('''
+                            UPDATE dedupe_session SET
+                                processing = TRUE
+                            WHERE id = :id
+                            '''), id=args[0])
+            except (IndexError, ProgrammingError, InternalError):
+                sess = None
+                pass
+            func(*args, **kwargs)
             if sess:
-                sess.processing = True
-                worker_session.add(sess)
-                worker_session.commit()
-        except (IndexError, ProgrammingError, InternalError):
-            sess = None
-            pass
-        rv = {
-            'value': func(*args, **kwargs),
-            'status': 'ok',
-        }
-        if sess:
-            sess.processing = False
-            worker_session.add(sess)
-            worker_session.commit()
-    except Exception, e:
-        if client: # pragma: no cover
-            client.captureException()
-        tb = traceback.format_exc()
-        print tb
-        rv = {
-            'value': 'Exc: %s' % (e.message),
-            'status': 'error',
-            'traceback': tb
-        }
-    if rv is not None:
-        redis.set(key, dumps(rv))
-        redis.expire(key, rv_ttl)
+                with engine.begin() as conn:
+                    conn.execute(text('''
+                        UPDATE dedupe_session SET
+                            processing = FALSE
+                        WHERE id = :id
+                        '''), id=args[0])
+            with engine.begin() as conn:
+                conn.execute(text(''' 
+                    DELETE FROM work_table WHERE key = :key
+                '''), key=work.key)
+        except Exception, e:
+            if client: # pragma: no cover
+                client.captureException()
+            tb = traceback.format_exc()
+            print tb
+            with engine.begin() as conn:
+                conn.execute(text(''' 
+                    UPDATE work_table SET
+                        traceback = :tb,
+                        value = :value
+                    WHERE key = :key
+                '''), tb=tb, value=e.message, key=work.key)
         del args
         del kwargs
-        del rv
-        del msg
 
-def queue_daemon(db_conn=DB_CONN, qkey=REDIS_QUEUE_KEY): # pragma: no cover
-    init_engine(db_conn)
+def queue_daemon(db_conn=DB_CONN): # pragma: no cover
+    engine = init_engine(db_conn)
+    work_table = WorkTable.__table__
+    work_table.create(engine, checkfirst=True)
     print 'Listening for messages...'
     while 1:
-        processMessage(qkey=qkey)
+        processMessage()
