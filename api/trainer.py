@@ -25,7 +25,6 @@ from sqlalchemy.exc import OperationalError, NoSuchTableError
 from sqlalchemy import Table, MetaData
 from cStringIO import StringIO
 from redis import Redis
-from api.queue import DelayedResult
 from uuid import uuid4
 import collections
 from csvkit.unicsv import UnicodeCSVReader
@@ -73,19 +72,9 @@ def upload():
     with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
         s.write(u.getvalue())
     del u
-    flask_session['init_key'] = initializeSession.delay(session_id)
+    initializeSession.delay(session_id)
     flask_session['session_id'] = session_id
     return jsonify(ready=True)
-
-@trainer.route('/get-init-status/<init_key>/')
-@login_required
-def get_init_status(init_key): # pragma: no cover
-    rv = DelayedResult(init_key)
-    if rv.return_value is None:
-        return jsonify(ready=False)
-    redis.delete(init_key)
-    del flask_session['init_key']
-    return jsonify(ready=True, result=rv.return_value)
 
 @trainer.route('/train-start/', methods=['GET'])
 @login_required
@@ -116,12 +105,21 @@ def select_fields():
     error = None
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     fields = flask_session.get('fieldnames')
-    meta = MetaData()
-    engine = db_session.bind
-    raw = Table('raw_{0}'.format(flask_session['session_id']), meta, 
-        autoload=True, autoload_with=engine, keep_existing=True)
-    fields = [r for r in raw.columns.keys() if r != 'record_id']
-    flask_session['fieldnames'] = fields
+
+    # If the fields are not in the session, that means that the user has come
+    # here directly from the home page. We'll try to load them from the raw
+    # table in the database but if that does not exist yet (which is possible)
+    # then we'll redirect them to the home page.
+    if not fields:
+        meta = MetaData()
+        engine = db_session.bind
+        try:
+            raw = Table('raw_{0}'.format(flask_session['session_id']), meta, 
+                autoload=True, autoload_with=engine, keep_existing=True)
+            fields = [r for r in raw.columns.keys() if r != 'record_id']
+            flask_session['fieldnames'] = fields
+        except NoSuchTableError:
+            return redirect(url_for('admin.index'))
     
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
@@ -166,7 +164,7 @@ def select_field_types():
         dedupe_session.status = 'model defined'
         db_session.add(dedupe_session)
         db_session.commit()
-        flask_session['init_key'] = initializeModel.delay(dedupe_session.id).key
+        initializeModel.delay(dedupe_session.id)
         return redirect(url_for('trainer.training_run'))
     return render_template('dedupe_session/select_field_types.html', field_list=field_list, dedupe_session=dedupe_session)
 
@@ -193,16 +191,14 @@ def training_run():
     error = None
     status_code = 200
     field_defs = json.loads(dedupe_session.field_defs)
-    init_status = 'processing'
     if dedupe_session.sample:
         sample = cPickle.loads(dedupe_session.sample)
         deduper = dedupe.Dedupe(field_defs, data_sample=sample)
         flask_session['deduper'] = deduper
-        init_status = 'finished'
+    db_session.refresh(dedupe_session)
     return make_response(render_template(
                             'dedupe_session/training_run.html', 
                             error=error, 
-                            init_status=init_status, 
                             dedupe_session=dedupe_session), status_code)
 
 @trainer.route('/get-pair/')
@@ -292,23 +288,6 @@ def mark_pair():
     resp = make_response(json.dumps(resp))
     resp.headers['Content-Type'] = 'application/json'
     return resp
-
-@trainer.route('/working/')
-@login_required
-@check_roles(roles=['admin'])
-def working():
-    key = flask_session.get('deduper_key')
-    if key is None:
-        return jsonify(ready=False)
-    rv = DelayedResult(key)
-    if rv.return_value is None:
-        return jsonify(ready=False)
-    redis.delete(key)
-    del flask_session['deduper_key']
-    if flask_session.get('dedupe_start'):
-        start = flask_session['dedupe_start']
-        end = time.time()
-    return jsonify(ready=True, result=rv.return_value)
 
 @trainer.route('/upload_formats/')
 def upload_formats(): # pragma: no cover

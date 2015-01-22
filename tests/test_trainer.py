@@ -149,7 +149,7 @@ class TrainerTest(DedupeAPITestCase):
                 post_data = {
                     'phone_type': 'ShortString', 
                     'phone_missing': 'on',
-                    'address_type': 'String', 
+                    'address_type': 'Address', 
                     'address_missing': 'on',
                     'site_name_type': 'String', 
                     'zip_type': ['ShortString', 'Exact'], 

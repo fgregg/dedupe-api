@@ -43,15 +43,15 @@ def create_app(config='api.app_config'):
     app.register_blueprint(matching)
 
     @app.template_filter('format_number')
-    def reverse_filter(s):
+    def format_number(s): # pragma: no cover
         if s:
             return '{:,}'.format(s)
         return s
     
     @app.template_filter('format_date_sort')
-    def reverse_filter(s):
+    def format_date(s, fmt='%Y%m%d%H%M'): # pragma: no cover
         if s:
-            return s.strftime('%Y%m%d%H%M')
+            return s.strftime(fmt)
         else:
             return '0'
 

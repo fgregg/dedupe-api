@@ -52,6 +52,7 @@ class DedupeAPITestCase(unittest.TestCase):
                         id=unicode(uuid4()), 
                         filename='test_filename.csv',
                         name='Test Session',
+                        description='Test Session description',
                         group=self.group,
                         status=STATUS_LIST[0]['machine_name'],
                         settings_file=settings,
@@ -110,7 +111,8 @@ def setUpPackage():
                                   group_users, 
                                   dedupe_role, 
                                   dedupe_session, 
-                                  role_users
+                                  role_users,
+                                  work_table
                               ''')
     curs.close()
     conn.close()

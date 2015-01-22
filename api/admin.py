@@ -298,13 +298,15 @@ def review():
             Group.id.in_([i.id for i in current_user.groups])))\
         .order_by(DedupeSession.date_updated.desc())\
         .all()
-    if not sess_id:
-        for sess in sessions:
+    if sess_id:
+        if sess_id in [s.id for s in sessions]:
+            sess = db_session.query(DedupeSession).get(sess_id)
+            db_session.refresh(sess)
             s = sess.as_dict()
             all_sessions.append(s)
     else:
-        if sess_id in sessions:
-            sess = db_session.query(DedupeSession).get(sess_id)
+        for sess in sessions:
+            db_session.refresh(sess)
             s = sess.as_dict()
             all_sessions.append(s)
     resp['objects'] = all_sessions
@@ -346,7 +348,6 @@ def entity_map_dump():
 @login_required
 @check_sessions()
 def rewind():
-
     session_id = flask_session['session_id']
     step = request.args.get('step')
     threshold = request.args.get('threshold')
