@@ -274,6 +274,7 @@ def delete_session():
         'small_cov_{0}_cr',
         'canon_{0}',
         'exact_match_{0}',
+        'match_blocks_{0}',
     ]
     cleanupTables.delay(session_id, tables=tables)
     resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
@@ -350,9 +351,9 @@ def rewind():
     step = request.args.get('step')
     threshold = request.args.get('threshold')
     if step == 'first':
-        reDedupeRaw.delay(session_id, threshold=threshold)
+        reDedupeRaw.delay(session_id, threshold=float(threshold))
     if step == 'second':
-        reDedupeCanon.delay(session_id, threshold=threshold)
+        reDedupeCanon.delay(session_id, threshold=float(threshold))
     response = make_response(json.dumps({'status': 'ok'}))
     response.headers['Content-Type'] = 'application/json'
     return response

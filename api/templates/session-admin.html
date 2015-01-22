@@ -69,7 +69,7 @@
                     <tbody>
                         <tr>
                             <td>
-                                <a class='btn btn-info clustering' href="javascript://" data-run="first">
+                                <a class='btn btn-info clustering' href="javascript://" data-step="first">
                                     Re-run first clustering
                                 </a>
                             </td>
@@ -90,7 +90,7 @@
                         {% if dedupe_session.status in ['canon clustered', 'matching ready', 'canonical'] %}
                         <tr>
                             <td>
-                                <a class='btn btn-info clustering' href="javascript://" data-run="second">
+                                <a class='btn btn-info clustering' href="javascript://" data-step="second">
                                     Re-run second clustering
                                 </a>
                             </td>
@@ -306,6 +306,18 @@
                         )
                     }
                 )
+            })
+            $('.clustering').on('click', function(e){
+                e.preventDefault();
+                var step = $(this).data('step');
+                var threshold = $('#' + step + '-threshold').val();
+                var params = {
+                    'step': step,
+                    'threshold': threshold
+                }
+                $.getJSON('/rewind/', params, function(resp){
+                    console.log(resp);
+                })
             })
         })
     </script>

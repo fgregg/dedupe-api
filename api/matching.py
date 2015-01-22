@@ -291,18 +291,18 @@ def add_entity():
             entity['entity_id'] = entity_id.entity_id
         with engine.begin() as conn:
             conn.execute(entity_table.insert(), **entity)
-        # Commenting for now so it doesn't break things
-        # deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
-        # for k,v in obj.items():
-        #     obj[k] = preProcess(unicode(v))
-        # block_keys = tuple([b for b in list(deduper.blocker([(record_id, obj)]))])
-        # with engine.begin() as conn:
-        #     conn.execute(text(''' 
-        #         INSERT INTO "match_blocks_{0}" (
-        #             block_key,
-        #             record_id
-        #         ) VALUES :values
-        #     '''.format(sess.id)), values=block_keys)
+        deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+        for k,v in obj.items():
+            obj[k] = preProcess(unicode(v))
+        block_keys = [{'record_id': b[1], 'block_key': b[0]} \
+                for b in list(deduper.blocker([(record_id, obj)]))]
+        with engine.begin() as conn:
+            conn.execute(text(''' 
+                INSERT INTO "match_blocks_{0}" (
+                    block_key,
+                    record_id
+                ) VALUES (:block_key, :record_id)
+            '''.format(sess.id)), *block_keys)
     if sess.review_count:
         sess.review_count = sess.review_count - 1
         db_session.add(sess)

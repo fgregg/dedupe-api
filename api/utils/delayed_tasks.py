@@ -345,7 +345,7 @@ def blockDedupe(session_id,
     SELECT p.* <-- need the fields that we trained on at least
         FROM processed as p
         LEFT OUTER JOIN entity_map as e
-           ON s.record_id = e.record_id
+           ON p.record_id = e.record_id
         WHERE e.target_record_id IS NULL
     """
     proc_records = worker_session.query(proc_table)\
@@ -420,6 +420,7 @@ def reDedupeCanon(session_id, threshold=0.25):
     with engine.begin() as c:
         c.execute(upd, last_update=last_update)
     dedupeCanon(session_id, threshold=threshold)
+    sess = worker_session.query(DedupeSession).get(session_id)
     sess.status = 'canon clustered'
     worker_session.add(sess)
     worker_session.commit()
@@ -458,7 +459,8 @@ def dedupeCanon(session_id, threshold=0.25):
                         raw_table_format='cr_{0}')
     entity_table_name = 'entity_{0}_cr'.format(session_id)
     entity_table = entity_map(entity_table_name, metadata, record_id_type=String)
-    entity_table.create(bind=engine, checkfirst=True)
+    entity_table.drop(bind=engine, checkfirst=True)
+    entity_table.create(bind=engine)
     block_gen = blockDedupe(session_id, 
         table_name='processed_{0}_cr'.format(session_id), 
         entity_table_name='entity_{0}_cr'.format(session_id), 
