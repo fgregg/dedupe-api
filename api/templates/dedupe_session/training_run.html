@@ -198,15 +198,8 @@
           $.ajax({
               url: '/session-list/?session_id={{dedupe_session.id}}',
               success: function(data){
-                  if (data.ready){
-                      if(data.status == 'ok'){
-                          window.location.reload()
-                      } else {
-                          var stuff = '<h2>Error</h2>';
-                          stuff += '<p><strong>' + data.value + '</strong></p>';
-                          stuff += '<code>' + data.traceback + '</p>';
-                          $('#error').html(stuff)
-                      }
+                  if(!data.objects[0].processing){
+                      window.location.reload()
                   } else {
                       setTimeout(poll_worker, 3000);
                   }
