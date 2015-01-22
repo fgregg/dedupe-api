@@ -46,7 +46,7 @@ def allowed_file(filename):
 @trainer.route('/upload/', methods=['POST'])
 @login_required
 def upload():
-    session_id = flask_session['session_id']
+    session_id = unicode(uuid4())
     f = request.files['input_file']
     flask_session['session_name'] = f.filename
     file_type = f.filename.rsplit('.')[1]
@@ -74,6 +74,7 @@ def upload():
         s.write(u.getvalue())
     del u
     flask_session['init_key'] = initializeSession.delay(session_id)
+    flask_session['session_id'] = session_id
     return jsonify(ready=True)
 
 @trainer.route('/get-init-status/<init_key>/')
@@ -89,8 +90,6 @@ def get_init_status(init_key): # pragma: no cover
 @trainer.route('/train-start/', methods=['GET'])
 @login_required
 def train():
-    user = db_session.query(User).get(flask_session['user_id'])
-    status_code = 200
     error = None
     session_values = [
         'sample',
@@ -101,13 +100,12 @@ def train():
         'counter',
         'deduper',
     ]
-    flask_session['session_id'] = unicode(uuid4())
     for k in session_values:
         try:
             del flask_session[k]
         except KeyError:
             pass
-    return make_response(render_template('dedupe_session/upload.html', error=error, user=user), status_code)
+    return make_response(render_template('dedupe_session/upload.html', error=error))
 
 @trainer.route('/select-fields/', methods=['GET', 'POST'])
 @login_required
