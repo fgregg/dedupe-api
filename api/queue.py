@@ -3,7 +3,7 @@ from redis import Redis
 from uuid import uuid4
 import sys
 import os
-from api.app_config import REDIS_QUEUE_KEY, DB_CONN
+from api.app_config import REDIS_QUEUE_KEY, DB_CONN, WORKER_SENTRY
 from api.database import init_engine, worker_session
 from api.models import DedupeSession
 import traceback
@@ -11,7 +11,7 @@ from sqlalchemy.exc import ProgrammingError, InternalError
 
 try:
     from raven import Client
-    client = Client(os.environ['DEDUPE_WORKER_SENTRY_URL'])
+    client = Client(os.environ[''])
 except ImportError: # pragma: no cover
     client = None
 except KeyError:
@@ -46,7 +46,7 @@ def queuefunc(f):
     f.delay = delay
     return f
 
-def processMessage(rv_ttl=500, qkey=None):
+def processMessage(rv_ttl=5000, qkey=None):
     msg = redis.blpop(qkey)
     func, key, args, kwargs = loads(msg[1])
     try:
