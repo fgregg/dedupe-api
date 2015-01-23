@@ -241,7 +241,7 @@ def getDistinct(field_name, session_id):
     table = Table('processed_%s' % session_id, metadata,
         autoload=True, autoload_with=engine)
     col = getattr(table.c, field_name)
-    q = app_session.query(distinct(col)).filter(col != None)
+    q = app_session.query(distinct(col)).filter(and_(col != None, col != ''))
     distinct_values = list(set([unicode(v[0]) for v in q.all()]))
     return distinct_values
 
