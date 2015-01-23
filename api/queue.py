@@ -2,7 +2,7 @@ from pickle import loads, dumps
 from uuid import uuid4
 import sys
 import os
-from api.app_config import REDIS_QUEUE_KEY, DB_CONN
+from api.app_config import REDIS_QUEUE_KEY, DB_CONN, WORKER_SENTRY
 from api.database import init_engine, worker_session
 from api.models import DedupeSession, WorkTable
 import traceback
@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 try:
     from raven import Client
-    client = Client(os.environ['DEDUPE_WORKER_SENTRY_URL'])
+    client = Client(os.environ[''])
 except ImportError: # pragma: no cover
     client = None
 except KeyError:
