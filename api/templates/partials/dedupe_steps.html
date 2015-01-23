@@ -1,21 +1,18 @@
 {% macro dedupe_steps(dedupe_session) -%}
     {% if (dedupe_session) %}
-        {% set current_step = dedupe_session.as_dict()['status_info']['step'] + 1 %}
-        <p>{{dedupe_session.name}} > 
-            Step {{dedupe_session.as_dict()['status_info']['step'] + 1}}: {{dedupe_session.as_dict()['status_info']['next_step_name']}}
+        <p>
+            {{dedupe_session.name}}
             <span class='pull-right'><a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a></span>
         </p>
     {% else %}
-        {% set current_step = 1 %}
-        <p>New dedupe session > Step 1: New Session</p>
+        <p>New dedupe session</p>
     {% endif %}
     <ul class='nav nav-wizard'>
-      <li class='{% if current_step == 1 %} active {% endif %}'>1. New session</li>
-      <li class='{% if current_step == 2 %} active {% endif %}'>2. Fields to compare</li>
-      <li class='{% if current_step == 3 %} active {% endif %}'>3. Train</li>
-      <li class='{% if current_step == 4 %} active {% endif %}'>4. Review entities</li>
-      <li class='{% if current_step == 5 %} active {% endif %}'>5. Merge entities</li>
-      <li class='{% if current_step == 6 %} active {% endif %}'>6. Final review</li>
+      <li class='{% if request.path == "/new-session/" %} active {% endif %}'>1. New session</li>
+      <li class='{% if request.path in ["/select-fields/", "/select-field-types/"] %} active {% endif %}'>2. Fields to compare</li>
+      <li class='{% if request.path == "/training-run/" %} active {% endif %}'>3. Train</li>
+      <li class='{% if request.path == "/session-review/" and request.args.get("second_review") != 'True' %} active {% endif %}'>4. Review entities</li>
+      <li class='{% if request.path == "/session-review/" and request.args.get("second_review") == 'True' %} active {% endif %}'>5. Merge entities</li>
+      <li class='{% if request.path == "/match-review/" %} active {% endif %}'>6. Final review</li>
     </ul>
-    <br />
 {%- endmacro %}

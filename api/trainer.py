@@ -87,9 +87,9 @@ def get_init_status(init_key): # pragma: no cover
     del flask_session['init_key']
     return jsonify(ready=True, **rv.return_value)
 
-@trainer.route('/train-start/', methods=['GET'])
+@trainer.route('/new-session/', methods=['GET'])
 @login_required
-def train():
+def new_session():
     error = None
     session_values = [
         'sample',
@@ -105,7 +105,7 @@ def train():
             del flask_session[k]
         except KeyError:
             pass
-    return make_response(render_template('dedupe_session/upload.html', error=error))
+    return make_response(render_template('dedupe_session/new-session.html', error=error))
 
 @trainer.route('/select-fields/', methods=['GET', 'POST'])
 @login_required

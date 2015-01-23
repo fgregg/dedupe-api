@@ -1,29 +1,29 @@
 {% extends 'base.html' %}
 {% from "partials/dedupe_steps.html" import dedupe_steps %}
-{% block title %}Upload{% endblock %}
+{% block title %}New session{% endblock %}
 {% block content %}
 <div class="row">
   <div class="col-md-12">
   {{ dedupe_steps( None ) }}
   {% include "partials/error.html" %}
+  <h3>1. New session</h3>
   </div>
 </div>
 <div class="row">
   <div class="col-md-7">
-    <p>Select a spreadsheet that contains data you want to deduplicate.</p>
     <div class=''>
         <form role="form" class='form-horizontal'>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div class="form-group">
                 <label for="id_name" class="col-sm-2 control-label">Name</label>
                 <div class="col-sm-10">
-                    <input type="text" id="id_name" name="name" class="form-control" placeholder="My awesome dedupe session">
+                    <input type="text" id="id_name" name="name" class="form-control" placeholder="My great dataset">
                 </div>
             </div>
             <div class="form-group">
                 <label for="id_name" class="col-sm-2 control-label">Description</label>
                 <div class="col-sm-10">
-                    <textarea id="id_description" class="form-control" name="description" placeholder="This is a good description"></textarea>
+                    <textarea id="id_description" class="form-control" name="description" placeholder="More details describing this data"></textarea>
                 </div>
             </div>
             <div class="form-group">
@@ -54,7 +54,7 @@
     </div>
   </div>
   <div class="col-sm-5">
-    <p>Spreadsheet format (<a href="{{ url_for('trainer.upload_formats') }}" target="_blank">learn more</a>)</p>
+    <p>Upload formats (<a href="{{ url_for('trainer.upload_formats') }}" target="_blank">learn more</a>)</p>
     <a href="{{ url_for('trainer.upload_formats') }}" target="_blank">
         <img src="/static/images/spreadsheet_format.jpg" id="format-example" class='img-responsive img-thumbnail'>
     </a>

@@ -38,7 +38,7 @@ class TrainerTest(DedupeAPITestCase):
             with self.client as c:
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
-                rv = c.get('/train-start/')
+                rv = c.get('/new-session/')
                 assert session.has_key('session_id')
     
     def test_clear_session(self):
@@ -50,7 +50,7 @@ class TrainerTest(DedupeAPITestCase):
                     sess['session_name'] = 'test'
                     sess['training_data'] = {'test': 'thing'}
                     sess['user_id'] = self.user.id
-                rv = c.get('/train-start/')
+                rv = c.get('/new-session/')
                 assert 'fieldnames' not in session.keys()
                 assert 'session_name' not in session.keys()
                 assert 'training_data' not in session.keys()

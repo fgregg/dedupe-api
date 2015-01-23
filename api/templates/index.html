@@ -5,7 +5,7 @@
     <div class="col-md-12">
         {% for role in current_user.roles %}
             {% if role.name == 'admin' %}
-                <h2 class='pull-right' id='start-session-btn' style='display: none;'><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-info"><i class='fa fa-plus-circle'></i> Start a new dedupe session</a></h2>
+                <h2 class='pull-right' id='start-session-btn' style='display: none;'><a role="button" href="{{url_for('trainer.new_session')}}" class="btn btn-info"><i class='fa fa-plus-circle'></i> Start a new dedupe session</a></h2>
 
                 <div id='start-session' style='display: none;'>
                     <div class='jumbotron'>
@@ -16,7 +16,7 @@
                         </h1>
                         <h2>Welcome to Dedupe!</h2>
                         <p>Let's get started on your first dedupe session.</p>
-                        <p><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-primary btn-lg">Let's get started &raquo;</a></p>
+                        <p><a role="button" href="{{url_for('trainer.new_session')}}" class="btn btn-primary btn-lg">Let's get started &raquo;</a></p>
                     </div>
                 </div>
             {% endif %}
@@ -26,9 +26,14 @@
                 <div class="col-md-12">
 
                     <h2>Dedupe sessions</h2>
-                    <p><a role="button" href="{{url_for('trainer.train')}}" class="btn btn-primary">
+                    <p><a role="button" href="{{url_for('trainer.new_session')}}" class="btn btn-primary">
                         Start a new session &raquo;
                     </a></p>
+
+                    <div id='processing-msg' class='alert alert-success alert-dismissible' role='alert' style="display: none;">
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                        <p>We need a few moments to process your data. When we're done, you will be able to proceed to the next step.</p>
+                    </div>
 
                     <table class="table table-bordered table-striped">
                         <thead>
@@ -85,8 +90,10 @@
         var tpl = new EJS({'text': $('#sessionTemplate').html()});
         if (resp.objects.length > 0) {
             $.each(resp.objects, function(i, object){
-                console.log(object);
+                // console.log(object);
                 rows += tpl.render({object: object});
+                if (object.processing == true)
+                    $("#processing-msg").show();
             });
             $('#dedupe-sessions').show();
             $('#session-list').html(rows);

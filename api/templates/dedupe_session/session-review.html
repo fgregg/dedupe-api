@@ -11,8 +11,10 @@
     <div class="row">
       {{ dedupe_steps( dedupe_session ) }}
       {% if first_review %}
+          <h3>4. Review entities</h3>
           <p>Below is a group of records that refer to the same entity. If any of them don't belong, <strong>uncheck</strong> the box next to it. <br />When you're done, review the next entity or accept the remaining records.</p>
       {% else %}
+          <h3>5. Merge entities</h3>
           <p>Some of the entities can be merged. If any of them don't belong, <strong>uncheck</strong> the box next to it. If they look good, you can automatically accept the rest.</p>
       {% endif %}
       <div class="col-md-12" id="group-display"></div>
@@ -66,7 +68,7 @@
                 <div class="col-md-9">
                     <div id="review-buttons">
                         <button class="btn btn-primary mark-entity">
-                            Review next entity &raquo;
+                            Save and review next entity &raquo;
                         </button>
                     </div>
                 </div>

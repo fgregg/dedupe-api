@@ -8,6 +8,7 @@
   </div>
     {% if init_status == 'finished' %}
     <div class='col-md-8'>
+        <h3>3. Train</h3>
         <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
         <table id='labeler' class='table table-bordered'>
             <thead>
@@ -120,7 +121,7 @@
                     $.each(data, function(i, json){
 
                         var diff_class = 'danger';
-                        if (json.left == json.right)
+                        if (json.left == json.right && json.left.trim() != "")
                             diff_class = 'success';
                         var template = "\
                         <tr>\
