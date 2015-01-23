@@ -85,7 +85,7 @@ def get_init_status(init_key): # pragma: no cover
         return jsonify(ready=False)
     redis.delete(init_key)
     del flask_session['init_key']
-    return jsonify(ready=True, result=rv.return_value)
+    return jsonify(ready=True, **rv.return_value)
 
 @trainer.route('/train-start/', methods=['GET'])
 @login_required

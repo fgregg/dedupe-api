@@ -78,8 +78,10 @@ class TrainerTest(DedupeAPITestCase):
                     assert slugify(field) in rv.data
 
     def test_select_fields_sid(self):
-        fobj = open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb')
-        fieldnames = writeRawTable(session_id=self.dd_sess.id, file_obj=fobj)
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
+            with open('/tmp/example.csv', 'wb') as outp:
+                outp.write(inp.read())
+        fieldnames = writeRawTable(session_id=self.dd_sess.id, file_path='/tmp/example.csv')
         fieldnames = [slugify(unicode(f)) for f in fieldnames]
         with self.app.test_request_context():
             self.login()

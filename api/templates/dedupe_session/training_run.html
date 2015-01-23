@@ -49,6 +49,7 @@
     <div class="col-md-8">
         <h3>We're still working on finishing up processing your upload</h3>
         <p>This should be done in a couple minutes... <span id="spinner"></span></p>
+        <div class="alert alert-danger" role="alert" id='error' style="display:none"></div>
     </div>
     {% endif %}
     <div class='col-md-4'>
@@ -198,7 +199,14 @@
               url: '/get-init-status/{{session["init_key"]}}/',
               success: function(data){
                   if (data.ready){
-                      window.location.reload()
+                      if(data.status == 'ok'){
+                          window.location.reload()
+                      } else {
+                          var stuff = '<h2>Error</h2>';
+                          stuff += '<p><strong>' + data.value + '</strong></p>';
+                          stuff += '<code>' + data.traceback + '</p>';
+                          $('#error').html(stuff)
+                      }
                   } else {
                       setTimeout(poll_worker, 3000);
                   }

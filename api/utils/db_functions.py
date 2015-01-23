@@ -45,10 +45,11 @@ def addRowHash(session_id):
         conn.execute(upd)
 
 def writeRawTable(session_id=None,
-              file_obj=None):
+              file_path=None):
     """ 
     Create a table from incoming tabular data
     """
+    file_obj = open(file_path, 'rb')
     fieldnames = file_obj.next().strip('\r\n').split(',')
     file_obj.seek(0)
     cols = []
@@ -74,9 +75,11 @@ def writeRawTable(session_id=None,
     try:
         cur.copy_expert(copy_st, file_obj)
         conn.commit()
+        os.remove(file_path)
     except Exception, e:
         print e
         conn.rollback()
+        raise e
     return fieldnames
 
 def writeProcessedTable(session_id, 

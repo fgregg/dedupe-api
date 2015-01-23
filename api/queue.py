@@ -59,7 +59,10 @@ def processMessage(rv_ttl=5000, qkey=None):
         except (IndexError, ProgrammingError, InternalError):
             sess = None
             pass
-        rv = func(*args, **kwargs)
+        rv = {
+            'value': func(*args, **kwargs),
+            'status': 'ok',
+        }
         if sess:
             sess.processing = False
             worker_session.add(sess)
@@ -69,7 +72,11 @@ def processMessage(rv_ttl=5000, qkey=None):
             client.captureException()
         tb = traceback.format_exc()
         print tb
-        rv = 'Exc: %s' % (e.message)
+        rv = {
+            'value': 'Exc: %s' % (e.message),
+            'status': 'error',
+            'traceback': tb
+        }
     if rv is not None:
         redis.set(key, dumps(rv))
         redis.expire(key, rv_ttl)
