@@ -8,6 +8,7 @@ MAX_CONTENT_LENGTH = 5 * 1024 * 1024
 SECRET_KEY = 'super secret key'
 REDIS_QUEUE_KEY = 'dedupeapi'
 REDIS_SESSION_KEY = 'session'
+WORKER_SENTRY = ''
 
 DOWNLOAD_FOLDER = join(abspath(dirname(__file__)), 'download_data')
 

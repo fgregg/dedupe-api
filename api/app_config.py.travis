@@ -16,6 +16,7 @@ SECRET_KEY = 'test super secret key'
 REDIS_QUEUE_KEY = 'testdedupeapi'
 WTF_CSRF_ENABLED = False
 REDIS_SESSION_KEY = 'testsession'
+WORKER_SENTRY = ''
 
 DOWNLOAD_FOLDER = join(abspath(dirname(__file__)), 'download_data')
 

@@ -261,10 +261,10 @@ def drawSample(session_id):
 @queuefunc
 def initializeSession(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
-    file_obj = open('/tmp/{0}_raw.csv'.format(session_id), 'rb')
+    file_path = '/tmp/{0}_raw.csv'.format(session_id)
     kwargs = {
         'session_id':session_id,
-        'file_obj':file_obj
+        'file_path':file_path
     }
     writeRawTable(**kwargs)
     engine = worker_session.bind
@@ -275,7 +275,6 @@ def initializeSession(session_id):
     worker_session.add(sess)
     worker_session.commit()
     print 'session initialized'
-    os.remove('/tmp/{0}_raw.csv'.format(session_id))
 
 @queuefunc
 def initializeModel(session_id):
@@ -292,7 +291,10 @@ def initializeModel(session_id):
             for field in field_defs:
                 if field['type'] == 'Categorical':
                     categories = getDistinct(field['field'], session_id)
-                    field.update({'categories': categories})
+                    if len(categories) <= 6:
+                        field.update({'categories': categories})
+                    else:
+                        field['type'] = 'Exact'
                 updated_fds.append(field)
             sess.field_defs = json.dumps(updated_fds)
             worker_session.add(sess)

@@ -53,4 +53,3 @@ class QueueTest(unittest.TestCase):
         work = worker_session.query(WorkTable).get(key)
         worker_session.refresh(work)
         assert work.value == 'Test Exception'
-
