@@ -13,14 +13,10 @@
                 <div class="col-md-12">
                     <div class="row">
                         <div id="group-display" class="col-md-12"></div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div id="review-buttons">
-                                <button class="btn btn-primary mark-match">
-                                    Next &raquo;
-                                </button>
-                            </div>
+                        <div id="review-buttons" style="display:none" >
+                            <button class="btn btn-primary mark-match">
+                                Next &raquo;
+                            </button>
                         </div>
                     </div>
                     <div class="row" style="display:none" id="errors">
@@ -40,31 +36,41 @@
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
 <script type="text/EJS" id="matchTemplate">
-    <h4>Unmatched record</h4>
-    <table class="table">
+    <div class="row">
+        <div id="counter" class="col-md-12">
+            <p><strong>X</strong> left to review</p>
+        </div>
+    </div>
+    <table class="table table-bordered">
         <thead>
             <tr>
                 <% $.each(obj, function(field, value){ %>
-                    <th><%= field %></th>
+                    <% if (field != 'record_id') { %>
+                        <th><%= field %></th>
+                    <% } %>
                 <% }) %>
             </tr>
         </thead>
         <tbody>
             <tr>
                 <% $.each(obj, function(field, value){ %>
-                    <td><%= value %></td>
+                    <% if (field != 'record_id') { %>
+                        <td><%= value %></td>
+                    <% } %>
                 <% }) %>
             </tr>
         </tbody>
     </table>
     <% if(matches.length > 0){ %>
-        <h4>Select the matching cluster</h4>
-        <table class="table">
+        <h4>Select the matching record</h4>
+        <table class="table table-bordered table-striped">
             <thead>
                 <tr>
                     <th></th>
                     <% $.each(matches[0], function(field, value){ %>
-                        <th><%= field %></th>
+                        <% if (field != 'record_id' && field != 'entity_id') { %>
+                            <th><%= field %></th>
+                        <% } %>
                     <% }) %>
                 </tr>
             </thead>
@@ -72,10 +78,12 @@
                 <% $.each(matches, function(i, match){ %>
                     <tr>
                         <td data-record_id="<%= match.record_id %>">
-                            <input type="checkbox"/>
+                            <input type="radio" name='match_record'/>
                         </td>
                         <% $.each(match, function(field, val){ %>
-                            <td><%= val %></td>
+                            <% if (field != 'record_id' && field != 'entity_id') { %>
+                                <td><%= val %></td>
+                            <% } %>
                         <% }) %>
                     </tr>
                 <% }) %>
@@ -114,6 +122,7 @@
         });
     })
     function getAndMatch(){
+        $('#review-buttons').hide();
         $('#group-display').spin('large')
         $.when(getRecord()).then(function(resp){
             match_obj = resp['object'];
@@ -128,6 +137,7 @@
                     $('#group-display').spin(false);
                     if(matches.matches.length > 0){
                         displayRecord(matches.matches, obj)
+                        $('#review-buttons').show();
                     } else {
                         $('#group-display').html('')
                         var data = {
@@ -147,6 +157,7 @@
     }
     function displayRecord(matches, obj){
         var tpl = new EJS({'text': $('#matchTemplate').html()});
+        // console.log(obj)
         $('#group-display').html(tpl.render({matches: matches, obj: obj.object}))
     }
     function getRecord(){
