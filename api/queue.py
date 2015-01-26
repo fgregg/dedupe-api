@@ -8,6 +8,7 @@ from api.models import DedupeSession, WorkTable
 import traceback
 from sqlalchemy.exc import ProgrammingError, InternalError
 from sqlalchemy import text
+import time
 
 try:
     from raven import Client
@@ -35,7 +36,9 @@ def processMessage():
     engine = worker_session.bind
     sel = "SELECT * FROM work_table LIMIT 1"
     work = engine.execute(sel).first()
-    if work:
+    if not work:
+        time.sleep(1)
+    else:
         func, args, kwargs = loads(work.value)
         try:
             try:

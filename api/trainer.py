@@ -74,7 +74,7 @@ def upload():
     del u
     initializeSession.delay(session_id)
     flask_session['session_id'] = session_id
-    return jsonify(ready=True)
+    return jsonify(ready=True, session_id=session_id)
 
 @trainer.route('/train-start/', methods=['GET'])
 @login_required
@@ -130,7 +130,10 @@ def select_fields():
             error = 'You must select at least one field to compare on.'
             status_code = 400
 
-    return render_template('dedupe_session/select_fields.html', error=error, fields=fields, dedupe_session=dedupe_session)
+    return render_template('dedupe_session/select_fields.html', 
+                            error=error, 
+                            fields=fields, 
+                            dedupe_session=dedupe_session)
 
 @trainer.route('/select-field-types/', methods=['GET', 'POST'])
 @login_required
@@ -271,8 +274,7 @@ def mark_pair():
         counter['no'] += 1
         resp = {'counter': counter}
     elif action == 'finish':
-        rv = dedupeRaw.delay(flask_session['session_id'])
-        flask_session['deduper_key'] = rv.key
+        dedupeRaw.delay(flask_session['session_id'])
         resp = {'finished': True}
         flask_session['dedupe_start'] = time.time()
     else:
