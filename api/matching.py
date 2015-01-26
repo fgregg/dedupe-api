@@ -386,7 +386,8 @@ def get_unmatched():
         dedupe_session.status = 'canonical'
         db_session.add(dedupe_session)
         db_session.commit()
-    resp['object'] = rows[0]
+    else:
+        resp['object'] = rows[0]
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response

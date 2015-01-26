@@ -1,7 +1,7 @@
 import json
 import cPickle
 import dedupe
-from os.path import join, abspath, dirname
+from os.path import join, abspath, dirname, exists
 from flask import request, session
 from api.utils.helpers import slugify
 from api.utils.delayed_tasks import initializeSession
@@ -17,20 +17,22 @@ class TrainerTest(DedupeAPITestCase):
     '''
     
     def test_upload(self):
-        self.session.delete(self.dd_sess)
-        self.session.commit()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
-                with c.session_transaction() as sess:
-                    sess['session_id'] = self.dd_sess.id
                 rv = c.post('/upload/', data={
                             'input_file': (open(join(fixtures_path, 
                                 'csv_example_messy_input.csv'),'rb'), 
                                 'csv_example_messy_input.csv'),
                             'name': 'Test Session'})
-                assert session.has_key('init_key')
-                assert json.loads(rv.data)['ready']
+                sess_id = json.loads(rv.data)['session_id']
+                assert exists('/tmp/{0}_raw.csv'.format(sess_id))
+                with open(join(fixtures_path, 
+                    'csv_example_messy_input.csv'),'rb') as inp:
+                    fieldnames = [slugify(unicode(f)) \
+                            for f in inp.next().strip('\r\n').split(',')]
+                rv = c.get('/select-fields/')
+                assert set(session['fieldnames']) == set(fieldnames)
 
     def test_train_start(self):
         with self.app.test_request_context():
@@ -56,33 +58,21 @@ class TrainerTest(DedupeAPITestCase):
                 assert 'training_data' not in session.keys()
    
     def init_session(self):
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as f:
-            reader = UnicodeCSVReader(f)
-            fieldnames = reader.next()
-            with open('/tmp/{0}_raw.csv'.format(self.dd_sess.id), 'wb') as outp:
-                writer = UnicodeCSVWriter(outp)
-                writer.writerow(fieldnames)
-                writer.writerows(reader)
-        initializeSession(self.dd_sess.id)
-        return fieldnames
-
-    def test_select_fields(self):
-        fieldnames = self.init_session()
-        with self.app.test_request_context():
-            self.login()
-            with self.client as c:
-                with c.session_transaction() as sess:
-                    sess['fieldnames'] = fieldnames
-                rv = c.get('/select-fields/?session_id=' + self.dd_sess.id)
-                for field in fieldnames:
-                    assert slugify(field) in rv.data
-
-    def test_select_fields_sid(self):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
             with open('/tmp/example.csv', 'wb') as outp:
                 outp.write(inp.read())
         fieldnames = writeRawTable(session_id=self.dd_sess.id, file_path='/tmp/example.csv')
-        fieldnames = [slugify(unicode(f)) for f in fieldnames]
+        return fieldnames
+
+    def test_select_fields_no_sid(self):
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                rv = c.get('/select-fields/')
+                assert rv.location == 'http://localhost/'
+
+    def test_select_fields_sid(self):
+        fieldnames = self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
@@ -168,13 +158,13 @@ class TrainerTest(DedupeAPITestCase):
     def test_training_run_processing(self):
         fds = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
         self.dd_sess.field_defs = fds
+        self.dd_sess.processing = True
         self.session.add(self.dd_sess)
         self.session.commit()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
-                    sess['user_id'] = self.user.id
                     sess['session_id'] = self.dd_sess.id
                 rv = c.get('/training-run/')
                 assert 'still working on finishing up processing your upload' in rv.data
@@ -265,5 +255,4 @@ class TrainerTest(DedupeAPITestCase):
                 assert json.loads(rv.data)['counter']['unsure'] == 1
                 
                 rv = c.get('/mark-pair/?action=finish')
-                assert session.get('deduper_key') is not None
                 assert json.loads(rv.data)['finished'] == True

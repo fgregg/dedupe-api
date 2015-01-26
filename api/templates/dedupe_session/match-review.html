@@ -126,33 +126,38 @@
         $('#group-display').spin('large')
         $.when(getRecord()).then(function(resp){
             match_obj = resp['object'];
-            var obj = {
-                    'object': resp['object'],
-                    'num_results': 5,
-                    'api_key': api_key,
-                    'session_id': session_id
-            }
-            $.when(getMatches(JSON.stringify(obj))).then(
-                function(matches){
-                    $('#group-display').spin(false);
-                    if(matches.matches.length > 0){
-                        displayRecord(matches.matches, obj)
-                        $('#review-buttons').show();
-                    } else {
-                        $('#group-display').html('')
-                        var data = {
-                            'api_key': api_key,
-                            'object': obj.object,
-                            'match_id': null
-                        }
-                        $.when(addToEntityMap(JSON.stringify(data))).then(
-                            function(resp){
-                                getAndMatch();
-                            }
-                        )
-                    }
+            if (typeof match_obj !== 'undefined'){
+                var obj = {
+                        'object': resp['object'],
+                        'num_results': 5,
+                        'api_key': api_key,
+                        'session_id': session_id
                 }
-            )
+                $.when(getMatches(JSON.stringify(obj))).then(
+                    function(matches){
+                        $('#group-display').spin(false);
+                        if(matches.matches.length > 0){
+                            displayRecord(matches.matches, obj)
+                        } else {
+                            $('#group-display').html('')
+                            var data = {
+                                'api_key': api_key,
+                                'object': obj.object,
+                                'match_id': null
+                            }
+                            $.when(addToEntityMap(JSON.stringify(data))).then(
+                                function(resp){
+                                    getAndMatch();
+                                }
+                            )
+                        }
+                    }
+                )
+            } else {
+                $('#group-display').spin(false);
+                console.log("DONE!!");
+                $('#group-display').html('<h2>You are done</h2>')
+            }
         });
     }
     function displayRecord(matches, obj){

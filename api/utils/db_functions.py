@@ -50,11 +50,11 @@ def writeRawTable(session_id=None,
     Create a table from incoming tabular data
     """
     file_obj = open(file_path, 'rb')
-    fieldnames = file_obj.next().strip('\r\n').split(',')
+    fieldnames = [slugify(unicode(f)) for f in file_obj.next().strip('\r\n').split(',')]
     file_obj.seek(0)
     cols = []
     for field in fieldnames:
-        cols.append(Column(slugify(unicode(field)), String))
+        cols.append(Column(field, String))
     engine = worker_session.bind
     metadata = MetaData()
     sql_table = Table('raw_%s' % session_id, metadata, *cols)
