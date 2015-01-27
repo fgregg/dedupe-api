@@ -127,6 +127,19 @@ class AdminTest(DedupeAPITestCase):
                 self.session.refresh(self.dd_sess)
                 assert self.dd_sess.field_defs is None
                 assert self.dd_sess.training_data is None
+                assert self.dd_sess.sample is None
+                assert self.dd_sess.status == 'dataset uploaded'
+                removed_tables = [
+                    'entity_{0}',
+                    'block_{0}',
+                    'plural_block_{0}',
+                    'covered_{0}',
+                    'plural_key_{0}',
+                    'small_cov_{0}',
+                ]
+                tables = [t[0] for t in self.engine.execute('select tablename from pg_catalog.pg_tables')]
+                for table in removed_tables:
+                    assert table.format(self.dd_sess.id) not in tables
     
     def test_delete_no_access(self):
         rv = self.no_access('/delete-data-model/?session_id=' + self.dd_sess.id)

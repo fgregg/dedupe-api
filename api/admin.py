@@ -215,7 +215,7 @@ def delete_data_model():
     dedupe_session.field_defs = None
     dedupe_session.training_data = None
     dedupe_session.sample = None
-    dedupe_session.status = 'session initialized'
+    dedupe_session.status = 'dataset uploaded'
     db_session.add(dedupe_session)
     db_session.commit()
     tables = [
