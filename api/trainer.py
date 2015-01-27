@@ -215,6 +215,7 @@ def training_run():
         db_session.refresh(dedupe_session)
     else:
         status_code = 500
+    print dedupe_session.processing
     return make_response(render_template(
                             'dedupe_session/training_run.html', 
                             errors=errors, 

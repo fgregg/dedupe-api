@@ -6,7 +6,12 @@
     {{ dedupe_steps( dedupe_session ) }}
     </div>
     {% if not errors %}
-        {% if not dedupe_session.processing %}
+        {% if dedupe_session.processing %}
+        <div class="col-md-12">
+            <h3>We're still working on finishing up processing your upload</h3>
+            <p>This should be done in a couple minutes... <span id="spinner"></span></p>
+        </div>
+        {% else %}
         <div class='col-md-8'>
             <h3>3. Train</h3>
             <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
@@ -72,11 +77,6 @@
                 <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
             </div>
         </div>
-    {% else %}
-        <div class="col-md-12">
-            <h3>We're still working on finishing up processing your upload</h3>
-            <p>This should be done in a couple minutes... <span id="spinner"></span></p>
-        </div>
     {% endif %}
     {% else %}
         {% include "partials/error.html" %}
@@ -108,7 +108,27 @@
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 {% if not errors %}
-{% if not dedupe_session.processing %}
+{% if dedupe_session.processing %}
+  <script type="text/javascript">
+      function poll_worker(){
+          $.ajax({
+              url: '/session-list/?session_id={{dedupe_session.id}}',
+              success: function(data){
+                  if(!data.objects[0].processing){
+                      window.location.reload()
+                  } else {
+                      setTimeout(poll_worker, 3000);
+                  }
+              },
+              dataType: 'json',
+          })
+      }
+      $('#spinner').spin({'top': 50});
+      $(document).ready(function(){
+          poll_worker();
+      })
+    </script>
+{% else %}
     <script type="text/javascript">
 
         $('#your-training').popover();
@@ -195,26 +215,6 @@
         var init_counter = {{session.counter|tojson|safe}}
         update_your_training(init_counter);
 
-    </script>
-{% else %}
-  <script type="text/javascript">
-      function poll_worker(){
-          $.ajax({
-              url: '/session-list/?session_id={{dedupe_session.id}}',
-              success: function(data){
-                  if(!data.objects[0].processing){
-                      window.location.reload()
-                  } else {
-                      setTimeout(poll_worker, 3000);
-                  }
-              },
-              dataType: 'json',
-          })
-      }
-      $('#spinner').spin({'top': 50});
-      $(document).ready(function(){
-          poll_worker();
-      })
     </script>
 {% endif %}
 {% endif %}
