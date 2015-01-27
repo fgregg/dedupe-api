@@ -214,6 +214,7 @@ def training_run():
             flask_session['deduper'] = deduper
     else:
         status_code = 500
+    time.sleep(1)
     db_session.refresh(dedupe_session)
     return make_response(render_template(
                             'dedupe_session/training_run.html', 
