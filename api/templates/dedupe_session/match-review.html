@@ -14,7 +14,7 @@
                     <div class="row">
                         <div id="group-display" class="col-md-12"></div>
                     </div>
-                    <div id="review-buttons" style="display:none" class="row">
+                    <div id="review-buttons" class="row">
                         <div class="col-md-12">
                             <button class="btn btn-primary mark-match">
                                 Next &raquo;
@@ -103,7 +103,6 @@
         getAndMatch();
         $('.mark-match').on('click', function(e){
             $('#errors').hide();
-            $('#review-buttons').hide()
             var data = {
                 'api_key': api_key,
                 'object': match_obj,
@@ -125,7 +124,6 @@
         });
     })
     function getAndMatch(){
-        $('#review-buttons').hide();
         $('#group-display').spin('large')
         $.when(getRecord()).then(function(resp){
             match_obj = resp['object'];
@@ -168,9 +166,6 @@
         var tpl = new EJS({'text': $('#matchTemplate').html()});
         // console.log(obj)
         $('#group-display').html(tpl.render({matches: matches, obj: obj.object, remaining:remaining}))
-        $('input[name="match_record"]').on('click', function(e){
-            $('#review-buttons').show()
-        })
     }
     function getRecord(){
         return $.getJSON('/get-unmatched-record/?session_id=' + session_id)
