@@ -112,6 +112,8 @@ class WorkTable(Base):
     key = Column(String(36), default=get_uuid, primary_key=True)
     value = Column(LargeBinary)
     traceback = Column(Text)
+    session_id = Column(String(36))
+    updated = Column(DateTime(timezone=True))
 
     def __repr__(self):
         return '<WorkTable {0}>'.format(unicode(self.key))

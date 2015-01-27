@@ -13,7 +13,9 @@
                 <div class="col-md-12">
                     <div class="row">
                         <div id="group-display" class="col-md-12"></div>
-                        <div id="review-buttons" style="display:none" >
+                    </div>
+                    <div id="review-buttons" style="display:none" class="row">
+                        <div class="col-md-12">
                             <button class="btn btn-primary mark-match">
                                 Next &raquo;
                             </button>
@@ -38,7 +40,7 @@
 <script type="text/EJS" id="matchTemplate">
     <div class="row">
         <div id="counter" class="col-md-12">
-            <p><strong>X</strong> left to review</p>
+            <p><strong><%= remaining %></strong> left to review</p>
         </div>
     </div>
     <table class="table table-bordered">
@@ -101,6 +103,7 @@
         getAndMatch();
         $('.mark-match').on('click', function(e){
             $('#errors').hide();
+            $('#review-buttons').hide()
             var data = {
                 'api_key': api_key,
                 'object': match_obj,
@@ -126,7 +129,8 @@
         $('#group-display').spin('large')
         $.when(getRecord()).then(function(resp){
             match_obj = resp['object'];
-            if (typeof match_obj !== 'undefined'){
+            remaining = resp['remaining']
+            if (typeof match_obj !== 'undefined' && !$.isEmptyObject(match_obj)){
                 var obj = {
                         'object': resp['object'],
                         'num_results': 5,
@@ -137,7 +141,7 @@
                     function(matches){
                         $('#group-display').spin(false);
                         if(matches.matches.length > 0){
-                            displayRecord(matches.matches, obj)
+                            displayRecord(matches.matches, obj, remaining)
                         } else {
                             $('#group-display').html('')
                             var data = {
@@ -160,10 +164,13 @@
             }
         });
     }
-    function displayRecord(matches, obj){
+    function displayRecord(matches, obj, remaining){
         var tpl = new EJS({'text': $('#matchTemplate').html()});
         // console.log(obj)
-        $('#group-display').html(tpl.render({matches: matches, obj: obj.object}))
+        $('#group-display').html(tpl.render({matches: matches, obj: obj.object, remaining:remaining}))
+        $('input[name="match_record"]').on('click', function(e){
+            $('#review-buttons').show()
+        })
     }
     function getRecord(){
         return $.getJSON('/get-unmatched-record/?session_id=' + session_id)

@@ -4,81 +4,83 @@
 {% block content %}
     <div class="col-md-12">
     {{ dedupe_steps( dedupe_session ) }}
-    {% include "partials/error.html" %}
-  </div>
-    {% if not dedupe_session.processing %}
-    <div class='col-md-8'>
-        <h3>3. Train</h3>
-        <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
-        <table id='labeler' class='table table-bordered'>
-            <thead>
-                <tr>
-                    <th class='field-name'>Field</th>
-                    <th>Record A</th>
-                    <th>Record B</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
+    </div>
+    {% if not errors %}
+        {% if not dedupe_session.processing %}
+        <div class='col-md-8'>
+            <h3>3. Train</h3>
+            <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
+            <table id='labeler' class='table table-bordered'>
+                <thead>
+                    <tr>
+                        <th class='field-name'>Field</th>
+                        <th>Record A</th>
+                        <th>Record B</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
 
-        <h4>Do these two records refer to the same thing?</h4>
-        <p class='pull-left'>
-            <button class="btn btn-success" id="yes">
-                <i class='fa fa-check'></i>
-                Yes
-            </button>
-            <button class="btn btn-primary" id="no">
-                <i class='fa fa-remove'></i>
-                No
-            </button>
-            <button class="btn btn-default" id="unsure">
-                Unsure
-            </button>
-            &nbsp;&nbsp;&nbsp;
-            <div id="show-next-step" class='hidden'>
-                <div class='clearfix'></div>
-                <br />
-                <p>You've provided enough training to proceed to the next step.</p>
-                <button class="btn btn-primary" id="finish">
-                    Next &raquo;
+            <h4>Do these two records refer to the same thing?</h4>
+            <p class='pull-left'>
+                <button class="btn btn-success" id="yes">
+                    <i class='fa fa-check'></i>
+                    Yes
                 </button>
-            </div>
-        </p>
-    </div>
-    {% else %}
-    <div class="col-md-8">
-        <h3>We're still working on finishing up processing your upload</h3>
-        <p>This should be done in a couple minutes... <span id="spinner"></span></p>
-        <div class="alert alert-danger" role="alert" id='error' style="display:none"></div>
-    </div>
-    {% endif %}
-    <div class='col-md-4'>
-        <table id='your-training' class='table table-bordered' data-content="Try to label at least 10 'yes' and 10 'no' examples." rel="popover" data-placement="top" data-trigger="hover">
-            <tbody>
-                <tr>
-                    <td>Yes</td>
-                    <td class='warning' id='num-yes'>
-                        <span></span> / 10
-                    </td>
-                </tr>
-                <tr>
-                    <td>No</td>
-                    <td class='warning' id='num-no'>
-                        <span></span> / 10
-                    </td>
-                </tr>
-                <tr>
-                    <td>Unsure</td>
-                    <td id='num-unsure'><span>0</span></td>
-                </tr>
-            </tbody>
-        </table>
-        <div class='alert alert-info'>
-            <p><i class='fa fa-info-circle'></i> By providing examples of what records are the same or not, dedupe will learn the best way to deduplicate your data. The more training you provide, the better the results will be.</p>
-            <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
+                <button class="btn btn-primary" id="no">
+                    <i class='fa fa-remove'></i>
+                    No
+                </button>
+                <button class="btn btn-default" id="unsure">
+                    Unsure
+                </button>
+                &nbsp;&nbsp;&nbsp;
+                <div id="show-next-step" class='hidden'>
+                    <div class='clearfix'></div>
+                    <br />
+                    <p>You've provided enough training to proceed to the next step.</p>
+                    <button class="btn btn-primary" id="finish">
+                        Next &raquo;
+                    </button>
+                </div>
+            </p>
         </div>
-    </div>
+        <div class='col-md-4'>
+            <table id='your-training' class='table table-bordered' data-content="Try to label at least 10 'yes' and 10 'no' examples." rel="popover" data-placement="top" data-trigger="hover">
+                <tbody>
+                    <tr>
+                        <td>Yes</td>
+                        <td class='warning' id='num-yes'>
+                            <span></span> / 10
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>No</td>
+                        <td class='warning' id='num-no'>
+                            <span></span> / 10
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Unsure</td>
+                        <td id='num-unsure'><span>0</span></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class='alert alert-info'>
+                <p><i class='fa fa-info-circle'></i> By providing examples of what records are the same or not, dedupe will learn the best way to deduplicate your data. The more training you provide, the better the results will be.</p>
+                <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
+            </div>
+        </div>
+    {% else %}
+        <div class="col-md-12">
+            <h3>We're still working on finishing up processing your upload</h3>
+            <p>This should be done in a couple minutes... <span id="spinner"></span></p>
+        </div>
+    {% endif %}
+    {% else %}
+        {% include "partials/error.html" %}
+    {% endif %}
 
     <div class='clearfix'></div>
 
@@ -105,6 +107,7 @@
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
+{% if not errors %}
 {% if not dedupe_session.processing %}
     <script type="text/javascript">
 
@@ -213,5 +216,6 @@
           poll_worker();
       })
     </script>
+{% endif %}
 {% endif %}
 {% endblock %}

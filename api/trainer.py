@@ -18,7 +18,7 @@ from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import getDistinct, slugify, STATUS_LIST
-from api.models import DedupeSession, User, Group
+from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
 from sqlalchemy.exc import OperationalError, NoSuchTableError
@@ -102,10 +102,9 @@ def new_session():
 @check_sessions()
 def select_fields():
     status_code = 200
-    error = None
+    errors = []
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     fields = flask_session.get('fieldnames')
-
     # If the fields are not in the session, that means that the user has come
     # here directly from the home page. We'll try to load them from the raw
     # table in the database but if that does not exist yet (which is possible)
@@ -120,18 +119,21 @@ def select_fields():
             flask_session['fieldnames'] = fields
         except NoSuchTableError:
             return redirect(url_for('admin.index'))
-    
+    errors = db_session.query(WorkTable)\
+            .filter(WorkTable.session_id == dedupe_session.id)\
+            .all()
+    errors = [e.value for e in errors]
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         flask_session['field_list'] = field_list
         if field_list:
             return redirect(url_for('trainer.select_field_types'))
         else:
-            error = 'You must select at least one field to compare on.'
+            errors = ['You must select at least one field to compare on.']
             status_code = 400
 
     return render_template('dedupe_session/select_fields.html', 
-                            error=error, 
+                            errors=errors, 
                             fields=fields, 
                             dedupe_session=dedupe_session)
 
@@ -140,6 +142,10 @@ def select_fields():
 @check_roles(roles=['admin'])
 def select_field_types():
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
+    errors = db_session.query(WorkTable)\
+            .filter(WorkTable.session_id == dedupe_session.id)\
+            .all()
+    errors = [e.value for e in errors]
     field_list = flask_session['field_list']
     if request.method == 'POST':
         field_defs = []
@@ -167,9 +173,13 @@ def select_field_types():
         dedupe_session.status = 'model defined'
         db_session.add(dedupe_session)
         db_session.commit()
-        initializeModel.delay(dedupe_session.id)
+        if not errors:
+            initializeModel.delay(dedupe_session.id)
         return redirect(url_for('trainer.training_run'))
-    return render_template('dedupe_session/select_field_types.html', field_list=field_list, dedupe_session=dedupe_session)
+    return render_template('dedupe_session/select_field_types.html', 
+                           field_list=field_list, 
+                           dedupe_session=dedupe_session,
+                           errors=errors)
 
 @trainer.route('/training-run/')
 @login_required
@@ -191,17 +201,23 @@ def training_run():
             'no': 0 ,
             'unsure': 0,
         }
-    error = None
-    status_code = 200
-    field_defs = json.loads(dedupe_session.field_defs)
-    if dedupe_session.sample:
-        sample = cPickle.loads(dedupe_session.sample)
-        deduper = dedupe.Dedupe(field_defs, data_sample=sample)
-        flask_session['deduper'] = deduper
-    db_session.refresh(dedupe_session)
+    errors = db_session.query(WorkTable)\
+            .filter(WorkTable.session_id == dedupe_session.id)\
+            .all()
+    errors = [e.value for e in errors]
+    if not errors:
+        status_code = 200
+        field_defs = json.loads(dedupe_session.field_defs)
+        if dedupe_session.sample:
+            sample = cPickle.loads(dedupe_session.sample)
+            deduper = dedupe.Dedupe(field_defs, data_sample=sample)
+            flask_session['deduper'] = deduper
+        db_session.refresh(dedupe_session)
+    else:
+        status_code = 500
     return make_response(render_template(
                             'dedupe_session/training_run.html', 
-                            error=error, 
+                            errors=errors, 
                             dedupe_session=dedupe_session), status_code)
 
 @trainer.route('/get-pair/')

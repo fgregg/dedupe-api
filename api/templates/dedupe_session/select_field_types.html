@@ -4,9 +4,9 @@
 {% block content %}
     <div class="col-md-12">
     {{ dedupe_steps( dedupe_session ) }}
-    {% include "partials/error.html" %}
     <h3>2. Fields to compare <small>Field types</small></h3>
     </div>
+    {% if not errors %}
     <div class="col-md-12">
         <div class="row">
             <div class="col-md-8">
@@ -64,6 +64,9 @@
             </div>
         </div>
     </div>
+    {% else %}
+        {% include "partials/error.html" %}
+    {% endif %}
 {% endblock %}
 {% block extra_javascript %}
 {% if not fields %}

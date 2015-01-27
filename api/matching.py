@@ -363,11 +363,13 @@ def get_unmatched():
         'status': 'ok',
         'message': '',
         'object': {},
+        'remaining': 0,
     }
     status_code = 200
     session_id = flask_session['session_id']
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
+    resp['remaining'] = dedupe_session.review_count
     raw_fields = list(set([f['field'] for f in json.loads(dedupe_session.field_defs)]))
     raw_fields.append('record_id')
     fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])

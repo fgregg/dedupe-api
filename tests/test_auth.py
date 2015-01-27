@@ -45,4 +45,4 @@ class AuthTest(DedupeAPITestCase):
         with self.app.test_request_context():
             self.login(email='bob@bob.com', pw='bobspw')
             rv = self.client.get('/user-list/', follow_redirects=True)
-            assert "Sorry, you don&#39;t have access to that page" in rv.data
+            assert "Sorry, you don't have access to that page" in rv.data

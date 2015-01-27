@@ -1,8 +1,9 @@
 from pickle import loads, dumps
 from uuid import uuid4
+from datetime import datetime
 import sys
 import os
-from api.app_config import REDIS_QUEUE_KEY, DB_CONN, WORKER_SENTRY
+from api.app_config import REDIS_QUEUE_KEY, DB_CONN, WORKER_SENTRY, TIME_ZONE
 from api.database import init_engine, worker_session
 from api.models import DedupeSession, WorkTable
 import traceback
@@ -34,7 +35,7 @@ def queuefunc(f):
 
 def processMessage():
     engine = worker_session.bind
-    sel = "SELECT * FROM work_table LIMIT 1"
+    sel = "SELECT * FROM work_table WHERE traceback IS NULL LIMIT 1"
     work = engine.execute(sel).first()
     if not work:
         time.sleep(1)
@@ -71,13 +72,30 @@ def processMessage():
                 client.captureException()
             tb = traceback.format_exc()
             print tb
-            with engine.begin() as conn:
-                conn.execute(text(''' 
+            upd_args = {
+                'tb': tb,
+                'value': e.message,
+                'key': work.key,
+                'updated': datetime.now().replace(tzinfo=TIME_ZONE)
+            }
+            upd = ''' 
                     UPDATE work_table SET
                         traceback = :tb,
-                        value = :value
-                    WHERE key = :key
-                '''), tb=tb, value=e.message, key=work.key)
+                        value = :value,
+                        updated = :updated
+                '''
+            if sess:
+                upd = '{0}, session_id = :sess_id'.format(upd)
+                upd_args['sess_id'] = sess.id
+                with engine.begin() as conn:
+                    conn.execute(text('''
+                        UPDATE dedupe_session SET
+                            processing = FALSE
+                        WHERE id = :id
+                        '''), id=sess.id)
+            upd = text('{0} WHERE key = :key'.format(upd))
+            with engine.begin() as conn:
+                conn.execute(upd, **upd_args)
         del args
         del kwargs
 

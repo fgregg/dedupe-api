@@ -87,7 +87,7 @@ class AdminTest(DedupeAPITestCase):
 
     def test_td_no_access(self):
         rv = self.no_access('/training-data/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don&#39;t have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data
     
     def test_settings_file(self):
         with self.app.test_request_context():
@@ -100,7 +100,7 @@ class AdminTest(DedupeAPITestCase):
     
     def test_sf_no_access(self):
         rv = self.no_access('/settings-file/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don&#39;t have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data
     
     def test_field_defs(self):
         with self.app.test_request_context():
@@ -115,7 +115,7 @@ class AdminTest(DedupeAPITestCase):
     
     def test_fd_no_access(self):
         rv = self.no_access('/field-definitions/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don&#39;t have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data
 
     def test_delete_model(self):
         with self.app.test_request_context():
@@ -143,7 +143,7 @@ class AdminTest(DedupeAPITestCase):
     
     def test_delete_no_access(self):
         rv = self.no_access('/delete-data-model/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don&#39;t have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data
 
     def test_delete_session(self):
         with self.app.test_request_context():
@@ -158,7 +158,7 @@ class AdminTest(DedupeAPITestCase):
     
     def test_delete_sess_no_access(self):
         rv = self.no_access('/delete-session/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don&#39;t have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data
 
     def test_session_list(self):
         with self.app.test_request_context():

@@ -1,16 +1,17 @@
 from flask import Blueprint, request, session as flask_session, \
     render_template, make_response, flash, redirect, url_for, current_app
 from flask_login import current_user
+from functools import wraps
 from api.database import app_session as db_session, Base
-from api.models import User, Role, DedupeSession, Group
+from api.models import User, Role, DedupeSession, Group, WorkTable
 from api.auth import login_required, check_roles, check_sessions
-from api.utils.helpers import preProcess
+from api.utils.helpers import preProcess, STATUS_LIST
 from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, reDedupeCanon
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
 from wtforms.validators import DataRequired, Email
-from sqlalchemy import Table, and_
+from sqlalchemy import Table, and_, text
 from sqlalchemy.sql import select
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
@@ -298,17 +299,49 @@ def review():
             Group.id.in_([i.id for i in current_user.groups])))\
         .order_by(DedupeSession.date_updated.desc())\
         .all()
+    engine = db_session.bind
+    sel = ''' 
+        SELECT 
+            d.id,
+            d.name,
+            d.filename,
+            d.date_added,
+            d.date_updated,
+            d.status,
+            d.record_count,
+            d.entity_count,
+            d.review_count,
+            d.processing,
+            d.field_defs,
+            w.value AS last_work_status
+        FROM dedupe_session AS d
+        LEFT JOIN (
+            SELECT value, session_id
+            FROM work_table
+            ORDER BY updated DESC
+            LIMIT 1
+        ) AS w
+        ON d.id = w.session_id
+    '''
+    qargs = {}
     if sess_id:
         if sess_id in [s.id for s in sessions]:
-            sess = db_session.query(DedupeSession).get(sess_id)
-            db_session.refresh(sess)
-            s = sess.as_dict()
-            all_sessions.append(s)
-    else:
-        for sess in sessions:
-            db_session.refresh(sess)
-            s = sess.as_dict()
-            all_sessions.append(s)
+            sel = text('{0} WHERE d.id = :sess_id'.format(sel))
+            qargs['sess_id'] = sess_id
+    for row in engine.execute(sel, **qargs):
+        d = dict(zip(row.keys(), row.values()))
+        if row.date_added:
+            d['date_added'] = row.date_added.isoformat()
+        if row.date_updated:
+            d['date_updated'] = row.date_added.isoformat()
+        if row.field_defs:
+            d['field_defs'] = json.loads(unicode(row.field_defs))
+        d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
+        d['status_info']['next_step'] = d['status_info']['next_step'].format(row.id)
+        if row.last_work_status:
+            d['last_work_status'] = unicode(row.last_work_status)
+        all_sessions.append(d)
+
     resp['objects'] = all_sessions
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
@@ -358,3 +391,4 @@ def rewind():
     response = make_response(json.dumps({'status': 'ok'}))
     response.headers['Content-Type'] = 'application/json'
     return response
+
