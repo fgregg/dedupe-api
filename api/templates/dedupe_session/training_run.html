@@ -121,7 +121,7 @@
                     $.each(data, function(i, json){
 
                         var diff_class = 'danger';
-                        if (json.left == json.right && json.left.trim() != "")
+                        if (json.left == json.right && String(json.left).trim() != "")
                             diff_class = 'success';
                         var template = "\
                         <tr>\
