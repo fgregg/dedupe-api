@@ -212,10 +212,9 @@ def training_run():
             sample = cPickle.loads(dedupe_session.sample)
             deduper = dedupe.Dedupe(field_defs, data_sample=sample)
             flask_session['deduper'] = deduper
-        db_session.refresh(dedupe_session)
     else:
         status_code = 500
-    print dedupe_session.processing
+    db_session.refresh(dedupe_session)
     return make_response(render_template(
                             'dedupe_session/training_run.html', 
                             errors=errors, 
