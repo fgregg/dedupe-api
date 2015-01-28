@@ -207,8 +207,7 @@ def getMatchingReady(session_id):
         ON p.record_id = e.record_id
       WHERE e.record_id IS NULL
     '''.format(session_id)
-    with engine.begin() as conn:
-        count = list(conn.execute(sel))
+    count = list(engine.execute(sel))
     sess.status = 'matching ready'
     sess.review_count = count[0][0]
     worker_session.add(sess)

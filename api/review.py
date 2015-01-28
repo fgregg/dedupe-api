@@ -6,9 +6,11 @@ from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import checkinSessions, getCluster
-from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters, dedupeCanon, getMatchingReady
+from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters, \
+    dedupeCanon, getMatchingReady
 from api.app_config import TIME_ZONE
 from sqlalchemy import text, Table
+from cPickle import loads, dumps
 
 review = Blueprint('review', __name__)
 
@@ -186,6 +188,7 @@ def mark_cluster():
         with engine.begin() as c:
             c.execute(delete)
         #training_data['distinct'].append(pairs)
+   
     dedupe_session.review_count = dedupe_session.review_count - 1
     db_session.add(dedupe_session)
     db_session.commit()

@@ -85,7 +85,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
         LIMIT 1
         '''.format(ent_name)
     entity_id = None
-    engine = init_engine(current_app.config['DB_CONN'])
+    engine = app_session.bind
     with engine.begin() as conn:
         entity_id = list(conn.execute(sel))
     if entity_id:
@@ -111,7 +111,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
             for k,v in zip(raw_fields, thing):
                 d[k] = v
 
-            d['confidence'] = formatPercentage(d['confidence'])
+            # d['confidence'] = formatPercentage(d['confidence'])
             cluster_list.append(d)
         one_minute = datetime.now() + timedelta(minutes=1)
         upd = text(''' 

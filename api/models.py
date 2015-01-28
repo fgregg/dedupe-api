@@ -114,6 +114,8 @@ class WorkTable(Base):
     traceback = Column(Text)
     session_id = Column(String(36))
     updated = Column(DateTime(timezone=True))
+    claimed = Column(Boolean,
+                server_default=text('FALSE'))
 
     def __repr__(self):
         return '<WorkTable {0}>'.format(unicode(self.key))

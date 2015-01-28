@@ -35,11 +35,18 @@ def queuefunc(f):
 
 def processMessage():
     engine = worker_session.bind
-    sel = "SELECT * FROM work_table WHERE traceback IS NULL LIMIT 1"
+    sel = "SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1"
     work = engine.execute(sel).first()
     if not work:
         time.sleep(1)
     else:
+        upd = text(""" 
+            UPDATE work_table SET
+                claimed = TRUE
+            WHERE key = :key
+        """)
+        with engine.begin() as conn:
+            conn.execute(upd, key=work.key)
         func, args, kwargs = loads(work.value)
         try:
             try:
@@ -100,6 +107,8 @@ def processMessage():
         del kwargs
 
 def queue_daemon(db_conn=DB_CONN): # pragma: no cover
+    # import logging
+    # logging.getLogger().setLevel(logging.DEBUG)
     engine = init_engine(db_conn)
     work_table = WorkTable.__table__
     work_table.create(engine, checkfirst=True)
