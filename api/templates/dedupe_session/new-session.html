@@ -5,8 +5,8 @@
 <div class="row">
   <div class="col-md-12">
   {{ dedupe_steps( None ) }}
-  {% include "partials/error.html" %}
   <h3>1. New session</h3>
+  {% include "partials/error.html" %}
   </div>
 </div>
 <div class="row">
@@ -15,7 +15,7 @@
         <form role="form" class='form-horizontal'>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div class="form-group">
-                <label for="id_name" class="col-sm-2 control-label">Name</label>
+                <label for="id_name" class="col-sm-2 control-label">Name<span class='required'>*</span></label>
                 <div class="col-sm-10">
                     <input type="text" id="id_name" name="name" class="form-control" placeholder="My great dataset">
                 </div>
@@ -26,7 +26,7 @@
                     <textarea id="id_description" class="form-control" name="description" placeholder="More details describing this data"></textarea>
                 </div>
             </div>
-            <div class="form-group">
+            <div class="form-group" style="display: none;" id="upload_form_group">
                 <label class="col-sm-2 control-label">Upload file</label>
                 <div class="col-sm-10">
                     <input type="file" id="id_input_file" name="input_file">
@@ -45,7 +45,7 @@
             <div class='form-group'>
                 <label class="col-sm-2 control-label"></label>
                 <div class="col-sm-10">
-                    <a href="{{ url_for('trainer.select_fields') }}" id="next-step" class="btn btn-info" style="display:none;">
+                    <a href="{{ url_for('trainer.select_fields')}}" id="next-step" class="btn btn-info" style="display:none;">
                         Next &raquo;
                     </a>
                 </div>
@@ -74,8 +74,8 @@ $(function () {
             $('#progress').fadeIn();
         },
         done: function (e, data) {
-            $('#next-step').fadeIn();
             $('#upload_message').html("Uploading done!");
+            $('#next-step').fadeIn();
         },
         progressall: function (e, data) {
             var progress = parseInt(data.loaded / data.total * 100, 10);
@@ -85,6 +85,14 @@ $(function () {
             );
         }
     });
+
+    $("#id_name").keyup(function() {
+        if ($("#id_name").val() != "")
+            $('#upload_form_group').fadeIn();
+        else
+            $('#upload_form_group').fadeOut();
+    });
+
 });
 </script>
 {% endblock %}

@@ -76,7 +76,7 @@ def upload():
     flask_session['session_id'] = session_id
     return jsonify(ready=True, session_id=session_id)
 
-@trainer.route('/train-start/', methods=['GET'])
+@trainer.route('/new-session/', methods=['GET'])
 @login_required
 def new_session():
     error = None

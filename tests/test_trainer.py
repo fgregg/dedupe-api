@@ -52,7 +52,7 @@ class TrainerTest(DedupeAPITestCase):
                     sess['session_name'] = 'test'
                     sess['training_data'] = {'test': 'thing'}
                     sess['user_id'] = self.user.id
-                rv = c.get('/train-start/')
+                rv = c.get('/new-session/')
                 assert 'fieldnames' not in session.keys()
                 assert 'session_name' not in session.keys()
                 assert 'training_data' not in session.keys()

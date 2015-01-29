@@ -13,7 +13,7 @@
                 {% if fields %}
                 <p>Select the columns that you think tell the most information about each row in your spreadsheet.</p>
 
-                <form id="fields" role="form" action="{{ url_for('trainer.select_fields')}}" method="post" enctype="multipart/form-data">
+                <form id="fields" role="form" action="{{ url_for('trainer.select_fields')}}" method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
                     <div class="form-group">
