@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{{ dedupe_session.name }}{% endblock %}
+{% block title %}{{ dedupe_session.name }} settings{% endblock %}
 {% block content %}
 <div class="row">
     <div class="col-md-12">
@@ -263,9 +263,42 @@
 <hr />
 <h4>Danger zone!</h4>
 
-<a id="delete-model" class='btn btn-primary' href="javascript://" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete data model</a>
+<button type="button" data-toggle="modal" data-target="#confirm-modal-session" class="btn btn-primary"><i class='fa fa-times'></i> Delete session</button>
 
-<a id="delete-session" class='btn btn-primary' href="javascript://" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete session</a>
+{% if session_info %}
+    <button type="button" data-toggle="modal" data-target="#confirm-modal-model" class="btn btn-primary"><i class='fa fa-times'></i> Delete data model</button>
+{% endif %}
+
+<div id="confirm-modal-session" class="modal fade">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+                <p class="modal-title">Are you sure you want to delete the dedupe session <strong>{{ dedupe_session.name }}</strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal" id="delete-session" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete session</button>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+<div id="confirm-modal-model" class="modal fade">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+                <p class="modal-title">Are you sure you want to delete the data model for <strong>{{ dedupe_session.name }}</strong>? <br />Your reviewed and merged entites, along with your training will be lost.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal" id="delete-model" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete data model</button>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
 {% endblock %}
 {% block extra_javascript %}
     <script type="text/javascript">
@@ -283,8 +316,7 @@
             $('#delete-session').on('click', function(e){
                 e.preventDefault();
                 var sess_id = $(this).data('session_id');
-                console.log(sess_id);
-                var row = $(this).parent().parent()
+                //console.log(sess_id);
                 $.when($.getJSON('/delete-session/?session_id=' + sess_id)).then(
                     function(data){
                         window.location = '/'
@@ -295,15 +327,10 @@
             $('#delete-model').on('click', function(e){
                 e.preventDefault();
                 var sess_id = $(this).data('session_id');
-                console.log(sess_id);
-                var row = $(this).parent()
+                //console.log(sess_id);
                 $.when($.getJSON('/delete-data-model/?session_id=' + sess_id)).then(
                     function(data){
-                        $.when($.getJSON('/session-list/')).then(
-                          function(resp){
-                              make_display(resp)
-                          }
-                        )
+                        window.location.reload(); 
                     }
                 )
             })
