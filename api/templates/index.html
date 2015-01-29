@@ -30,7 +30,7 @@
                         Start a new session &raquo;
                     </a></p>
 
-                    <div id='processing-msg' class='alert alert-success alert-dismissible' role='alert' style="display: none;">
+                    <div id='processing-msg' class='alert alert-info alert-dismissible' role='alert' style="display: none;">
                         <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
                         <p>We need a few moments to process your data. When we're done, you will be able to proceed to the next step.</p>
                     </div>
@@ -85,57 +85,65 @@
 
 
 <script type='text/javascript'>
-    function make_display(resp){
-        var rows = ''
-        var tpl = new EJS({'text': $('#sessionTemplate').html()});
-        if (resp.objects.length > 0) {
-            $.each(resp.objects, function(i, object){
-                // console.log(object);
-                rows += tpl.render({object: object});
-                if (object.processing == true)
-                    $("#processing-msg").show();
-            });
-            $('#dedupe-sessions').show();
-            $('#session-list').html(rows);
-        }
-        else {
-            $('#start-session').show();
-            $('#start-session-btn').hide();
-        }
-        $('.delete-session').on('click', function(e){
-            e.preventDefault();
-            var sess_id = $(this).data('session_id');
-            console.log(sess_id);
-            var row = $(this).parent().parent()
-            $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
-                function(data){
-                    $(row).remove();
-                }
-            )
-        })
-        $('.delete-model').on('click', function(e){
-            e.preventDefault();
-            var sess_id = $(this).data('session_id');
-            console.log(sess_id);
-            var row = $(this).parent()
-            $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
-                function(data){
-                    $.when($.getJSON('/session-list/')).then(
-                      function(resp){
-                          make_display(resp)
-                      }
-                    )
-                }
-            )
-        })
-
+    function refresh_display(){
+        setTimeout(function () {
+            render_session_list();
+            refresh_display();
+        }, 10000); //setTimeout - reloads every 10 seconds
     }
-    $(document).ready(function(){
+
+    function render_session_list() {
         $.when($.getJSON('/session-list/')).then(
           function(resp){
-              make_display(resp)
-          }
-        )
+            $('#session-list').html("");
+            var rows = ''
+            var tpl = new EJS({'text': $('#sessionTemplate').html()});
+            if (resp.objects.length > 0) {
+                $.each(resp.objects, function(i, object){
+                    // console.log(object);
+                    rows += tpl.render({object: object});
+                    if (object.processing == true)
+                        $("#processing-msg").show();
+                });
+                $('#dedupe-sessions').show();
+                $('#session-list').html(rows);
+            }
+            else {
+                $('#start-session').show();
+                $('#start-session-btn').hide();
+            }
+            $('.delete-session').on('click', function(e){
+                e.preventDefault();
+                var sess_id = $(this).data('session_id');
+                console.log(sess_id);
+                var row = $(this).parent().parent()
+                $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
+                    function(data){
+                        $(row).remove();
+                    }
+                )
+            })
+            $('.delete-model').on('click', function(e){
+                e.preventDefault();
+                var sess_id = $(this).data('session_id');
+                console.log(sess_id);
+                var row = $(this).parent()
+                $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
+                    function(data){
+                        $.when($.getJSON('/session-list/')).then(
+                          function(resp){
+                              make_display(resp)
+                          }
+                        )
+                    }
+                )
+            }) 
+        })
+    }
+
+    $(document).ready(function(){
+        render_session_list();
+        refresh_display();
     })
 </script>
 {% endblock %}
