@@ -89,7 +89,8 @@ def processMessage():
                     UPDATE work_table SET
                         traceback = :tb,
                         value = :value,
-                        updated = :updated
+                        updated = :updated,
+                        cleared = FALSE
                 '''
             if sess:
                 upd = '{0}, session_id = :sess_id'.format(upd)

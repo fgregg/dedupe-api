@@ -1,11 +1,14 @@
 {% if errors %}
     <div class="col-md-12">
-        <div class="alert alert-danger alert-dismissable">
+        <div id="{{error.key}}" class="alert alert-danger alert-dismissable">
             <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-            <strong>Something went wrong</strong>
-            {% for error in errors %}
-                <p>{{error|safe}}</p>
-            {% endfor %} 
+            <strong>Error!</strong>
+            <br />
+            {% if error.value %}
+              {{ error.value|safe }}
+            {% else %}
+              {{ error }}
+            {% endif %}
         </div>
     </div>
-{% endif %}
+{% endfor %}

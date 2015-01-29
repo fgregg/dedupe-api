@@ -392,3 +392,15 @@ def rewind():
     response.headers['Content-Type'] = 'application/json'
     return response
 
+@admin.route('/clear-error/')
+@login_required
+@check_sessions()
+def clear_error():
+    work_id = request.args['work_id']
+    work = db_session.query(WorkTable).get(work_id)
+    work.cleared = True
+    db_session.add(work)
+    db_session.commit()
+    response = make_response(json.dumps({'status': 'ok'}))
+    response.headers['Content-Type'] = 'application/json'
+    return response

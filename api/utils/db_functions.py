@@ -258,18 +258,17 @@ def updateEntityMap(clustered_dupes,
         conn.commit()
 
     upd = text(''' 
-        WITH upd AS (
-          UPDATE "{0}" AS e 
-            SET entity_id = temp.entity_id, 
-              confidence = temp.confidence, 
-              clustered = FALSE,
-              checked_out = FALSE,
-              last_update = :last_update,
-              target_record_id = temp.target_record_id
-            FROM "temp_{1}" temp 
-          WHERE e.record_id = temp.record_id 
-          RETURNING temp.record_id
-        ) 
+        UPDATE "{0}" 
+          SET entity_id = temp.entity_id, 
+            confidence = temp.confidence, 
+            clustered = FALSE,
+            checked_out = FALSE,
+            last_update = :last_update,
+            target_record_id = temp.target_record_id
+          FROM "temp_{1}" temp 
+        WHERE "{0}".record_id = temp.record_id 
+    '''.format(entity_table, session_id))
+    ins = text('''
         INSERT INTO "{0}" (record_id, entity_id, confidence, clustered, checked_out, target_record_id) 
           SELECT 
             record_id, 
@@ -279,12 +278,18 @@ def updateEntityMap(clustered_dupes,
             FALSE AS checked_out,
             target_record_id
           FROM "temp_{1}" temp 
-          LEFT JOIN upd USING(record_id) 
-          WHERE upd.record_id IS NULL
+          LEFT JOIN (
+            SELECT record_id 
+            FROM "{0}"
+            WHERE last_update = :last_update
+          ) AS s USING(record_id) 
+          WHERE s.record_id IS NULL
           RETURNING record_id
     '''.format(entity_table, session_id))
+    last_update = datetime.now().replace(tzinfo=TIME_ZONE)
     with engine.begin() as c:
-        ids = c.execute(upd, last_update=datetime.now().replace(tzinfo=TIME_ZONE))
+        c.execute(upd, last_update=last_update)
+        c.execute(ins, last_update=last_update)
     temp_table.drop(bind=engine)
     os.remove(fname)
 

@@ -60,6 +60,7 @@ class DedupeSession(Base):
     gaz_settings_file = Column(LargeBinary)
     field_defs = Column(LargeBinary)
     sample = Column(LargeBinary)
+    review_machine = Column(LargeBinary)
     conn_string = Column(String)
     table_name = Column(String)
     status = Column(String)
@@ -116,6 +117,8 @@ class WorkTable(Base):
     updated = Column(DateTime(timezone=True))
     claimed = Column(Boolean,
                 server_default=text('FALSE'))
+    cleared = Column(Boolean,
+                server_default=text('TRUE'))
 
     def __repr__(self):
         return '<WorkTable {0}>'.format(unicode(self.key))

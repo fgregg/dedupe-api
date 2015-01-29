@@ -53,12 +53,13 @@ def get_cluster():
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     checkinSessions()
-    entity_id, cluster = getCluster(session_id, 
+    entity_id, cluster, prediction = getCluster(session_id, 
                          'entity_{0}', 
                          'raw_{0}')
     if cluster:
         resp['entity_id'] = entity_id 
         resp['objects'] = cluster
+        resp['prediction'] = prediction
     else:
         dedupeCanon.delay(dedupe_session.id)
     resp['total_clusters'] = dedupe_session.entity_count
@@ -81,12 +82,13 @@ def get_canon_cluster():
     
     checkinSessions()
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    entity_id, cluster = getCluster(session_id, 
+    entity_id, cluster, prediction = getCluster(session_id, 
                          'entity_{0}_cr', 
                          'cr_{0}')
     if cluster:
         resp['entity_id'] = entity_id
         resp['objects'] = cluster
+        resp['prediction'] = prediction
     else:
         getMatchingReady.delay(session_id)
     resp['total_clusters'] = dedupe_session.entity_count
@@ -188,7 +190,13 @@ def mark_cluster():
         with engine.begin() as c:
             c.execute(delete)
         #training_data['distinct'].append(pairs)
-   
+    
+    machine = loads(dedupe_session.review_machine)
+    if distinct_ids:
+        machine.label(entity_id, 0)
+    else:
+        machine.label(entity_id, 1)
+    dedupe_session.review_machine = dumps(machine)
     dedupe_session.review_count = dedupe_session.review_count - 1
     db_session.add(dedupe_session)
     db_session.commit()
@@ -273,6 +281,12 @@ def mark_canon_cluster():
             with engine.begin() as c:
                 c.execute(delete, entity_id=entity_id, record_ids=distinct_ids)
         dedupe_session = db_session.query(DedupeSession).get(session_id)
+        machine = loads(dedupe_session.review_machine)
+        if distinct_ids:
+            machine.label(entity_id, 0)
+        else:
+            machine.label(entity_id, 1)
+        dedupe_session.review_machine = dumps(machine)
         dedupe_session.review_count = dedupe_session.review_count - 1
         db_session.add(dedupe_session)
         db_session.commit()

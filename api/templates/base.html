@@ -87,6 +87,19 @@
 
     <script src="{{ url_for('static', filename='js/moment.min.js') }}"></script>
     {% block extra_javascript %}{% endblock %}
-
+    {% if errors %}
+        <script type="text/javascript">
+            $(document).ready(function(){
+                {% for error in errors %}
+                    $('#{{error.key}}').on('closed.bs.alert', function(e){
+                        var params = {'work_id': "{{error.key}}"}
+                        $.getJSON("{{ url_for('admin.clear_error') }}", params, function(resp){
+                            window.location.reload();
+                        })
+                    })
+                {% endfor %}
+            })
+        </script>
+    {% endif %}
   </body>
 </html>

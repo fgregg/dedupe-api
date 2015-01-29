@@ -72,57 +72,51 @@ def getCluster(session_id, entity_pattern, raw_pattern):
     ent_name = entity_pattern.format(session_id)
     raw_name = raw_pattern.format(session_id)
     sess = app_session.query(DedupeSession).get(session_id)
-
+    app_session.refresh(sess)
+    
     cluster_list = []
-    model_fields = list(set([f['field'] for f in json.loads(sess.field_defs)]))
-    entity_fields = ['record_id', 'entity_id', 'confidence']
-    sel = ''' 
-        SELECT e.entity_id 
-            FROM "{0}" AS e
-        WHERE e.checked_out = FALSE
-            AND e.clustered = FALSE
-        ORDER BY e.confidence
-        LIMIT 1
-        '''.format(ent_name)
-    entity_id = None
+    prediction = None
+    machine = cPickle.loads(sess.review_machine)
+    entity_id = machine.get_next()
+    sess.review_machine = cPickle.dumps(machine)
+    app_session.add(sess)
+    app_session.commit()
     engine = app_session.bind
-    with engine.begin() as conn:
-        entity_id = list(conn.execute(sel))
-    if entity_id:
-        entity_id = entity_id[0][0]
-        raw_cols = ', '.join(['r.{0}'.format(f) for f in model_fields])
-        sel = text('''
-            SELECT 
-                e.confidence,
-                {0},
-                r.record_id
-            FROM "{1}" AS r
-            JOIN "{2}" as e 
-                ON r.record_id = e.record_id
-            WHERE e.entity_id = :entity_id
-            ORDER BY e.confidence
-            '''.format(raw_cols, raw_name, ent_name))
-        records = []
-        with engine.begin() as conn:
-            records = list(conn.execute(sel, entity_id=entity_id))
-        raw_fields = ['confidence'] + model_fields + ['record_id']
-        for thing in records:
-            d = {}
-            for k,v in zip(raw_fields, thing):
-                d[k] = v
+    model_fields = list(set([f['field'] for f in json.loads(sess.field_defs)]))
+    raw_cols = ', '.join(['r.{0}'.format(f) for f in model_fields])
+    sel = text('''
+        SELECT 
+            e.confidence,
+            {0},
+            r.record_id
+        FROM "{1}" AS r
+        JOIN "{2}" as e 
+            ON r.record_id = e.record_id
+        WHERE e.entity_id = :entity_id
+        ORDER BY e.confidence
+        '''.format(raw_cols, raw_name, ent_name))
+    records = list(engine.execute(sel, entity_id=entity_id))
+    raw_fields = ['confidence'] + model_fields + ['record_id']
+    max_confidence = max([r['confidence'] for r in records])
+    cluster_length = len(records)
+    prediction = machine.predict([max_confidence, cluster_length])
+    for thing in records:
+        d = {}
+        for k,v in zip(raw_fields, thing):
+            d[k] = v
 
-            # d['confidence'] = formatPercentage(d['confidence'])
-            cluster_list.append(d)
-        one_minute = datetime.now() + timedelta(minutes=1)
-        upd = text(''' 
-            UPDATE "{0}" SET
-              checked_out = TRUE,
-              checkout_expire = :one_minute
-            WHERE entity_id = :entity_id
-            '''.format(ent_name))
-        with engine.begin() as c:
-            c.execute(upd, entity_id=entity_id, one_minute=one_minute)
-    return entity_id, cluster_list
+        # d['confidence'] = formatPercentage(d['confidence'])
+        cluster_list.append(d)
+    one_minute = datetime.now() + timedelta(minutes=1)
+    upd = text(''' 
+        UPDATE "{0}" SET
+          checked_out = TRUE,
+          checkout_expire = :one_minute
+        WHERE entity_id = :entity_id
+        '''.format(ent_name))
+    with engine.begin() as c:
+        c.execute(upd, entity_id=entity_id, one_minute=one_minute)
+    return entity_id, cluster_list, prediction
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):

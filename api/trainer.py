@@ -121,8 +121,8 @@ def select_fields():
             return redirect(url_for('admin.index'))
     errors = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
+            .filter(WorkTable.cleared == False)\
             .all()
-    errors = [e.value for e in errors]
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         flask_session['field_list'] = field_list
@@ -144,6 +144,7 @@ def select_field_types():
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     errors = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
+            .filter(WorkTable.cleared == False)\
             .all()
     errors = [e.value for e in errors]
     field_list = flask_session['field_list']
@@ -203,8 +204,8 @@ def training_run():
         }
     errors = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
+            .filter(WorkTable.cleared == False)\
             .all()
-    errors = [e.value for e in errors]
     if not errors:
         status_code = 200
         field_defs = json.loads(dedupe_session.field_defs)

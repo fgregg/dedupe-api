@@ -12,6 +12,7 @@ from api.utils.helpers import preProcess, clusterGen, \
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash
+from api.utils.review_machine import ReviewMachine
 from sqlalchemy import Table, MetaData, Column, String, func, text
 from sqlalchemy.sql import label
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
@@ -200,6 +201,8 @@ def getMatchingReady(session_id):
               ON "match_blocks_{0}" (block_key)
             '''.format(session_id)
         )
+
+    # Get review count
     sel = ''' 
       SELECT COUNT(*)
       FROM "raw_{0}" AS p
@@ -438,11 +441,26 @@ def dedupeRaw(session_id, threshold=0.75):
     metadata = MetaData()
     entity_table = Table('entity_{0}'.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    entity_count = worker_session.query(entity_table.c.entity_id.distinct()).count()
+    entity_count = worker_session.query(entity_table.c.entity_id.distinct())\
+        .count()
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
         .count()
+    sel = ''' 
+        SELECT 
+            entity_id, 
+            MAX(confidence)::DOUBLE PRECISION,
+            COUNT(*)
+        FROM "entity_{0}"
+        WHERE clustered = FALSE
+        GROUP BY entity_id
+    '''.format(session_id)
+    clusters = list(engine.execute(sel))
+    examples = {c[0]:{'attributes':c[1:], 'label': None, 'score': 1.0} \
+        for c in clusters}
+    machine = ReviewMachine(examples)
     dd = worker_session.query(DedupeSession).get(session_id)
+    dd.review_machine = cPickle.dumps(machine)
     dd.entity_count = entity_count
     dd.review_count = review_count
     dd.status = 'entity map updated'
@@ -452,6 +470,7 @@ def dedupeRaw(session_id, threshold=0.75):
 
 @queuefunc
 def dedupeCanon(session_id, threshold=0.25):
+    dd = worker_session.query(DedupeSession).get(session_id)
     engine = worker_session.bind
     metadata = MetaData()
     writeCanonRep(session_id)
@@ -516,7 +535,20 @@ def dedupeCanon(session_id, threshold=0.25):
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
         .count()
-    dd = worker_session.query(DedupeSession).get(session_id)
+    sel = ''' 
+        SELECT 
+            entity_id, 
+            MAX(confidence)::DOUBLE PRECISION,
+            COUNT(*)
+        FROM "entity_{0}_cr"
+        WHERE clustered = FALSE
+        GROUP BY entity_id
+    '''.format(session_id)
+    clusters = list(engine.execute(sel))
+    examples = {c[0]:{'attributes':c[1:], 'label': None, 'score': 1.0} \
+        for c in clusters}
+    machine = ReviewMachine(examples)
+    dd.review_machine = cPickle.dumps(machine)
     dd.review_count = review_count
     dd.status = 'canon clustered'
     worker_session.add(dd)
