@@ -16,8 +16,8 @@
                     </div>
                     <div id="review-buttons" class="row">
                         <div class="col-md-12">
-                            <button class="btn btn-primary mark-match">
-                                Next &raquo;
+                            <button class="btn btn-info mark-match">
+                                Next record&raquo;
                             </button>
                         </div>
                     </div>
@@ -80,7 +80,7 @@
                 <% $.each(matches, function(i, match){ %>
                     <tr>
                         <td data-record_id="<%= match.record_id %>">
-                            <input type="radio" name='match_record'/>
+                            <input type="checkbox" name='match_record'/>
                         </td>
                         <% $.each(match, function(field, val){ %>
                             <% if (field != 'record_id' && field != 'entity_id') { %>
