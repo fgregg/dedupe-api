@@ -96,27 +96,31 @@ def getCluster(session_id, entity_pattern, raw_pattern):
         ORDER BY e.confidence
         '''.format(raw_cols, raw_name, ent_name))
     records = list(engine.execute(sel, entity_id=entity_id))
-    raw_fields = ['confidence'] + model_fields + ['record_id']
-    max_confidence = max([r['confidence'] for r in records])
-    cluster_length = len(records)
-    prediction = machine.predict([max_confidence, cluster_length])
-    for thing in records:
-        d = {}
-        for k,v in zip(raw_fields, thing):
-            d[k] = v
 
-        # d['confidence'] = formatPercentage(d['confidence'])
-        cluster_list.append(d)
-    one_minute = datetime.now() + timedelta(minutes=1)
-    upd = text(''' 
-        UPDATE "{0}" SET
-          checked_out = TRUE,
-          checkout_expire = :one_minute
-        WHERE entity_id = :entity_id
-        '''.format(ent_name))
-    with engine.begin() as c:
-        c.execute(upd, entity_id=entity_id, one_minute=one_minute)
-    return entity_id, cluster_list, prediction
+    if records:
+        raw_fields = ['confidence'] + model_fields + ['record_id']
+        max_confidence = max([r['confidence'] for r in records])
+        cluster_length = len(records)
+        prediction = machine.predict([max_confidence, cluster_length])
+        for thing in records:
+            d = {}
+            for k,v in zip(raw_fields, thing):
+                d[k] = v
+
+            # d['confidence'] = formatPercentage(d['confidence'])
+            cluster_list.append(d)
+        one_minute = datetime.now() + timedelta(minutes=1)
+        upd = text(''' 
+            UPDATE "{0}" SET
+              checked_out = TRUE,
+              checkout_expire = :one_minute
+            WHERE entity_id = :entity_id
+            '''.format(ent_name))
+        with engine.begin() as c:
+            c.execute(upd, entity_id=entity_id, one_minute=one_minute)
+        return entity_id, cluster_list, prediction
+    else:
+        return None, None, None
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
