@@ -2,7 +2,10 @@
     {% if (dedupe_session) %}
         <p>
             {{dedupe_session.name}}
-            <span class='pull-right'><a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a></span>
+            <span class='pull-right'>
+              <a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a> | 
+              <a href='/'>Save &amp; exit &raquo;</a>
+            </span>
         </p>
     {% else %}
         <p>New dedupe session</p>

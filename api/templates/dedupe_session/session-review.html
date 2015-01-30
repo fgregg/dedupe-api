@@ -19,6 +19,22 @@
       {% endif %}
       <div class="col-md-12" id="group-display"></div>
     </div>
+
+    <div id="confirm-modal" class="modal fade">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+                    <p class="modal-title">Are you sure you want to accept the remaining entities?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" data-dismiss="modal" id="accept-all"><i class='fa fa-check'></i> Accept</button>
+                </div>
+            </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+
 {% endblock %}
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
@@ -68,14 +84,19 @@
                 <div class="col-md-9">
                     <div id="review-buttons">
                         <button class="btn btn-info mark-entity">
-                            Save and review next entity &raquo;
+                            <i class='fa fa-check'></i>
+                            {% if first_review %}
+                              Save entity
+                            {% else %}
+                              Merge entities
+                            {% endif %}
                         </button>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-success accept-all">
+                    <button class="btn btn-link" id="accept-confirm" data-toggle="modal" data-target="#confirm-modal">
                         <i class='fa fa-check'></i>
-                        Accept the remaining <%= resp.review_remainder %> entites
+                        Accept the remaining <%= resp.review_remainder %> entites &raquo;
                     </button>
                 </div>
             </div>
@@ -138,7 +159,7 @@
                 var template = new EJS({'text': $('#reviewTemplate').html()})
                 $('#group-display').html(template.render({resp: resp}));
                 $('.mark-entity').on('click', markEntity);
-                $('.accept-all').on('click', acceptAll);
+                $('#accept-all').on('click', acceptAll);
                 $('.check_record').popover({trigger: "hover", placement: "top"});
             } else {
                 $('#group-display').html("<h3>You're done!</h3>")

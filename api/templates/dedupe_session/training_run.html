@@ -41,7 +41,7 @@
                     Unsure
                 </button>
                 &nbsp;&nbsp;&nbsp;
-                <div id="show-next-step" class='hidden'>
+                <div id="show-next-step" style='display: none;'>
                     <div class='clearfix'></div>
                     <br />
                     <p>You've provided enough training to proceed to the next step.</p>
@@ -96,7 +96,7 @@
           </div>
           <div class="modal-footer">
             <a href='#' data-dismiss="modal">Continue training</a>&nbsp;&nbsp;
-            <button type="button" class="btn btn-info" id='finished-modal-btn'>Finished &raquo;</button>
+            <button type="button" class="btn btn-info" id='finish-modal-btn'>Finished &raquo;</button>
           </div>
         </div><!-- /.modal-content -->
       </div><!-- /.modal-dialog -->
@@ -133,7 +133,7 @@
 
         $('#your-training').popover();
 
-        var training_threshold = 20;
+        var training_threshold = 10;
         var modal_shown = false;
 
         function render_training_pair(){
@@ -174,16 +174,15 @@
             var no_class = 'warning';
             if (counter.no >= training_threshold) no_class = 'success';
 
-            if (counter.no >= training_threshold && counter.yes >= training_threshold) {
+            if (counter.no >= (training_threshold * 2) && counter.yes >= (training_threshold * 2)) {
                 if (!modal_shown) {
                     $('#finished-modal').modal();
                     modal_shown = true;
                 }
             }
 
-            if (counter.no >= (training_threshold / 2) && counter.yes >= (training_threshold / 2)) {
-                // console.log('blah!');
-                $("#show-next-step").removeClass('hidden');
+            if (counter.no >= training_threshold && counter.yes >= training_threshold) {
+                $("#show-next-step").fadeIn();
             }
 
             $("#num-yes span").html(counter.yes);
@@ -200,7 +199,7 @@
             $.when(mark_training_pair(action)).then(
                 function(data){
                     $("#labeler tbody").html('');
-                    if (action !== 'finish' && action !== 'finished-modal-btn'){
+                    if (action !== 'finish'){
                         update_your_training(data.counter);
                         render_training_pair();
                     } else {

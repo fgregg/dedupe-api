@@ -96,6 +96,7 @@
         $.when($.getJSON('/session-list/')).then(
           function(resp){
             $('#session-list').html("");
+            $("#processing-msg").hide();
             var rows = ''
             var tpl = new EJS({'text': $('#sessionTemplate').html()});
             if (resp.objects.length > 0) {

@@ -277,7 +277,7 @@
                 <p class="modal-title">Are you sure you want to delete the dedupe session <strong>{{ dedupe_session.name }}</strong>?</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" data-dismiss="modal" id="delete-session" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete session</button>
             </div>
         </div><!-- /.modal-content -->
@@ -292,7 +292,7 @@
                 <p class="modal-title">Are you sure you want to delete the data model for <strong>{{ dedupe_session.name }}</strong>? <br />Your reviewed and merged entites, along with your training will be lost.</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" data-dismiss="modal" id="delete-model" data-session_id="{{ dedupe_session.id }}"><i class='fa fa-times'></i> Delete data model</button>
             </div>
         </div><!-- /.modal-content -->
