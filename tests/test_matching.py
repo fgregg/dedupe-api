@@ -172,25 +172,25 @@ class MatchingTest(unittest.TestCase):
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data)['matches']
-            matches[0]['match'] = 1
-            del matches[0]['record_id']
-            del matches[0]['entity_id']
-            for match in matches[1:]:
-                match['match'] = 0
-                del match['record_id']
-                del match['entity_id']
-            post_data['matches'] = matches
-            del post_data['object']['record_id']
-            rv = c.post('/train/', data=json.dumps(post_data))
-            self.session.refresh(self.dd_sess)
-            td = json.loads(self.dd_sess.training_data)
-            del matches[0]['match']
-            matched = {k:preProcess(unicode(v)) for k,v in matches[0].items()}
-            assert [matched, obj] in td['match']
-            for match in matches[1:]:
-                m = {k:preProcess(unicode(v)) for k,v in match.items()}
-                del m['match']
-                assert [m, obj] in td['distinct']
+                matches[0]['match'] = 1
+                del matches[0]['record_id']
+                del matches[0]['entity_id']
+                for match in matches[1:]:
+                    match['match'] = 0
+                    del match['record_id']
+                    del match['entity_id']
+                post_data['matches'] = matches
+                del post_data['object']['record_id']
+                rv = c.post('/train/', data=json.dumps(post_data))
+                self.session.refresh(self.dd_sess)
+                td = json.loads(self.dd_sess.training_data)
+                del matches[0]['match']
+                matched = {k:preProcess(unicode(v)) for k,v in matches[0].items()}
+                assert [matched, obj] in td['match']
+                for match in matches[1:]:
+                    m = {k:preProcess(unicode(v)) for k,v in match.items()}
+                    del m['match']
+                    assert [m, obj] in td['distinct']
 
     def test_matches_add_entity_getunmatched(self):
         with self.app.test_request_context():

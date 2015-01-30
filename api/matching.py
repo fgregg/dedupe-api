@@ -23,6 +23,15 @@ matching = Blueprint('matching', __name__)
 
 dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
 
+try: # pragma: no cover
+    from raven.contrib.flask import Sentry
+    from api.app_config import SENTRY_DSN
+    sentry = Sentry(dsn=SENTRY_DSN) 
+except ImportError:
+    sentry = None
+except KeyError: #pragma: no cover
+    sentry = None
+
 def validate_post(post):
     session_id = post.get('session_id')
     obj = post.get('object')
@@ -166,6 +175,9 @@ def match():
                             m['entity_id'] = getattr(match, 'entity_id')
                             # m['match_confidence'] = float(confs[str(m['entity_id'])])
                             match_list.append(m)
+            else:
+                if sentry:
+                    sentry.captureMessage('Unable to block record', extra=post)
         r['matches'] = match_list
 
     resp = make_response(json.dumps(r, default=_to_json), status_code)
