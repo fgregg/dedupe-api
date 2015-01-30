@@ -21,6 +21,7 @@
                 </div>
             {% endif %}
         {% endfor %}
+        <div id='spinner'></div>
         <div id='dedupe-sessions' style='display: none;'>
             <div class="row">
                 <div class="col-md-12">
@@ -53,7 +54,8 @@
 </div>
 {% endblock %}
 {% block extra_javascript %}
-
+<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
 <script type="text/EJS" id="sessionTemplate">
 
@@ -143,7 +145,12 @@
     }
 
     $(document).ready(function(){
-        render_session_list();
+        // wait one second to get updates from the server
+        $('#spinner').spin({'top': 100});
+        setTimeout(function () { 
+            render_session_list(); 
+            $('#spinner').spin(false);
+        }, 1000);
         refresh_display();
     })
 </script>
