@@ -19,7 +19,7 @@ class ReviewMachine(object):
 
         """
         self.examples = entity_examples
-        self.weight = 1.0
+        self.weight = None
         self.labeled_count = 0
 
     def label(self, entity_id, label):
@@ -55,10 +55,13 @@ class ReviewMachine(object):
         self.examples = OrderedDict(sorted(self.examples.items(), key=lambda x: x[1]['score']))
 
     def predict(self, example):
-        weights, bias = self.weight
-        score = numpy.dot(example, weights)
-        score = numpy.exp(score + bias) / ( 1 + numpy.exp(score + bias) )
-        return score
+        if self.weight is not None:
+            weights, bias = self.weight
+            score = numpy.dot(example, weights)
+            score = numpy.exp(score + bias) / ( 1 + numpy.exp(score + bias) )
+            return score
+        return 0.0
+
     
     def get_next(self):
         for entity_id, example in self.examples.items():
