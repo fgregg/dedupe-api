@@ -216,6 +216,8 @@ def delete_data_model():
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     dedupe_session.field_defs = None
     dedupe_session.training_data = None
+    dedupe_session.settings_file = None
+    dedupe_session.gaz_settings_file = None
     dedupe_session.sample = None
     dedupe_session.status = 'dataset uploaded'
     db_session.add(dedupe_session)

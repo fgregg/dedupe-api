@@ -161,6 +161,10 @@ def getMatchingReady(session_id):
             if predicate.type == 'TfidfPredicate':
                 del d.data_model.primary_fields[i].predicates[idx]
     
+    # for i, definition in enumerate(d.data_model.primary_fields):
+    #     for idx, predicate in enumerate(definition.predicates):
+    #         print 'predicates: %s' % predicate.type
+
     d.readTraining(StringIO(sess.training_data))
     d.train()
     g_settings = StringIO()
