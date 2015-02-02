@@ -154,16 +154,17 @@ def getMatchingReady(session_id):
 
     # Save Gazetteer settings
     d = dedupe.Gazetteer(field_defs)
-
-    # Disabling canopy based predicates for now
-    for i, definition in enumerate(d.data_model.primary_fields):
-        for idx, predicate in enumerate(definition.predicates):
-            if predicate.type == 'TfidfPredicate':
-                del d.data_model.primary_fields[i].predicates[idx]
     
-    # for i, definition in enumerate(d.data_model.primary_fields):
-    #     for idx, predicate in enumerate(definition.predicates):
-    #         print 'predicates: %s' % predicate.type
+    # Disabling canopy based predicates for now
+    while True:
+        ids = []
+        for i, definition in enumerate(d.data_model.primary_fields):
+            for idx, predicate in enumerate(definition.predicates):
+                if predicate.type == 'TfidfPredicate':
+                    ids.append((i, idx,))
+                    del d.data_model.primary_fields[i].predicates[idx]
+        if not ids:
+            break
 
     d.readTraining(StringIO(sess.training_data))
     d.train()
