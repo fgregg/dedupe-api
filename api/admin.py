@@ -106,6 +106,7 @@ def session_admin():
     session_id = flask_session['session_id']
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
+    db_session.refresh(dedupe_session)
     predicates = None
     session_info = {}
     training_data = None

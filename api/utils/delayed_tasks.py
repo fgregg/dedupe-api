@@ -156,11 +156,11 @@ def getMatchingReady(session_id):
     d = dedupe.Gazetteer(field_defs)
 
     # Disabling canopy based predicates for now
-    for definition in d.data_model.primary_fields:
+    for i, definition in enumerate(d.data_model.primary_fields):
         for idx, predicate in enumerate(definition.predicates):
             if predicate.type == 'TfidfPredicate':
-                definition.predicates.pop(idx)
-
+                del d.data_model.primary_fields[i].predicates[idx]
+    
     d.readTraining(StringIO(sess.training_data))
     d.train()
     g_settings = StringIO()
