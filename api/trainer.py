@@ -17,7 +17,7 @@ import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable
-from api.utils.helpers import getDistinct, slugify, STATUS_LIST
+from api.utils.helpers import getDistinct, slugify, STATUS_LIST, updateTraining
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
@@ -211,8 +211,14 @@ def training_run():
         field_defs = json.loads(dedupe_session.field_defs)
         if dedupe_session.sample:
             sample = cPickle.loads(dedupe_session.sample)
-            deduper = dedupe.Dedupe(field_defs, data_sample=sample)
-            flask_session['deduper'] = deduper
+            if sample[0][0].get('record_id'):
+                deduper = dedupe.Dedupe(field_defs, data_sample=sample)
+                flask_session['deduper'] = deduper
+            else:
+                dedupe_session.processing = True
+                db_session.add(dedupe_session)
+                db_session.commit()
+                initializeModel.delay(dedupe_session.id)
     else:
         status_code = 500
     time.sleep(1)
@@ -229,7 +235,6 @@ def get_pair():
     deduper = flask_session['deduper']
     flask_session['last_interaction'] = datetime.now()
     fields = list(set([f[0] for f in deduper.data_model.field_comparators]))
-    #fields = deduper.data_model.field_comparators
     record_pair = deduper.uncertainPairs()[0]
     flask_session['current_pair'] = record_pair
     data = []
@@ -253,6 +258,7 @@ def mark_pair():
     flask_session['last_interaction'] = datetime.now()
     counter = flask_session.get('counter')
     sess = db_session.query(DedupeSession).get(flask_session['session_id'])
+    db_session.refresh(sess, ['training_data'])
     deduper = flask_session['deduper']
 
     # Attempt to cast the training input appropriately
@@ -266,29 +272,17 @@ def mark_pair():
             fds[fd['field']] = [fd['type']]
     current_pair = flask_session['current_pair']
     left, right = current_pair
-    l_d = {}
-    r_d = {}
-    for k,v in left.items():
-        if 'Price' in fds[k]:
-            l_d[k] = float(v)
-        else:
-            l_d[k] = v
-    for k,v in right.items():
-        if 'Price' in fds[k]:
-            r_d[k] = float(v)
-        else:
-            r_d[k] = v
-    current_pair = [l_d, r_d]
+    record_ids = [left['record_id'], right['record_id']]
     if sess.training_data:
         labels = json.loads(sess.training_data)
     else:
         labels = {'distinct' : [], 'match' : []}
     if action == 'yes':
-        labels['match'].append(current_pair)
+        updateTraining(sess.id, match_ids=record_ids)
         counter['yes'] += 1
         resp = {'counter': counter}
     elif action == 'no':
-        labels['distinct'].append(current_pair)
+        updateTraining(sess.id, distinct_ids=record_ids)
         counter['no'] += 1
         resp = {'counter': counter}
     elif action == 'finish':
@@ -299,9 +293,8 @@ def mark_pair():
         counter['unsure'] += 1
         flask_session['counter'] = counter
         resp = {'counter': counter}
-    sess.training_data = json.dumps(labels, default=_to_json)
-    db_session.add(sess)
-    db_session.commit()
+    db_session.refresh(sess, ['training_data'])
+    labels = json.loads(sess.training_data)
     deduper.markPairs(labels)
     if resp.get('finished'):
         del flask_session['deduper']

@@ -260,9 +260,8 @@ def cleanupTables(session_id, tables=None):
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
-    fields = list(set([f['field'] for f in field_defs]))
     d = dedupe.Dedupe(field_defs)
-    data_d = makeSampleDict(sess.id, fields=fields)
+    data_d = makeSampleDict(sess.id)
     if len(data_d) < 50001:
         sample_size = 5000
     else: # pragma: no cover

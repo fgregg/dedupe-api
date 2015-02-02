@@ -16,6 +16,7 @@ from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 from unidecode import unidecode
 import cPickle
+from itertools import combinations
 
 STATUS_LIST = [
     {
@@ -62,10 +63,50 @@ STATUS_LIST = [
     },
 ]
 
-def updateTraining(session_id, record_ids, distinct=False):
+def updateTraining(session_id, distinct_ids=None, match_ids=None):
     ''' 
     Update the sessions training data with the given record_ids
     '''
+    sess = worker_session.query(DedupeSession).get(session_id)
+    worker_session.refresh(sess)
+    engine = worker_session.bind
+    training = {'distinct': [], 'match': []}
+    if sess.training_data:
+        training = json.loads(sess.training_data)
+    if distinct_ids and match_ids:
+        distinct_ids.extend(match_ids)
+    
+    distinct_combos = []
+    match_combos = []
+    if distinct_ids:
+        distinct_combos = combinations(distinct_ids, 2)
+    if match_ids:
+        match_combos = combinations(match_ids, 2)
+    
+    distinct_records = []
+    for combo in distinct_combos:
+        sel = text(''' 
+            SELECT * FROM "processed_{0}" 
+            WHERE record_id IN :record_ids
+        '''.format(session_id))
+        records = [dict(zip(r.keys(), r.values())) \
+                for r in engine.execute(sel, record_ids=combo)]
+        distinct_records.append(records)
+    training['distinct'].extend(distinct_records)
+    
+    match_records = []
+    for combo in match_combos:
+        sel = text(''' 
+            SELECT * FROM "processed_{0}" 
+            WHERE record_id IN :record_ids
+        '''.format(session_id))
+        records = [dict(zip(r.keys(), r.values())) \
+                for r in engine.execute(sel, record_ids=combo)]
+        match_records.append(records)
+    training['match'].extend(match_records)
+    sess.training_data = json.dumps(training)
+    worker_session.add(sess)
+    worker_session.commit()
     return None
 
 def getCluster(session_id, entity_pattern, raw_pattern):
@@ -205,31 +246,18 @@ def clusterGen(result_set, fields):
     if records:
         yield records
 
-def makeSampleDict(session_id, fields):
+def makeSampleDict(session_id):
     session = worker_session
     engine = session.bind
-    metadata = MetaData()
-    proc_table = Table('processed_%s' % session_id, metadata, 
-        autoload=True, autoload_with=engine)
-    entity_table = Table('entity_%s' % session_id, metadata, 
-        autoload=True, autoload_with=engine)
-    result = {}
-    cols = [getattr(proc_table.c, f) for f in fields]
-    '''
-    Get one record from each cluster of exact duplicates that are 
-    already in entity map + all records that don't have entries in 
-    the entity_map
-    
-    SELECT p.<fields from model>
-      FROM processed as p
-      LEFT JOIN entity as e
-      WHERE e.target_record_id IS NULL
-    '''
-    curs = session.query(*cols)\
-        .outerjoin(entity_table, 
-            proc_table.c.record_id == entity_table.c.record_id)\
-        .filter(entity_table.c.target_record_id == None)
-    result = dict((i, frozendict(zip(fields, row))) 
+    sel = ''' 
+        SELECT p.*
+        FROM "processed_{0}" as p
+        LEFT JOIN "entity_{0}" as e
+            ON p.record_id = e.record_id
+        WHERE e.target_record_id IS NULL
+    '''.format(session_id)
+    curs = engine.execute(sel)
+    result = dict((i, frozendict(zip(row.keys(), row.values()))) 
                             for i, row in enumerate(curs))
     return result
 

@@ -181,7 +181,6 @@ def mark_cluster():
             '''.format(dedupe_session.id))
         with engine.begin() as c:
             c.execute(update_existing,**upd_vals)
-        # training_data['match'].extend(pairs)
     if distinct_ids:
         distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
         delete = entity_table.delete()\
@@ -190,6 +189,8 @@ def mark_cluster():
         with engine.begin() as c:
             c.execute(delete)
         #training_data['distinct'].append(pairs)
+    
+    updateTraining(dedupe_session.id, match_ids=match_ids.split(','), distinct_ids=distinct_ids)
     
     machine = loads(dedupe_session.review_machine)
     if distinct_ids:
