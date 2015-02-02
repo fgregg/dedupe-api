@@ -63,7 +63,7 @@ STATUS_LIST = [
     },
 ]
 
-def updateTraining(session_id, distinct_ids=None, match_ids=None):
+def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     ''' 
     Update the sessions training data with the given record_ids
     '''
@@ -71,6 +71,15 @@ def updateTraining(session_id, distinct_ids=None, match_ids=None):
     worker_session.refresh(sess)
     engine = worker_session.bind
     training = {'distinct': [], 'match': []}
+    
+    all_ids = tuple([i for i in distinct_ids + match_ids])
+    sel = text(''' 
+        SELECT * FROM "processed_{0}" 
+        WHERE record_id IN :record_ids
+    '''.format(session_id))
+    all_records = {r.record_id: dict(zip(r.keys(), r.values())) \
+            for r in engine.execute(sel, record_ids=all_ids)}
+
     if sess.training_data:
         training = json.loads(sess.training_data)
     if distinct_ids and match_ids:
@@ -85,24 +94,17 @@ def updateTraining(session_id, distinct_ids=None, match_ids=None):
     
     distinct_records = []
     for combo in distinct_combos:
-        sel = text(''' 
-            SELECT * FROM "processed_{0}" 
-            WHERE record_id IN :record_ids
-        '''.format(session_id))
-        records = [dict(zip(r.keys(), r.values())) \
-                for r in engine.execute(sel, record_ids=combo)]
+        combo = tuple([int(c) for c in combo])
+        records = [all_records[combo[0]], all_records[combo[1]]]
         distinct_records.append(records)
     training['distinct'].extend(distinct_records)
     
     match_records = []
     for combo in match_combos:
-        sel = text(''' 
-            SELECT * FROM "processed_{0}" 
-            WHERE record_id IN :record_ids
-        '''.format(session_id))
-        records = [dict(zip(r.keys(), r.values())) \
-                for r in engine.execute(sel, record_ids=combo)]
+        combo = tuple([int(c) for c in combo])
+        records = [all_records[combo[0]], all_records[combo[1]]]
         match_records.append(records)
+
     training['match'].extend(match_records)
     sess.training_data = json.dumps(training)
     worker_session.add(sess)

@@ -5,7 +5,7 @@ from flask import Flask, make_response, request, Blueprint, \
 from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
-from api.utils.helpers import checkinSessions, getCluster
+from api.utils.helpers import checkinSessions, getCluster, updateTraining
 from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters, \
     dedupeCanon, getMatchingReady
 from api.app_config import TIME_ZONE
@@ -137,15 +137,15 @@ def mark_cluster():
     distinct_ids = request.args.get('distinct_ids')
     training_data = json.loads(dedupe_session.training_data)
     if match_ids:
-        match_ids = tuple([int(m) for m in match_ids.split(',')])
+        ids = tuple([int(m) for m in match_ids.split(',')])
         upd_vals = {
             'entity_id': entity_id,
-            'record_ids': match_ids,
+            'record_ids': ids,
             'user_name': user.name, 
             'clustered': True,
             'match_type': 'clerical review',
             'last_update': datetime.now().replace(tzinfo=TIME_ZONE), 
-            'match_ids': match_ids,
+            'match_ids': ids,
         }
         upd = text(''' 
             UPDATE "entity_{0}" SET
@@ -182,15 +182,18 @@ def mark_cluster():
         with engine.begin() as c:
             c.execute(update_existing,**upd_vals)
     if distinct_ids:
-        distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
+        ids = tuple([int(d) for d in distinct_ids.split(',')])
         delete = entity_table.delete()\
             .where(entity_table.c.entity_id == entity_id)\
-            .where(entity_table.c.record_id.in_(distinct_ids))
+            .where(entity_table.c.record_id.in_(ids))
         with engine.begin() as c:
             c.execute(delete)
         #training_data['distinct'].append(pairs)
-    
-    updateTraining(dedupe_session.id, match_ids=match_ids.split(','), distinct_ids=distinct_ids)
+    distinct_ids = [d for d in distinct_ids.split(',') if d]
+    match_ids = [m for m in match_ids.split(',') if m]
+    updateTraining(dedupe_session.id, 
+                   match_ids=match_ids, 
+                   distinct_ids=distinct_ids)
     
     machine = loads(dedupe_session.review_machine)
     if distinct_ids:

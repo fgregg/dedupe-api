@@ -73,7 +73,7 @@ def bulkMarkClusters(session_id, user=None):
             match_type = :match_type
         WHERE target_record_id IS NULL
             AND clustered=FALSE
-        RETURNING entity_id;
+        RETURNING entity_id
     '''.format(session_id))
     with engine.begin() as c:
         parent_entities = c.execute(upd, **upd_vals)
