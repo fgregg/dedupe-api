@@ -55,7 +55,15 @@ def upload():
         file_format = convert.guess_format(flask_session['session_name'])
         u = StringIO(convert.convert(u, file_format))
     fieldnames = [slugify(unicode(i)) for i in u.next().strip('\r\n').split(',')]
+    sample_values = [[] for i in range(len(fieldnames))]
+    v = 0
+    while v < 10:
+        line = u.next().strip('\r\n').split(',')
+        for i in range(len(fieldnames)):
+            sample_values[i].append(line[i])
+        v += 1
     flask_session['fieldnames'] = fieldnames
+    flask_session['sample_values'] = sample_values
     user_id = flask_session['user_id']
     user = db_session.query(User).get(user_id)
     group = user.groups[0]
@@ -105,6 +113,7 @@ def select_fields():
     errors = []
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     fields = flask_session.get('fieldnames')
+    sample_values = flask_session.get('sample_values')
     # If the fields are not in the session, that means that the user has come
     # here directly from the home page. We'll try to load them from the raw
     # table in the database but if that does not exist yet (which is possible)
@@ -115,8 +124,19 @@ def select_fields():
         try:
             raw = Table('raw_{0}'.format(flask_session['session_id']), meta, 
                 autoload=True, autoload_with=engine, keep_existing=True)
-            fields = [r for r in raw.columns.keys() if r != 'record_id']
-            flask_session['fieldnames'] = fields
+            rows = list(engine.execute(''' 
+                SELECT * FROM "raw_{0}" LIMIT 10
+                '''.format(flask_session['session_id'])))
+            fields = [k for k in rows[0].keys() if k != 'record_id']
+            sample_values = [[] for idx, val in enumerate(fields) if val != 'record_id']
+            v = 0
+            while v < 10:
+                row = rows[v]
+                for idx, field in enumerate(fields):
+                    sample_values[idx].append(getattr(row, field))
+                v += 1
+            flask_session['sample_values'] = sample_values
+            flask_session['fieldnames'] = fields 
         except NoSuchTableError:
             return redirect(url_for('admin.index'))
     errors = db_session.query(WorkTable)\
@@ -135,6 +155,7 @@ def select_fields():
     return render_template('dedupe_session/select_fields.html', 
                             errors=errors, 
                             fields=fields, 
+                            sample_values=sample_values,
                             dedupe_session=dedupe_session)
 
 @trainer.route('/select-field-types/', methods=['GET', 'POST'])

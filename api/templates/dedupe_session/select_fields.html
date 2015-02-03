@@ -27,7 +27,7 @@
                         {% for field in fields %}
                             <tr>
                                 <td><label><input type="checkbox" name="{{field}}"> {{field}}</label></td>
-                                <td></td>
+                                <td>{{ sample_values[loop.index0]|join(', ') }}</td>
                             </tr>
                         {% endfor %}
                         </table>
