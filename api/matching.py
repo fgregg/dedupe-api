@@ -160,11 +160,12 @@ def match():
                             confs[id_set[1]] = confidence
                         ids = tuple(set(ids))
                         sel = text(''' 
-                              SELECT {0}, r.record_id, e.entity_id
+                              SELECT {0}, MIN(r.record_id) AS record_id, e.entity_id
                               FROM "raw_{1}" as r
                               JOIN "entity_{1}" as e
                                 ON r.record_id = e.record_id
                               WHERE r.record_id IN :ids
+                              GROUP BY e.entity_id, {0}
                             '''.format(fields, session_id))
                         matches = []
                         with engine.begin() as conn:
