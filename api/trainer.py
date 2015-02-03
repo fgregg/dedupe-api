@@ -22,7 +22,7 @@ from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
 from sqlalchemy.exc import OperationalError, NoSuchTableError
-from sqlalchemy import Table, MetaData
+from sqlalchemy import Table, MetaData, text
 from cStringIO import StringIO
 from redis import Redis
 from uuid import uuid4
@@ -111,7 +111,9 @@ def new_session():
 def select_fields():
     status_code = 200
     errors = []
-    dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
+    dedupe_session = db_session.query(DedupeSession.name, DedupeSession.id)\
+            .filter(DedupeSession.id == flask_session['session_id'])\
+            .first()
     fields = flask_session.get('fieldnames')
     sample_values = flask_session.get('sample_values')
     # If the fields are not in the session, that means that the user has come
@@ -162,7 +164,9 @@ def select_fields():
 @login_required
 @check_roles(roles=['admin'])
 def select_field_types():
-    dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
+    dedupe_session = db_session.query(DedupeSession.name, DedupeSession.id)\
+            .filter(DedupeSession.id == flask_session['session_id'])\
+            .first()
     errors = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
             .filter(WorkTable.cleared == False)\
@@ -190,11 +194,13 @@ def select_field_types():
                 if has_missing:
                     f.update({'has_missing': True})
             field_defs.extend(fs)
-        dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
-        dedupe_session.field_defs = json.dumps(field_defs)
-        dedupe_session.status = 'model defined'
-        db_session.add(dedupe_session)
-        db_session.commit()
+        engine = db_session.bind
+        with engine.begin() as conn:
+            conn.execute(text(''' 
+                UPDATE dedupe_session SET
+                    field_defs = :field_defs
+                WHERE id = :id
+            '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
         if not errors:
             initializeModel.delay(dedupe_session.id)
         return redirect(url_for('trainer.training_run'))
