@@ -481,6 +481,7 @@ def dedupeRaw(session_id, threshold=0.75):
 
 @queuefunc
 def dedupeCanon(session_id, threshold=0.25):
+    trainDedupe(session_id)
     dd = worker_session.query(DedupeSession).get(session_id)
     engine = worker_session.bind
     metadata = MetaData()
