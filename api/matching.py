@@ -159,14 +159,15 @@ def match():
                             ids.extend([i for i in id_set if i != 'blob'])
                             confs[id_set[1]] = confidence
                         ids = tuple(set(ids))
+                        min_fields = ','.join(['MIN(r.{0}) AS {0}'.format(f) for f in model_fields])
                         sel = text(''' 
                               SELECT {0}, MIN(r.record_id) AS record_id, e.entity_id
                               FROM "raw_{1}" as r
                               JOIN "entity_{1}" as e
                                 ON r.record_id = e.record_id
                               WHERE r.record_id IN :ids
-                              GROUP BY e.entity_id, {0}
-                            '''.format(fields, session_id))
+                              GROUP BY e.entity_id
+                            '''.format(min_fields, session_id))
                         matches = []
                         with engine.begin() as conn:
                             matches = list(conn.execute(sel, ids=ids))
@@ -240,7 +241,7 @@ def add_entity():
     record_id = obj.get('record_id')
     if record_id:
         del obj['record_id']
-    match_id = json.loads(request.data).get('match_id')
+    match_ids = json.loads(request.data).get('match_ids')
     sess = db_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
     fds = {}
@@ -289,21 +290,53 @@ def add_entity():
                 conn.execute(text(proc_ins), record_id=record_id)
         hash_me = ';'.join([preProcess(unicode(obj[i])) for i in fds.keys()])
         md5_hash = md5(unidecode(hash_me)).hexdigest()
+        user = db_session.query(User).get(flask_session['api_key'])
+        last_update = datetime.now().replace(tzinfo=TIME_ZONE)
         entity = {
             'entity_id': unicode(uuid4()),
             'record_id': record_id,
             'source_hash': md5_hash,
             'clustered': True,
             'checked_out': False,
+            'reviewer': user.name,
+            'last_update': last_update,
+            'match_type': 'match'
         }
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata, 
             autoload=True, autoload_with=engine, keep_existing=True)
-        if match_id:
-            entity['target_record_id'] = match_id
+        if match_ids:
+            match_ids = match_ids.split(',')
+            entity['target_record_id'] = match_ids[0]
             entity_id = db_session.query(entity_table.c.entity_id)\
-                .filter(entity_table.c.record_id == match_id)\
+                .filter(entity_table.c.record_id == match_ids[0])\
                 .first()
             entity['entity_id'] = entity_id.entity_id
+            if len(match_ids) > 1:
+                upd_args = {
+                    'entity_id': entity_id.entity_id,
+                    'clustered': True,
+                    'checked_out': False,
+                    'last_update': last_update,
+                    'reviewer': user.name,
+                    'match_ids': tuple([m for m in match_ids]),
+                    'match_type': 'merge from match'
+                }
+                upd = text('''
+                    UPDATE "entity_{0}" SET 
+                        entity_id = :entity_id,
+                        clustered = :clustered,
+                        checked_out = :checked_out,
+                        last_update = :last_update,
+                        reviewer = :reviewer,
+                        match_type = :match_type
+                    WHERE entity_id IN (
+                        SELECT entity_id
+                        FROM "entity_{0}"
+                        WHERE record_id IN :match_ids
+                    )
+                    '''.format(session_id))
+                with engine.begin() as conn:
+                    conn.execute(upd, **upd_args)
         with engine.begin() as conn:
             conn.execute(entity_table.insert(), **entity)
         deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))

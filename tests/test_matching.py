@@ -212,7 +212,7 @@ class MatchingTest(unittest.TestCase):
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data)['matches']
                 post_data['object'] = obj
-                post_data['match_id'] = matches[0]['record_id']
+                post_data['match_ids'] = ','.join([unicode(m['record_id']) for m in matches])
                 del post_data['session_id']
 
                 # Second, add a matched record to the entity map

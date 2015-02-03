@@ -5,7 +5,7 @@ from os.path import join, abspath, dirname, exists
 from flask import request, session
 from api.utils.helpers import slugify
 from api.utils.delayed_tasks import initializeSession
-from api.utils.db_functions import writeRawTable
+from api.utils.db_functions import writeRawTable, writeProcessedTable
 from csvkit.unicsv import UnicodeCSVReader, UnicodeCSVWriter
 from tests import DedupeAPITestCase
 
@@ -227,6 +227,8 @@ class TrainerTest(DedupeAPITestCase):
         self.session.commit()
         deduper = dedupe.Dedupe(json.loads(fds), cPickle.loads(sample))
         record_pair = deduper.uncertainPairs()[0]
+        self.init_session()
+        writeProcessedTable(self.dd_sess.id)
         with self.app.test_request_context():
             self.login()
             with self.client as c:

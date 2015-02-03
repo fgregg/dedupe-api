@@ -106,21 +106,18 @@
             var data = {
                 'api_key': api_key,
                 'object': match_obj,
-                'match_id': null
+                'match_ids': null
             }
-            var valid = true;
-            if ($('input:checked').length > 1){
-                valid = false;
-                $('#errors').show();
-            }
-            if (valid){
-                data['match_id'] = $('input:checked').parent().data('record_id');
-                $.when(addToEntityMap(JSON.stringify(data))).then(
-                    function(resp){
-                        getAndMatch();
-                    }
-                )
-            }
+            data['match_ids'] = [];
+            $.each($('input:checked'), function(i, check){
+                data['match_ids'].push($(check).parent().data('record_id'))
+            })
+            data['match_ids'] = data['match_ids'].join(',');
+            $.when(addToEntityMap(JSON.stringify(data))).then(
+                function(resp){
+                    getAndMatch();
+                }
+            )
         });
     })
     function getAndMatch(){
