@@ -120,6 +120,21 @@ def select_fields():
     # here directly from the home page. We'll try to load them from the raw
     # table in the database but if that does not exist yet (which is possible)
     # then we'll redirect them to the home page.
+    if request.args.get('session_id'):
+        session_values = [
+            'sample',
+            'fieldnames',
+            'session_name',
+            'training_data',
+            'current_pair',
+            'counter',
+            'deduper',
+        ]
+        for k in session_values:
+            try:
+                del flask_session[k]
+            except KeyError:
+                pass
     if not fields:
         meta = MetaData()
         engine = db_session.bind
