@@ -100,7 +100,7 @@ def check_sessions():
             else:
                 user = db_session.query(User).get(api_key)
 
-                sess = db_session.query(DedupeSession)\
+                sess = db_session.query(DedupeSession.id)\
                     .filter(DedupeSession.group.has(
                         Group.id.in_([i.id for i in user.groups])))\
                     .all()

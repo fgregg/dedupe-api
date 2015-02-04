@@ -3,56 +3,37 @@ import rlr
 from collections import OrderedDict
 
 class ReviewMachine(object):
-    def __init__(self, entity_examples):
-        """ 
-        Entity examples should be a dict where the key is the entity_id
-        and the value is a dict like so:
-
-        {"<entity_id>": {
-            "label": None, # None by default, will be labelled either 1 or 0 based on user input
-            "attributes": [], # 2 member list: length of cluster and max confidence score from cluster
-            "score": 1.0 # Calculated on the fly by mutiplying attributes by learned weight
-            }
-        }
-        
-        Score is used to sort entities on the fly
-
-        """
-        self.examples = entity_examples
-        self.weight = None
+    def __init__(self, clusters):
+        self.example_dtype = [('id', 'S36', 1), 
+                              ('attributes', 'f4', 2), 
+                              ('label', 'f4', 1),
+                              ('score', 'f4', 1),
+                              ('viewed', 'i4', 1)]
+        self.examples = numpy.fromiter(self.row_generator(clusters), 
+                                       dtype=self.example_dtype)
+        self.weight = numpy.array([0,0]), 0
         self.labeled_count = 0
+        
+    def row_generator(self, clusters):
+        for row in clusters:
+            yield (row[0], row[1:3], numpy.nan, 0, 0,)
 
     def label(self, entity_id, label):
 
-        self.examples[entity_id]['label'] = label
+        self.examples['label'][self.examples['id'] == entity_id] = label
 
-        labels = [d['label'] for d in self.examples.values() \
-                if d['label'] is not None]
-        examples = [d['attributes'] for d in self.examples.values() \
-                if d['label'] is not None]
+        labels = self.examples['label'][~numpy.isnan(self.examples['label'])].astype('i4')
+        
+        attributes = self.examples['attributes'][~numpy.isnan(self.examples['label'])]
 
-        labels = numpy.array(labels, 
-                             dtype=numpy.int32)
-        examples = numpy.array(examples, 
-                               dtype=numpy.float32)
-
-        self.weight = rlr.lr(labels, examples, 0.1)
-        self._sort()
+        self.weight = rlr.lr(labels, attributes, 0.1)
         self.labeled_count += 1
+        self._score()
         return self.weight
     
     def _score(self):
         weights, bias = self.weight
-        examples = [d['attributes'] for d in self.examples.values()]
-        scores = numpy.dot(examples, weights)
-        scores = numpy.exp(scores + bias) / ( 1 + numpy.exp(scores + bias) )
-        entity_ids = [k for k,v in self.examples.items()]
-        for idx, entity_id in enumerate(entity_ids):
-            self.examples[entity_id]['score'] = scores.tolist()[idx]
-
-    def _sort(self):
-        self._score()
-        self.examples = OrderedDict(sorted(self.examples.items(), key=lambda x: x[1]['score']))
+        self.examples['score'] = numpy.dot(self.examples['attributes'], weights)
 
     def predict(self, example):
         if self.weight is not None:
@@ -62,10 +43,26 @@ class ReviewMachine(object):
             return score
         return 0.0
 
-    
     def get_next(self):
-        for entity_id, example in self.examples.items():
-            if not self.examples[entity_id].get('checked_out'):
-                if example['label'] is None:
-                    self.examples[entity_id]['checked_out'] = True
-                    return entity_id
+        unlabeled_idx = self.examples['viewed'] == 0
+        cluster_id = self.examples['id'][unlabeled_idx]\
+                [numpy.argmin(self.examples['score'][unlabeled_idx])]
+        self.examples['viewed'][self.examples['id'] == cluster_id] = 1
+        return cluster_id
+
+    def predict_remainder(self, threshold=0.5):
+        weights, bias = self.weight
+        unlabeled = numpy.isnan(self.examples['label'])
+        score = numpy.dot(self.examples['attributes'][unlabeled], weights)
+        score = numpy.exp(score + bias) / ( 1 + numpy.exp(score + bias) )
+        accepted = score[score > threshold]
+        rejected = score[score <= (1 - threshold)]
+        if len(accepted):
+            false_pos = numpy.mean(1 - accepted) * len(accepted)
+        else:
+            false_pos = 0
+        if len(rejected):
+            false_neg = numpy.mean(rejected) * len(rejected)
+        else:
+            false_neg = 0
+        return false_pos, false_neg

@@ -116,7 +116,11 @@
   {% endif %}
 
   (function(){
-    get_cluster();
+    $.when(getCluster()).then(
+        function(resp){
+            displayCluster(resp);
+        }
+    )
     function acceptAll(e){
         e.preventDefault();
         $('#group-display').spin('large');
@@ -128,6 +132,15 @@
             window.location = "{{ url_for('admin.index') }}";
         })
     }
+
+    function markCluster(params){
+        return $.getJSON(mark_cluster_url, params)
+    }
+
+    function getCluster(){
+        return $.getJSON(get_cluster_url, {})
+    }
+
     function markEntity(e){
         e.preventDefault();
         var entity_id = $('#group-table').data('entity_id');
@@ -147,27 +160,27 @@
             'distinct_ids': distinct_ids.join(',')
         }
         // console.log(params);
-        $.getJSON(mark_cluster_url, params, function(resp){
-            get_cluster();
-        })
-    }
-    function get_cluster(){
         $('#group-display').spin('large');
-        $.getJSON(get_cluster_url, {}, function(resp){
-            $('#group-display').spin(false);
-            if (resp.objects.length > 0){
-                var template = new EJS({'text': $('#reviewTemplate').html()})
-                $('#group-display').html(template.render({resp: resp}));
-                $('.mark-entity').on('click', markEntity);
-                $('#accept-all').on('click', acceptAll);
-                $('.check_record').popover({trigger: "hover", placement: "top"});
-            } else {
-                $('#group-display').html("<h3>You're done!</h3>")
-                $('#review-buttons').hide()
-                $('#counter').parent().hide()
-                window.location = "{{ url_for('admin.index') }}";
+        $.when(markCluster(params), getCluster()).then(
+            function(mark_resp, resp){
+                displayCluster(resp[0])
             }
-        })
+        )
+    }
+    function displayCluster(resp){
+        $('#group-display').spin(false);
+        if (resp.objects.length > 0){
+            var template = new EJS({'text': $('#reviewTemplate').html()})
+            $('#group-display').html(template.render({resp: resp}));
+            $('.mark-entity').on('click', markEntity);
+            $('#accept-all').on('click', acceptAll);
+            $('.check_record').popover({trigger: "hover", placement: "top"});
+        } else {
+            $('#group-display').html("<h3>You're done!</h3>")
+            $('#review-buttons').hide()
+            $('#counter').parent().hide()
+            window.location = "{{ url_for('admin.index') }}";
+        }
     }
   })();
 </script>

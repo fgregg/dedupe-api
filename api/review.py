@@ -126,16 +126,12 @@ def mark_cluster():
     status_code = 200
     session_id = flask_session['session_id']
 
-    dedupe_session = db_session.query(DedupeSession).get(session_id)
     user = db_session.query(User).get(flask_session['api_key'])
     engine = db_session.bind
-    entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
-        autoload=True, autoload_with=engine)
     # TODO: Return an error if these args are not present.
     entity_id = request.args.get('entity_id')
     match_ids = request.args.get('match_ids')
     distinct_ids = request.args.get('distinct_ids')
-    training_data = json.loads(dedupe_session.training_data)
     if match_ids:
         ids = tuple([int(m) for m in match_ids.split(',')])
         upd_vals = {
@@ -178,23 +174,24 @@ def mark_cluster():
                         ON e.target_record_id = s.record_id
                 ) AS subq 
             WHERE "entity_{0}".record_id = subq.record_id
-            '''.format(dedupe_session.id))
+            '''.format(session_id))
         with engine.begin() as c:
             c.execute(update_existing,**upd_vals)
     if distinct_ids:
+        entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
+            autoload=True, autoload_with=engine)
         ids = tuple([int(d) for d in distinct_ids.split(',')])
         delete = entity_table.delete()\
             .where(entity_table.c.entity_id == entity_id)\
             .where(entity_table.c.record_id.in_(ids))
         with engine.begin() as c:
             c.execute(delete)
-        #training_data['distinct'].append(pairs)
     distinct_ids = [d for d in distinct_ids.split(',') if d]
     match_ids = [m for m in match_ids.split(',') if m]
-    updateTraining(dedupe_session.id, 
+    updateTraining(session_id, 
                    match_ids=match_ids, 
                    distinct_ids=distinct_ids)
-    
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
     machine = loads(dedupe_session.review_machine)
     if distinct_ids:
         machine.label(entity_id, 0)

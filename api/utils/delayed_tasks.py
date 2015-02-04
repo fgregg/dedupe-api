@@ -374,6 +374,7 @@ def blockDedupe(session_id,
 def clusterDedupe(session_id, canonical=False, threshold=0.75):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
+    worker_session.refresh(dd_session)
     deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
     engine = worker_session.bind
     metadata = MetaData()
@@ -466,10 +467,8 @@ def dedupeRaw(session_id, threshold=0.75):
         WHERE clustered = FALSE
         GROUP BY entity_id
     '''.format(session_id)
-    clusters = list(engine.execute(sel))
-    examples = {c[0]:{'attributes':c[1:], 'label': None, 'score': 1.0} \
-        for c in clusters}
-    machine = ReviewMachine(examples)
+    clusters = engine.execute(sel)
+    machine = ReviewMachine(clusters)
     dd = worker_session.query(DedupeSession).get(session_id)
     dd.review_machine = cPickle.dumps(machine)
     dd.entity_count = entity_count
@@ -556,10 +555,8 @@ def dedupeCanon(session_id, threshold=0.25):
         WHERE clustered = FALSE
         GROUP BY entity_id
     '''.format(session_id)
-    clusters = list(engine.execute(sel))
-    examples = {c[0]:{'attributes':c[1:], 'label': None, 'score': 1.0} \
-        for c in clusters}
-    machine = ReviewMachine(examples)
+    clusters = engine.execute(sel)
+    machine = ReviewMachine(clusters)
     dd.review_machine = cPickle.dumps(machine)
     dd.review_count = review_count
     dd.status = 'canon clustered'
