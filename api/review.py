@@ -53,13 +53,14 @@ def get_cluster():
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     checkinSessions()
-    entity_id, cluster, prediction = getCluster(session_id, 
+    entity_id, cluster, false_pos, false_neg = getCluster(session_id, 
                          'entity_{0}', 
                          'raw_{0}')
     if cluster:
         resp['entity_id'] = entity_id 
         resp['objects'] = cluster
-        resp['prediction'] = prediction
+        resp['false_positive'] = false_pos
+        resp['false_negative'] = false_neg
     else:
         dedupeCanon.delay(dedupe_session.id)
     resp['total_clusters'] = dedupe_session.entity_count
@@ -82,13 +83,14 @@ def get_canon_cluster():
     
     checkinSessions()
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    entity_id, cluster, prediction = getCluster(session_id, 
+    entity_id, cluster, false_pos, false_neg = getCluster(session_id, 
                          'entity_{0}_cr', 
                          'cr_{0}')
     if cluster:
         resp['entity_id'] = entity_id
         resp['objects'] = cluster
-        resp['prediction'] = prediction
+        resp['false_positive'] = false_pos
+        resp['false_negative'] = false_neg
     else:
         getMatchingReady.delay(session_id)
     resp['total_clusters'] = dedupe_session.entity_count

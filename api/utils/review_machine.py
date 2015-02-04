@@ -45,10 +45,13 @@ class ReviewMachine(object):
 
     def get_next(self):
         unlabeled_idx = self.examples['viewed'] == 0
-        cluster_id = self.examples['id'][unlabeled_idx]\
-                [numpy.argmin(self.examples['score'][unlabeled_idx])]
-        self.examples['viewed'][self.examples['id'] == cluster_id] = 1
-        return cluster_id
+        try:
+            cluster_id = self.examples['id'][unlabeled_idx]\
+                    [numpy.argmin(self.examples['score'][unlabeled_idx])]
+            self.examples['viewed'][self.examples['id'] == cluster_id] = 1
+            return cluster_id
+        except ValueError:
+            return None
 
     def predict_remainder(self, threshold=0.5):
         weights, bias = self.weight
