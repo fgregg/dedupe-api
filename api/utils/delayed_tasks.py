@@ -290,7 +290,7 @@ def initializeSession(session_id):
     print 'session initialized'
 
 @queuefunc
-def initializeModel(session_id):
+def initializeModel(session_id, init=True):
     sess = worker_session.query(DedupeSession).get(session_id)
     while True:
         worker_session.refresh(sess, ['field_defs', 'sample'])
@@ -299,7 +299,8 @@ def initializeModel(session_id):
         else:
             field_defs = json.loads(sess.field_defs)
             fields = list(set([f['field'] for f in field_defs]))
-            writeProcessedTable(session_id)
+            if init:
+                writeProcessedTable(session_id)
             updated_fds = []
             for field in field_defs:
                 if field['type'] == 'Categorical':
@@ -312,8 +313,9 @@ def initializeModel(session_id):
             sess.field_defs = json.dumps(updated_fds)
             worker_session.add(sess)
             worker_session.commit()
-            initializeEntityMap(session_id, fields)
-            drawSample(session_id)
+            if init:
+                initializeEntityMap(session_id, fields)
+                drawSample(session_id)
             print 'got sample'
             break
     return 'woo'

@@ -179,7 +179,9 @@ def select_fields():
 @login_required
 @check_roles(roles=['admin'])
 def select_field_types():
-    dedupe_session = db_session.query(DedupeSession.name, DedupeSession.id)\
+    dedupe_session = db_session.query(DedupeSession.name, 
+                                      DedupeSession.id, 
+                                      DedupeSession.field_defs)\
             .filter(DedupeSession.id == flask_session['session_id'])\
             .first()
     errors = db_session.query(WorkTable)\
@@ -209,6 +211,14 @@ def select_field_types():
                 if has_missing:
                     f.update({'has_missing': True})
             field_defs.extend(fs)
+        init = True
+        if dedupe_session.field_defs:
+            old_fields = set([f['field'] for f in \
+                    json.loads(dedupe_session.field_defs)])
+            new_fields = set([f['field'] for f in \
+                    field_defs])
+            if old_fields == new_fields:
+                init = False
         engine = db_session.bind
         with engine.begin() as conn:
             conn.execute(text(''' 
@@ -217,7 +227,7 @@ def select_field_types():
                 WHERE id = :id
             '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
         if not errors:
-            initializeModel.delay(dedupe_session.id)
+            initializeModel.delay(dedupe_session.id, init=init)
         return redirect(url_for('trainer.training_run'))
     return render_template('dedupe_session/select_field_types.html', 
                            field_list=field_list, 
