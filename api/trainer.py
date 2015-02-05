@@ -153,7 +153,7 @@ def select_fields():
                     sample_values[idx].append(getattr(row, field))
                 v += 1
             flask_session['sample_values'] = sample_values
-            flask_session['fieldnames'] = fields 
+            flask_session['fieldnames'] = fields
         except NoSuchTableError:
             return redirect(url_for('admin.index'))
     errors = db_session.query(WorkTable)\

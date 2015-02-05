@@ -76,6 +76,8 @@ class TrainerTest(DedupeAPITestCase):
         with self.app.test_request_context():
             self.login()
             with self.client as c:
+                with c.session_transaction() as sess:
+                    del sess['fieldnames']
                 rv = c.get('/select-fields/?session_id=' + self.dd_sess.id)
                 assert set(session['fieldnames']) == set(fieldnames)
     

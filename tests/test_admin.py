@@ -126,8 +126,6 @@ class AdminTest(DedupeAPITestCase):
                 rv = c.open('/delete-data-model/?session_id=' + self.dd_sess.id)
                 self.session.refresh(self.dd_sess)
                 assert self.dd_sess.field_defs is None
-                assert self.dd_sess.training_data is None
-                assert self.dd_sess.sample is None
                 assert self.dd_sess.status == 'dataset uploaded'
                 removed_tables = [
                     'entity_{0}',

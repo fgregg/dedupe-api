@@ -172,6 +172,9 @@ class MatchingTest(unittest.TestCase):
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data)['matches']
+                    if not matches:
+                        add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
+                                            data=json.dumps(post_data))
                 matches[0]['match'] = 1
                 del matches[0]['record_id']
                 del matches[0]['entity_id']
@@ -211,6 +214,9 @@ class MatchingTest(unittest.TestCase):
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data)['matches']
+                    if not matches:
+                        add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
+                                            data=json.dumps(post_data))
                 post_data['object'] = obj
                 post_data['match_ids'] = ','.join([unicode(m['record_id']) for m in matches])
                 del post_data['session_id']
