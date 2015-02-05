@@ -311,6 +311,7 @@ def initializeModel(session_id, init=True):
                         field['type'] = 'Exact'
                 updated_fds.append(field)
             sess.field_defs = json.dumps(updated_fds)
+            sess.status = 'model defined'
             worker_session.add(sess)
             worker_session.commit()
             if init:
