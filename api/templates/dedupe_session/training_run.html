@@ -4,6 +4,7 @@
 {% block content %}
     <div class="col-md-12">
     {{ dedupe_steps( dedupe_session ) }}
+    <h3>3. Train</h3>
     </div>
     {% if not errors %}
         {% if dedupe_session.processing %}
@@ -13,8 +14,7 @@
         </div>
         {% else %}
         <div class='col-md-8'>
-            <h3>3. Train</h3>
-            <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses.</p>
+            <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses to proceed.</p>
             <table id='labeler' class='table table-bordered'>
                 <thead>
                     <tr>

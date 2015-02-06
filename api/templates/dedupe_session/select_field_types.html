@@ -4,13 +4,13 @@
 {% block content %}
     <div class="col-md-12">
     {{ dedupe_steps( dedupe_session ) }}
-    <h3>2. Fields to compare <small>Field types</small></h3>
+    <h3>2. Fields to compare <small>Field comparators</small></h3>
     </div>
     {% if not errors %}
     <div class="col-md-12">
         <div class="row">
             <div class="col-md-8">
-                <p>Fine-tune the way that dedupe will compare your selected fields. By default, we'll look at how similar the text is, but more advanced comparisons are possible.</p>
+                <p>Fine-tune the way that dedupe will compare your selected fields. By default, we'll look at how similar the text is (String comparator), but more advanced comparisons are possible.</p>
                 <form id="fields" role="form" action="{{ url_for('trainer.select_field_types')}}" method="post" enctype="multipart/form-data" class='form-horizontal'>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                     {% for field in field_list %}

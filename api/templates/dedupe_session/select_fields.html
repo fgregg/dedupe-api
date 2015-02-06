@@ -8,60 +8,44 @@
     </div>
     {% if not errors %}
     <div class="col-md-12">
-        <div class="row">
-            <div class="col-md-8">
-                {% if fields %}
-                <p>Select the columns that you think tell the most information about each row in your spreadsheet.</p>
-
-                <form id="fields" role="form" action="{{ url_for('trainer.select_fields')}}" method="post">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-
-                    <div class="form-group">
-                        <table class='table'>
-                            <thead>
-                                <tr>
-                                    <th>Column name</th>
-                                    <th>Sample values</th>
-                                </tr>
-                            </thead>
-                        {% for field in fields %}
-                            <tr>
-                                <td><label><input type="checkbox" name="{{field}}"> {{field}}</label></td>
-                                <td>{{ sample_values[loop.index0]|join(', ') }}</td>
-                            </tr>
-                        {% endfor %}
-                        </table>
-                    </div>
-
-                    <div class='clearfix'></div>
-                    <hr />
-                    <p>
-                        <button type="submit" class="btn btn-info" id="start-training">
-                            Next &raquo;
-                        </button>
-                    </p>
-                </form>
-                {% else %}
-                <div id="spinner"></div>
-                {% endif %}
-            </div>
-            <div class='col-md-4'>
-                <div class='alert alert-info'>
-                    <p><i class='fa fa-info-circle'></i> Some columns will tell us more about the uniqueness of each row better than others.</p>
-
-                    <p>Some useful columns are:</p>
-
-                    <ul>
-                        <li>Name (organization or person)</li>
-                        <li>Address</li>
-                        <li>Phone number</li>
-                        <li>Category</li>
-                    </ul>
-
-                    <p><br /><a target='_blank' href='http://dedupe.readthedocs.org/en/latest/Matching-records.html'>More on how dedupe matches records &raquo;</a></p>
-                </div>
-            </div>
+        {% if fields %}
+        <p>Select the columns that you think tell the most information about each row in your spreadsheet.</p>
+        <div class='alert alert-info alert-dismissible'>
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <p><i class='fa fa-info-circle'></i> <strong>Picking the right columns:</strong> Some columns will tell us more about the uniqueness of each row better than others. <br />Some useful columns include: name (organization or person), address, phone number and category. <a target='_blank' href='http://dedupe.readthedocs.org/en/latest/Matching-records.html'>More on how dedupe matches records &raquo;</a></p>
         </div>
+
+        <form id="fields" role="form" action="{{ url_for('trainer.select_fields')}}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+            <div class="form-group">
+                <table class='table'>
+                    <thead>
+                        <tr>
+                            <th>Column name</th>
+                            <th>Sample values</th>
+                        </tr>
+                    </thead>
+                {% for field in fields %}
+                    <tr>
+                        <td><label><input type="checkbox" name="{{field}}"> {{field}}</label></td>
+                        <td>{{ sample_values[loop.index0]|join(', ') }}</td>
+                    </tr>
+                {% endfor %}
+                </table>
+            </div>
+
+            <div class='clearfix'></div>
+            <hr />
+            <p>
+                <button type="submit" class="btn btn-info" id="start-training">
+                    Next &raquo;
+                </button>
+            </p>
+        </form>
+        {% else %}
+        <div id="spinner"></div>
+        {% endif %}
     </div>
     {% else %}
         {% include "partials/error.html" %}
