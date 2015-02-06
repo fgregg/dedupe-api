@@ -80,11 +80,11 @@
                 <% $.each(matches, function(i, match){ %>
                     <tr>
                         <td data-record_id="<%= match.record_id %>">
-                            <input type="checkbox" name='match_record'/>
+                            <input type="checkbox" name='match_record' id="check_<%= match.record_id %>"/>
                         </td>
                         <% $.each(match, function(field, val){ %>
                             <% if (field != 'record_id' && field != 'entity_id') { %>
-                                <td><%= val %></td>
+                                <td><label for="check_<%= match.record_id %>"><%= val %></label></td>
                             <% } %>
                         <% }) %>
                     </tr>

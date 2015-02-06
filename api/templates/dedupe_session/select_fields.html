@@ -28,8 +28,8 @@
                     </thead>
                 {% for field in fields %}
                     <tr>
-                        <td><label><input type="checkbox" name="{{field}}"> {{field}}</label></td>
-                        <td>{{ sample_values[loop.index0]|join(', ') }}</td>
+                        <td><label for="id_{{field}}"><input type="checkbox" name="{{field}}" id="id_{{field}}"> {{field}}</label></td>
+                        <td><label for="id_{{field}}">{{ sample_values[loop.index0]|join(', ') }}</label></td>
                     </tr>
                 {% endfor %}
                 </table>

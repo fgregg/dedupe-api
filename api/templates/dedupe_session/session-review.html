@@ -66,12 +66,12 @@
                                   <tr>
                                       <td data-record_id="<%= item.record_id %>" >
                                         <span class="check_record" data-content="Uncheck if this record doesn't belong">
-                                          <input checked type="checkbox" />
+                                          <input checked type="checkbox" id="check_<%= item.record_id %>"/>
                                         </span>
                                       </td>
                                       <% $.each(item, function(i, val){ %>
                                           <% if (i != 'record_id' && i != 'confidence') { %>
-                                              <td><%= val %></td>
+                                              <td><label for="check_<%= item.record_id %>"><%= val %></label></td>
                                           <% } %>
                                       <% }) %>
                                   </tr>
