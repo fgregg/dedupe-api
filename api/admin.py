@@ -305,6 +305,7 @@ def review():
         SELECT 
             d.id,
             d.name,
+            d.description,
             d.filename,
             d.date_added,
             d.date_updated,

@@ -97,6 +97,7 @@
     function render_session_list() {
         $.when($.getJSON('/session-list/')).then(
           function(resp){
+            //console.log(resp);
             $('#session-list').html("");
             $("#processing-msg").hide();
             var rows = ''
