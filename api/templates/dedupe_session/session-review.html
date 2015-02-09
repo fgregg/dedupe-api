@@ -26,6 +26,11 @@
                 <div class="modal-header">
                     <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
                     <p class="modal-title">Are you sure you want to accept the remaining entities?</p>
+                    <p>If you accept, we predict there will be:</p>
+                    <ul>
+                      <li><strong id='false-positive'>0</strong> false positive clusters</li>
+                      <li><strong id='false-negative'>0</strong> false negative clusters</li>
+                    </ul>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
@@ -175,6 +180,8 @@
             $('.mark-entity').on('click', markEntity);
             $('#accept-all').on('click', acceptAll);
             $('.check_record').popover({trigger: "hover", placement: "top"});
+            $('#false-negative').html(parseInt(resp.false_negative));
+            $('#false-positive').html(parseInt(resp.false_positive));
         } else {
             $('#group-display').html("<h3>You're done!</h3>")
             $('#review-buttons').hide()
