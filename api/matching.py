@@ -139,7 +139,10 @@ def match():
             for k,v in obj.items():
                 if field_types.get(k):
                     if 'Price' in field_types[k]:
-                        obj[k] = float(v)
+                        if v:
+                            obj[k] = float(v)
+                        else:
+                            obj[k] = u''
                     else:
                         obj[k] = preProcess(unicode(v))
             block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', obj)]))])
@@ -361,18 +364,25 @@ def add_entity():
         for k,v in obj.items():
             if field_types.get(k):
                 if 'Price' in field_types[k]:
-                    obj[k] = float(v)
+                    if v:
+                        obj[k] = float(v)
+                    else:
+                        obj[k] = u''
                 else:
                     obj[k] = preProcess(unicode(v))
         block_keys = [{'record_id': b[1], 'block_key': b[0]} \
                 for b in list(deduper.blocker([(record_id, obj)]))]
-        with engine.begin() as conn:
-            conn.execute(text(''' 
-                INSERT INTO "match_blocks_{0}" (
-                    block_key,
-                    record_id
-                ) VALUES (:block_key, :record_id)
-            '''.format(sess.id)), *block_keys)
+        if block_keys:
+            with engine.begin() as conn:
+                conn.execute(text(''' 
+                    INSERT INTO "match_blocks_{0}" (
+                        block_key,
+                        record_id
+                    ) VALUES (:block_key, :record_id)
+                '''.format(sess.id)), *block_keys)
+        else:
+            if sentry:
+                sentry.captureMessage('Unable to block record', extra=post)
     if sess.review_count:
         sess.review_count = sess.review_count - 1
         db_session.add(sess)
