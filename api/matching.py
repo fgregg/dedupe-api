@@ -196,7 +196,7 @@ def match():
                     sentry.captureMessage('Unable to block record', extra=post)
         r['matches'] = match_list
 
-    resp = make_response(json.dumps(r, default=_to_json), status_code)
+    resp = make_response(json.dumps(r, default=_to_json, sort_keys=False), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
@@ -451,7 +451,7 @@ def get_unmatched():
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     resp['remaining'] = dedupe_session.review_count
-    raw_fields = list(set([f['field'] for f in json.loads(dedupe_session.field_defs)]))
+    raw_fields = sorted(list(set([f['field'] for f in json.loads(dedupe_session.field_defs)])))
     raw_fields.append('record_id')
     fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
     sel = ''' 
@@ -471,7 +471,7 @@ def get_unmatched():
         db_session.commit()
     else:
         resp['object'] = rows[0]
-    response = make_response(json.dumps(resp, default=_to_json), status_code)
+    response = make_response(json.dumps(resp, default=_to_json, sort_keys=False), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
 

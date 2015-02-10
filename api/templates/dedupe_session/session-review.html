@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "partials/dedupe_steps.html" import dedupe_steps %}
 {% block title %}
+    {{dedupe_session.name}} - 
     {% if first_review %}
         Review entities
     {% else %}
@@ -58,7 +59,7 @@
                     <table class="table table-bordered table-condensed">
                       <thead>
                             <tr>
-                                <th><span data-content="Toggle all" id="check_toggle_all" style='white-space: nowrap;'><input checked type="checkbox" /><small> (all)</small></span></th>
+                                <th class='nowrap'><span data-content="Toggle all" id="check_toggle_all"><input checked type="checkbox" /><small> (all)</small></span></th>
                                 <% $.each(resp.objects[0], function(k,v){ %>
                                     <% if (k != 'record_id' && k != 'confidence') { %>
                                         <th><%= k %></th>
@@ -71,7 +72,9 @@
                                   <tr>
                                       <td data-record_id="<%= item.record_id %>" >
                                         <span class="check_record" data-content="Uncheck if this record doesn't belong">
-                                          <input checked type="checkbox" class='select_record' id="check_<%= item.record_id %>"/>
+                                          <label>
+                                            <input checked type="checkbox" class='select_record' id="check_<%= item.record_id %>"/> include
+                                          </label>
                                         </span>
                                       </td>
                                       <% $.each(item, function(i, val){ %>

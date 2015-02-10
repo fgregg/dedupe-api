@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% from "partials/dedupe_steps.html" import dedupe_steps %}
-{% block title %}Final review {% endblock %}
+{% block title %}{{dedupe_session.name}} - Final review {% endblock %}
 {% block content %}
     <div class="row">
         <div class="col-md-12">
             {{ dedupe_steps( dedupe_session ) }}
             <h3>6. Final review</h3>
+            <p>Below is a single record that doesn't belong to an entity. Match it to one or more of the entities below. If it doesn't belong with any of them, skip it and move on.</p>
             <div class="row">
                 <div id="counter" class="col-md-12"></div>
             </div>
@@ -16,16 +17,9 @@
                     </div>
                     <div id="review-buttons" class="row">
                         <div class="col-md-12">
-                            <button class="btn btn-info mark-match">
-                                Next record&raquo;
+                            <button class="btn btn-info" id="mark-match">
+                                None of these match &raquo;
                             </button>
-                        </div>
-                    </div>
-                    <div class="row" style="display:none" id="errors">
-                        <div class="col-md-12">
-                            <div class="alert alert-danger" role="alert">
-                                <strong>Oops!</strong> You can only pick one matching record
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -47,6 +41,7 @@
         <table class="table table-bordered table-condensed">
             <thead>
                 <tr>
+                    <td></td>
                     <% $.each(obj, function(field, value){ %>
                         <% if (field != 'record_id') { %>
                             <th><%= field %></th>
@@ -55,35 +50,19 @@
                 </tr>
             </thead>
             <tbody>
-                <tr>
+                <tr class='warning'>
+                    <td>Unmatched record</td>
                     <% $.each(obj, function(field, value){ %>
                         <% if (field != 'record_id') { %>
                             <td><%= value %></td>
                         <% } %>
                     <% }) %>
                 </tr>
-            </tbody>
-        </table>
-    </div>
-    <% if(matches.length > 0){ %>
-        <h4>Select the matching record</h4>
-        <div class='overflow-container'>
-            <table class="table table-bordered table-striped table-condensed">
-                <thead>
-                    <tr>
-                        <th></th>
-                        <% $.each(matches[0], function(field, value){ %>
-                            <% if (field != 'record_id' && field != 'entity_id') { %>
-                                <th><%= field %></th>
-                            <% } %>
-                        <% }) %>
-                    </tr>
-                </thead>
-                <tbody>
+                <% if(matches.length > 0){ %>
                     <% $.each(matches, function(i, match){ %>
                         <tr>
-                            <td data-record_id="<%= match.record_id %>">
-                                <input type="checkbox" name='match_record' id="check_<%= match.record_id %>"/>
+                            <td data-record_id="<%= match.record_id %>" class='nowrap'>
+                                <label><input type="checkbox" class='select_entity' id="check_<%= match.record_id %>"/> match</label>
                             </td>
                             <% $.each(match, function(field, val){ %>
                                 <% if (field != 'record_id' && field != 'entity_id') { %>
@@ -92,12 +71,10 @@
                             <% }) %>
                         </tr>
                     <% }) %>
-                </tbody>
-            </table>
-        </div>
-    <% } else { %>
-        <h4>No matches found</h4>
-    <% } %>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
 </script>
 <script type="text/javascript">
     var session_id = "{{ session_id }}"
@@ -105,8 +82,7 @@
     var match_obj;
     $(document).ready(function(){
         getAndMatch();
-        $('.mark-match').on('click', function(e){
-            $('#errors').hide();
+        $('#mark-match').on('click', function(e){
             var data = {
                 'api_key': api_key,
                 'object': match_obj,
@@ -158,8 +134,7 @@
                 )
             } else {
                 $('#group-display').spin(false);
-                console.log("DONE!!");
-                $('#group-display').html('<h2>You are done</h2>')
+                $('#group-display').html('<h2>Matching complete</h2>')
             }
         });
     }
@@ -167,6 +142,19 @@
         var tpl = new EJS({'text': $('#matchTemplate').html()});
         // console.log(obj)
         $('#group-display').html(tpl.render({matches: matches, obj: obj.object, remaining:remaining}))
+
+        $('#mark-match').html("None of these match &raquo;");
+
+        $('.select_entity').on('click', function(e){
+            var count = 0;
+            $('.select_entity').each(function() {
+                if ($(this).prop("checked")) count += 1;
+            });
+            if (count > 0)
+                $('#mark-match').html("Match record &raquo;");
+            else
+                $('#mark-match').html("None of these match &raquo;");
+        });
     }
     function getRecord(){
         return $.getJSON('/get-unmatched-record/?session_id=' + session_id)

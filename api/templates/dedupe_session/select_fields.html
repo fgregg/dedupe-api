@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% from "partials/dedupe_steps.html" import dedupe_steps %}
-{% block title %}Fields to compare{% endblock %}
+{% block title %}{{dedupe_session.name}} - Fields to compare{% endblock %}
 {% block content %}
     <div class="col-md-12">
         {{ dedupe_steps( dedupe_session ) }}

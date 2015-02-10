@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% from "partials/dedupe_steps.html" import dedupe_steps %}
-{% block title %}Train{% endblock %}
+{% block title %}{{dedupe_session.name}} -  Train{% endblock %}
 {% block content %}
     <div class="col-md-12">
     {{ dedupe_steps( dedupe_session ) }}
