@@ -40,11 +40,11 @@
 <script type="text/EJS" id="matchTemplate">
     <div class="row">
         <div id="counter" class="col-md-12">
-            <p><strong><%= remaining %></strong> left to review</p>
+            <h4><strong><%= remaining %></strong> left to review</h4>
         </div>
     </div>
-    <div class='overflow-horizontal'>
-        <table class="table table-bordered">
+    <div class='overflow-container'>
+        <table class="table table-bordered table-condensed">
             <thead>
                 <tr>
                     <% $.each(obj, function(field, value){ %>
@@ -67,32 +67,34 @@
     </div>
     <% if(matches.length > 0){ %>
         <h4>Select the matching record</h4>
-        <table class="table table-bordered table-striped">
-            <thead>
-                <tr>
-                    <th></th>
-                    <% $.each(matches[0], function(field, value){ %>
-                        <% if (field != 'record_id' && field != 'entity_id') { %>
-                            <th><%= field %></th>
-                        <% } %>
-                    <% }) %>
-                </tr>
-            </thead>
-            <tbody>
-                <% $.each(matches, function(i, match){ %>
+        <div class='overflow-container'>
+            <table class="table table-bordered table-striped table-condensed">
+                <thead>
                     <tr>
-                        <td data-record_id="<%= match.record_id %>">
-                            <input type="checkbox" name='match_record' id="check_<%= match.record_id %>"/>
-                        </td>
-                        <% $.each(match, function(field, val){ %>
+                        <th></th>
+                        <% $.each(matches[0], function(field, value){ %>
                             <% if (field != 'record_id' && field != 'entity_id') { %>
-                                <td><label for="check_<%= match.record_id %>"><%= val %></label></td>
+                                <th><%= field %></th>
                             <% } %>
                         <% }) %>
                     </tr>
-                <% }) %>
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    <% $.each(matches, function(i, match){ %>
+                        <tr>
+                            <td data-record_id="<%= match.record_id %>">
+                                <input type="checkbox" name='match_record' id="check_<%= match.record_id %>"/>
+                            </td>
+                            <% $.each(match, function(field, val){ %>
+                                <% if (field != 'record_id' && field != 'entity_id') { %>
+                                    <td><label for="check_<%= match.record_id %>"><%= val %></label></td>
+                                <% } %>
+                            <% }) %>
+                        </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
     <% } else { %>
         <h4>No matches found</h4>
     <% } %>
