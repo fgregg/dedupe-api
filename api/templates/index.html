@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Home{% endblock %}
+{% block title %}Dedupe sessions{% endblock %}
 {% block content %}
 <div class="row">
     <div class="col-md-12">
@@ -41,6 +41,7 @@
                             <tr id="review-header">
                                 <th>Name</th>
                                 <th>Progress</th>
+                                <th>To review</th>
                                 <th>Updated</th>
                                 <th></th>
                             </tr>
@@ -81,8 +82,15 @@
             </div>
         </td>
         <td>
+            <% if (object.review_count) { %>
+                <%= object.review_count %>
+            <% } else { %>
+                0
+            <% } %>
+        </td>
+        <td>
             <% if (object.date_updated) { %>
-                <span datetime='<%= moment(object.date_updated + 0000).format("YYYYMMDDHHmm") %>'>
+                <span datetime='<%= moment(object.date_updated + 0000).format("YYYYMMDDHHmm") %>' title='<%= moment(object.date_updated + 0000).format("MMM, DD, YYYY HH:mm") %>'>
                 <%= moment(object.date_updated + "+0000").from(moment()) %>
                 </span>
             <% } %>
@@ -170,8 +178,9 @@
             })
 
             $('#dedupe-sessions table').DataTable( {
-                "aaSorting": [ [2,'desc'] ],
+                "aaSorting": [ [3,'desc'] ],
                 "aoColumns": [
+                    null,
                     null,
                     null,
                     { "sType": "datetime" },

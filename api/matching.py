@@ -18,6 +18,7 @@ from sqlalchemy import Table, text
 from datetime import datetime
 from hashlib import md5
 from unidecode import unidecode
+from collections import OrderedDict
 
 matching = Blueprint('matching', __name__)
 
@@ -186,7 +187,7 @@ def match():
                         with engine.begin() as conn:
                             matches = list(conn.execute(sel, ids=ids))
                         for match in matches:
-                            m = {f: getattr(match, f) for f in model_fields}
+                            m = OrderedDict([(f, getattr(match, f),) for f in model_fields])
                             m['record_id'] = getattr(match, 'record_id')
                             m['entity_id'] = getattr(match, 'entity_id')
                             # m['match_confidence'] = float(confs[str(m['entity_id'])])
@@ -464,7 +465,7 @@ def get_unmatched():
     '''.format(fields, session_id)
     engine = db_session.bind
     with engine.begin() as conn:
-        rows = [dict(zip(raw_fields, r)) for r in conn.execute(sel)]
+        rows = [OrderedDict(zip(raw_fields, r)) for r in conn.execute(sel)]
     if not rows:
         dedupe_session.status = 'canonical'
         db_session.add(dedupe_session)
