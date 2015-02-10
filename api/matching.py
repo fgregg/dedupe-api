@@ -24,7 +24,7 @@ matching = Blueprint('matching', __name__)
 dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
 
 try: # pragma: no cover
-    from raven.contrib.flask import Sentry
+    from raven import Client as Sentry
     from api.app_config import SENTRY_DSN
     sentry = Sentry(dsn=SENTRY_DSN) 
 except ImportError:

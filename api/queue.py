@@ -4,7 +4,7 @@ from datetime import datetime
 import sys
 import os
 from api.app_config import REDIS_QUEUE_KEY, DB_CONN, WORKER_SENTRY, TIME_ZONE
-from api.database import init_engine, worker_session
+from api.database import init_engine
 from api.models import DedupeSession, WorkTable
 import traceback
 from sqlalchemy.exc import ProgrammingError, InternalError
@@ -23,7 +23,6 @@ except KeyError:
 
 def queuefunc(f):
     def delay(*args, **kwargs):
-        engine = worker_session.bind
         s = dumps((f, args, kwargs))
         key = unicode(uuid4())
         with engine.begin() as conn:
@@ -36,7 +35,6 @@ def queuefunc(f):
     return f
 
 def processMessage():
-    engine = worker_session.bind
     sel = "SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1"
     work = engine.execute(sel).first()
     if not work:
@@ -112,7 +110,6 @@ def processMessage():
 def queue_daemon(db_conn=DB_CONN): # pragma: no cover
     # import logging
     # logging.getLogger().setLevel(logging.DEBUG)
-    engine = init_engine(db_conn)
     work_table = WorkTable.__table__
     work_table.create(engine, checkfirst=True)
     print 'Listening for messages...'
