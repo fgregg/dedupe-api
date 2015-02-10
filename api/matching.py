@@ -129,8 +129,19 @@ def match():
                 match_list.append(d)
         else:
             deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+            field_defs = json.loads(sess.field_defs)
+            field_types = {}
+            for field in field_defs:
+                if field_types.get(field['field']):
+                    field_types[field['field']].append(field['type'])
+                else:
+                    field_types[field['field']] = [field['type']]
             for k,v in obj.items():
-                obj[k] = preProcess(unicode(v))
+                if field_types.get(k):
+                    if 'Price' in field_types[k]:
+                        obj[k] = float(v)
+                    else:
+                        obj[k] = preProcess(unicode(v))
             block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', obj)]))])
             
             # Sometimes the blocker does not find blocks. In this case we can't match
@@ -439,7 +450,7 @@ def get_unmatched():
         db_session.commit()
     else:
         resp['object'] = rows[0]
-    response = make_response(json.dumps(resp), status_code)
+    response = make_response(json.dumps(resp, default=_to_json), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
 

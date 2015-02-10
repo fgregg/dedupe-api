@@ -29,6 +29,7 @@ from uuid import uuid4
 import collections
 from csvkit.unicsv import UnicodeCSVReader
 from csvkit import convert
+from unidecode import unidecode
 
 redis = Redis()
 
@@ -54,13 +55,13 @@ def upload():
     if file_type != 'csv': # pragma: no cover
         file_format = convert.guess_format(flask_session['session_name'])
         u = StringIO(convert.convert(u, file_format))
-    fieldnames = [slugify(unicode(i)) for i in u.next().strip('\r\n').split(',')]
+    fieldnames = [slugify(unidecode(unicode(i))) for i in u.next().strip('\r\n').split(',')]
     sample_values = [[] for i in range(len(fieldnames))]
     v = 0
     while v < 10:
         line = u.next().strip('\r\n').split(',')
         for i in range(len(fieldnames)):
-            sample_values[i].append(line[i])
+            sample_values[i].append(unidecode(unicode(line[i])))
         v += 1
     flask_session['fieldnames'] = fieldnames
     flask_session['sample_values'] = sample_values

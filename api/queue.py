@@ -11,6 +11,8 @@ from sqlalchemy.exc import ProgrammingError, InternalError
 from sqlalchemy import text
 import time
 
+engine = init_engine(DB_CONN)
+
 try:
     from raven import Client
     client = Client(os.environ[''])

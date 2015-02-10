@@ -203,6 +203,7 @@ def windowed_query(q, column, windowsize):
 
 def slugify(text, delim=u'_'):
     if text:
+        text = unicode(text)
         punct_re = re.compile(r'[\t !"#$%&\'()*\-/<=>?@\[\\\]^_`{|},.:;]+')
         result = []
         for word in punct_re.split(text.lower()):

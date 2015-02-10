@@ -207,6 +207,13 @@ def getMatchingReady(session_id):
         conn.rollback()
         raise e
     conn.close()
+    try:
+        conn = engine.connect()
+        trans = conn.begin()
+        conn.execute('DROP INDEX "match_blocks_key_{0}_idx"'.format(session_id))
+        trans.commit()
+    except Exception:
+        trans.rollback()
     with engine.begin() as conn:
         conn.execute('''
             CREATE INDEX "match_blocks_key_{0}_idx" 
@@ -356,9 +363,9 @@ def blockDedupe(session_id,
     entity_table = Table(entity_table_name, metadata,
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.tfidf_fields:
-        with engine.begin() as conn:
-            fd = conn.execute('select record_id, {0} from "{1}"'.format(field, table_name))
-            deduper.blocker.tfIdfBlock(fd, field)
+        fd = ((unicode(f[0]), f[1],) for f in \
+                engine.execute('select record_id, {0} from "{1}"'.format(field, table_name)))
+        deduper.blocker.index(fd, field)
     """ 
     SELECT p.* <-- need the fields that we trained on at least
         FROM processed as p

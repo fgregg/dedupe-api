@@ -370,23 +370,37 @@ def writeBlockingMap(session_id, block_data, canonical=False):
 
     block_key_idx = Index('bk_{0}_idx'.format(session_id), bkm.c.block_key)
     block_key_idx.create(engine)
-
-    plural_key = Table('plural_key_{0}'.format(session_id), metadata,
-        Column('block_key', Text),
-        Column('block_id', Integer, primary_key=True)
-    )
-    plural_key.drop(engine, checkfirst=True)
-    plural_key.create(engine)
-    bkm_sel = select([bkm.c.block_key], from_obj=bkm)\
-        .group_by(bkm.c.block_key)\
-        .having(func.count(bkm.c.block_key) > 1)
-    pl_ins = plural_key.insert()\
-        .from_select([plural_key.c.block_key], bkm_sel)
-    with engine.begin() as c:
-        c.execute(pl_ins)
     
-    pl_key_idx = Index('pk_{0}_idx'.format(session_id), plural_key.c.block_key)
-    pl_key_idx.create(engine)
+    with engine.begin() as conn:
+        conn.execute('DROP TABLE IF EXISTS "plural_key_{0}"'.format(session_id))
+
+    create = ''' 
+        CREATE TABLE "plural_key_{0}" (
+          block_key VARCHAR,
+          block_id SERIAL PRIMARY KEY
+        ) 
+    '''.format(session_id) 
+    insert = '''
+        INSERT INTO "plural_key_{0}" ( 
+          SELECT 
+            MAX(block_key) as block_key 
+          FROM (
+            SELECT 
+              block_key,
+              string_agg(record_id::text, ',' ORDER BY record_id) AS block
+            FROM "block_{0}"
+            GROUP BY block_key HAVING COUNT(*) > 1
+          ) AS blocks
+          GROUP BY block, block_key
+        )
+    '''.format(session_id)
+    idx = ''' 
+        CREATE INDEX "pk_{0}_idx" ON "plural_key_{0}" (block_key) 
+    '''.format(session_id)
+    with engine.begin() as conn:
+        conn.execute(create)
+        conn.execute(insert)
+        conn.execute(idx)
 
     with engine.begin() as c:
         c.execute('DROP TABLE IF EXISTS "plural_block_{0}"'.format(session_id))
