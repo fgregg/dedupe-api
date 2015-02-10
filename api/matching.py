@@ -351,8 +351,19 @@ def add_entity():
         with engine.begin() as conn:
             conn.execute(entity_table.insert(), **entity)
         deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+        field_defs = json.loads(sess.field_defs)
+        field_types = {}
+        for field in field_defs:
+            if field_types.get(field['field']):
+                field_types[field['field']].append(field['type'])
+            else:
+                field_types[field['field']] = [field['type']]
         for k,v in obj.items():
-            obj[k] = preProcess(unicode(v))
+            if field_types.get(k):
+                if 'Price' in field_types[k]:
+                    obj[k] = float(v)
+                else:
+                    obj[k] = preProcess(unicode(v))
         block_keys = [{'record_id': b[1], 'block_key': b[0]} \
                 for b in list(deduper.blocker([(record_id, obj)]))]
         with engine.begin() as conn:
