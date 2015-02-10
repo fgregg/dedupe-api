@@ -142,7 +142,7 @@ def match():
                         if v:
                             obj[k] = float(v)
                         else:
-                            obj[k] = u''
+                            obj[k] = 0
                     else:
                         obj[k] = preProcess(unicode(v))
             block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', obj)]))])
@@ -367,7 +367,7 @@ def add_entity():
                     if v:
                         obj[k] = float(v)
                     else:
-                        obj[k] = u''
+                        obj[k] = 0
                 else:
                     obj[k] = preProcess(unicode(v))
         block_keys = [{'record_id': b[1], 'block_key': b[0]} \
