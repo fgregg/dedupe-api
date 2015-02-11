@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "partials/dedupe_steps.html" import dedupe_steps %}
 {% block title %}
-    {{dedupe_session.name}} - 
+    {{dedupe_session.name}} -
     {% if first_review %}
         Review entities
     {% else %}
@@ -155,7 +155,7 @@
         var match_ids = []
         var distinct_ids = []
         $.each($('.select_record'), function(i, inp){
-            var record_id = $(inp).parent().parent().data('record_id')
+            var record_id = $(inp).parent().parent().parent().data('record_id')
             if($(inp).is(':checked')){
                 match_ids.push(record_id)
             } else {
@@ -167,7 +167,7 @@
             'match_ids': match_ids.join(','),
             'distinct_ids': distinct_ids.join(',')
         }
-        // console.log(params);
+        console.log(params);
         $('#group-display').spin('large');
         $.when(markCluster(params), getCluster()).then(
             function(mark_resp, resp){
@@ -189,9 +189,9 @@
             $('#check_toggle_all').on('click', function(e){
               var checkbox = $(this).children().first();
               checkbox.prop("checked", !checkbox.prop("checked"));
-              $('.select_record').each(function() { 
-                if (checkbox.prop("checked")) this.checked = true;  
-                else this.checked = false;         
+              $('.select_record').each(function() {
+                if (checkbox.prop("checked")) this.checked = true;
+                else this.checked = false;
               });
             });
         } else {
