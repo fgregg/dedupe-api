@@ -59,7 +59,7 @@
                     <table class="table table-bordered table-condensed">
                       <thead>
                             <tr>
-                                <th class='nowrap'><span data-content="Toggle all" id="check_toggle_all"><input checked type="checkbox" /><small> (all)</small></span></th>
+                                <th class='nowrap' style='width: 80px'><label data-content="Toggle all" id="check_toggle_all"><input checked type="checkbox" /> <small id='check_toggle_all_label'>(all)</small></label></th>
                                 <% $.each(resp.objects[0], function(k,v){ %>
                                     <% if (k != 'record_id' && k != 'confidence') { %>
                                         <th><%= k %></th>
@@ -186,9 +186,13 @@
             $('#false-negative').html(parseInt(resp.false_negative));
             $('#false-positive').html(parseInt(resp.false_positive));
 
-            $('#check_toggle_all').on('click', function(e){
-              var checkbox = $(this).children().first();
-              checkbox.prop("checked", !checkbox.prop("checked"));
+            $('#check_toggle_all input').on('click', function(e){
+              var checkbox = $(this);
+              var label = $("#check_toggle_all_label");
+              if (label.html() == "(all)")
+                label.html("(none)");
+              else
+                label.html("(all)");
               $('.select_record').each(function() {
                 if (checkbox.prop("checked")) this.checked = true;
                 else this.checked = false;
