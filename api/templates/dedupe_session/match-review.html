@@ -90,7 +90,7 @@
             }
             data['match_ids'] = [];
             $.each($('input:checked'), function(i, check){
-                data['match_ids'].push($(check).parent().data('record_id'))
+                data['match_ids'].push($(check).parent().parent().data('record_id'))
             })
             data['match_ids'] = data['match_ids'].join(',');
             $.when(addToEntityMap(JSON.stringify(data))).then(
