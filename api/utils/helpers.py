@@ -262,12 +262,13 @@ def makeSampleDict(session_id):
 
 def getDistinct(field_name, session_id):
     engine = app_session.bind
-    metadata = MetaData()
-    table = Table('processed_%s' % session_id, metadata,
-        autoload=True, autoload_with=engine)
-    col = getattr(table.c, field_name)
-    q = app_session.query(distinct(col)).filter(and_(col != None, col != ''))
-    distinct_values = list(set([unicode(v[0]) for v in q.all()]))
+    sel = ''' 
+        SELECT DISTINCT {0}
+        FROM "processed_{1}"
+        WHERE {0} IS NOT NULL
+            AND {0} != ''
+    '''.format(field_name, session_id)
+    distinct_values = list(set([unicode(v[0]) for v in engine.execute(sel)]))
     return distinct_values
 
 def checkinSessions():

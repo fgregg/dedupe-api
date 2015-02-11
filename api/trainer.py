@@ -30,6 +30,7 @@ import collections
 from csvkit.unicsv import UnicodeCSVReader
 from csvkit import convert
 from unidecode import unidecode
+from operator import itemgetter
 
 redis = Redis()
 
@@ -55,11 +56,12 @@ def upload():
     if file_type != 'csv': # pragma: no cover
         file_format = convert.guess_format(flask_session['session_name'])
         u = StringIO(convert.convert(u, file_format))
-    fieldnames = [slugify(unidecode(unicode(i))) for i in u.next().strip('\r\n').split(',')]
+    reader = UnicodeCSVReader(u)
+    fieldnames = [slugify(unidecode(unicode(i))) for i in reader.next()]
     sample_values = [[] for i in range(len(fieldnames))]
     v = 0
     while v < 10:
-        line = u.next().strip('\r\n').split(',')
+        line = reader.next()
         for i in range(len(fieldnames)):
             sample_values[i].append(unidecode(unicode(line[i])))
         v += 1
@@ -81,6 +83,7 @@ def upload():
     with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
         s.write(u.getvalue())
     del u
+    del reader
     initializeSession.delay(session_id)
     flask_session['session_id'] = session_id
     return jsonify(ready=True, session_id=session_id)
@@ -212,14 +215,6 @@ def select_field_types():
                 if has_missing:
                     f.update({'has_missing': True})
             field_defs.extend(fs)
-        init = True
-        if dedupe_session.field_defs:
-            old_fields = set([f['field'] for f in \
-                    json.loads(dedupe_session.field_defs)])
-            new_fields = set([f['field'] for f in \
-                    field_defs])
-            if old_fields == new_fields:
-                init = False
         engine = db_session.bind
         with engine.begin() as conn:
             conn.execute(text(''' 
@@ -228,7 +223,7 @@ def select_field_types():
                 WHERE id = :id
             '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
         if not errors:
-            initializeModel.delay(dedupe_session.id, init=init)
+            initializeModel.delay(dedupe_session.id)
         return redirect(url_for('trainer.training_run'))
     return render_template('dedupe_session/select_field_types.html', 
                            field_list=field_list, 
@@ -241,7 +236,6 @@ def select_field_types():
 @check_sessions()
 def training_run():
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
-
     if dedupe_session.training_data:
         td = json.loads(dedupe_session.training_data)
         flask_session['counter'] = {
@@ -261,8 +255,10 @@ def training_run():
             .all()
     if not errors:
         status_code = 200
+        time.sleep(1)
+        db_session.refresh(dedupe_session)
         field_defs = json.loads(dedupe_session.field_defs)
-        if dedupe_session.sample:
+        if not dedupe_session.processing and dedupe_session.sample:
             sample = cPickle.loads(dedupe_session.sample)
             if sample[0][0].get('record_id'):
                 deduper = dedupe.Dedupe(field_defs, data_sample=sample)
@@ -274,7 +270,7 @@ def training_run():
                 initializeModel.delay(dedupe_session.id)
     else:
         status_code = 500
-    time.sleep(1)
+    time.sleep(0.5)
     db_session.refresh(dedupe_session)
     return make_response(render_template(
                             'dedupe_session/training_run.html', 

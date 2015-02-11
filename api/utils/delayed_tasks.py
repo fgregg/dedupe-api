@@ -298,6 +298,7 @@ def initializeSession(session_id):
 
 @queuefunc
 def initializeModel(session_id, init=True):
+    worker_session.expire_all()
     sess = worker_session.query(DedupeSession).get(session_id)
     while True:
         worker_session.refresh(sess, ['field_defs', 'sample'])
