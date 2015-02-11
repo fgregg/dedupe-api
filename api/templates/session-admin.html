@@ -138,11 +138,15 @@
                                 </thead>
                                 <tbody>
                                     {% for field in item %}
-                                    <tr>
-                                        <td class='field-name'>{{field.field}}</td>
-                                        <td class=''>{{field.left}}</td>
-                                        <td class=''>{{field.right}}</td>
-                                    </tr>
+                                        {% set diff_class = 'danger'%}
+                                        {% if field.left == field.right and field.left != "" %}
+                                            {% set diff_class = 'success'%}
+                                        {% endif %}
+                                        <tr>
+                                            <td class='field-name'>{{field.field}}</td>
+                                            <td class='{{diff_class}}'>{{field.left}}</td>
+                                            <td class='{{diff_class}}'>{{field.right}}</td>
+                                        </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
