@@ -471,8 +471,7 @@ def dedupeRaw(session_id, threshold=0.75):
     sel = ''' 
         SELECT 
             entity_id, 
-            MAX(confidence)::DOUBLE PRECISION,
-            COUNT(*)
+            array_agg(confidence)
         FROM "entity_{0}"
         WHERE clustered = FALSE
         GROUP BY entity_id
@@ -559,8 +558,7 @@ def dedupeCanon(session_id, threshold=0.25):
     sel = ''' 
         SELECT 
             entity_id, 
-            MAX(confidence)::DOUBLE PRECISION,
-            COUNT(*)
+            array_agg(confidence)
         FROM "entity_{0}_cr"
         WHERE clustered = FALSE
         GROUP BY entity_id
