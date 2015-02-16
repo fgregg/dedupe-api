@@ -1,6 +1,5 @@
 import numpy
 import rlr
-from collections import OrderedDict
 
 class ReviewMachine(object):
     def __init__(self, clusters):
