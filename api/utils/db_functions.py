@@ -21,6 +21,15 @@ from datetime import datetime
 from operator import itemgetter
 from itertools import groupby
 
+try: # pragma: no cover
+    from raven import Client as Sentry
+    from api.app_config import SENTRY_DSN
+    sentry = Sentry(dsn=SENTRY_DSN) 
+except ImportError:
+    sentry = None
+except KeyError: #pragma: no cover
+    sentry = None
+
 def addRowHash(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
@@ -203,6 +212,135 @@ def initializeEntityMap(session_id, fields):
         ) 
         FROM STDIN CSV'''.format(session_id), s)
     conn.commit()
+
+def addToEntityMap(session_id, new_entity, match_ids=None):
+    sess = worker_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(sess.field_defs)
+    fds = {}
+    for fd in field_defs:
+        try:
+            fds[fd['field']].append(fd['type'])
+        except KeyError:
+            fds[fd['field']] = [fd['type']]
+    else:
+        engine = worker_session.bind
+        sel = text(''' 
+            SELECT * from "processed_{0}" 
+            WHERE record_id = :record_id 
+            LIMIT 1
+        '''.format(session_id))
+        row = engine.execute(sel, record_id=new_entity['record_id'])
+        if not row: # pragma: no cover
+            raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
+                autoload=True, autoload_with=engine, keep_existing=True)
+            proc_ins = 'INSERT INTO "processed_{0}" (SELECT record_id, '\
+                .format(proc_table_name)
+            for idx, field in enumerate(fds.keys()):
+                try:
+                    field_types = fds[field]
+                except KeyError:
+                    field_types = ['String']
+                # TODO: Need to figure out how to parse a LatLong field type
+                if 'Price' in field_types:
+                    col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
+                else:
+                    col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
+                if idx < len(fds.keys()) - 1:
+                    proc_ins += '{0}, '.format(col_def)
+                else:
+                    proc_ins += '{0} '.format(col_def)
+            else:
+                proc_ins += 'FROM "raw_{0}" WHERE record_id = :record_id)'\
+                    .format(session_id)
+
+            with engine.begin() as conn:
+                record_id = conn.execute(raw_table.insert()\
+                    .returning(raw_table.c.record_id) , **new_entity)
+                conn.execute(text(proc_ins), record_id=record_id)
+        hash_me = ';'.join([preProcess(unicode(new_entity[i])) for i in fds.keys()])
+        md5_hash = md5(unidecode(hash_me)).hexdigest()
+        last_update = datetime.now().replace(tzinfo=TIME_ZONE)
+        entity = {
+            'entity_id': unicode(uuid4()),
+            'record_id': new_entity['record_id'],
+            'source_hash': md5_hash,
+            'clustered': True,
+            'checked_out': False,
+            'last_update': last_update,
+            'match_type': 'match'
+        }
+        if match_ids:
+            entity['target_record_id'] = match_ids[0]
+            sel = text(''' 
+                SELECT entity_id
+                FROM "entity_{0}"
+                WHERE record_id = :record_id
+                LIMIT 1
+            '''.format(session_id))
+            entity_id = list(engine.execute(sel, record_id=match_ids[0]))[0].entity_id
+            entity['entity_id'] = entity_id
+            if len(match_ids) > 1:
+                upd_args = {
+                    'entity_id': entity_id.entity_id,
+                    'clustered': True,
+                    'checked_out': False,
+                    'last_update': last_update,
+                    'reviewer': user.name,
+                    'match_ids': tuple([m for m in match_ids]),
+                    'match_type': 'merge from match'
+                }
+                upd = text('''
+                    UPDATE "entity_{0}" SET 
+                        entity_id = :entity_id,
+                        clustered = :clustered,
+                        checked_out = :checked_out,
+                        last_update = :last_update,
+                        reviewer = :reviewer,
+                        match_type = :match_type
+                    WHERE entity_id IN (
+                        SELECT entity_id
+                        FROM "entity_{0}"
+                        WHERE record_id IN :match_ids
+                    )
+                    '''.format(session_id))
+                with engine.begin() as conn:
+                    conn.execute(upd, **upd_args)
+        ins = text(''' 
+            INSERT INTO "entity_{0}" ({1}) VALUES ({2})
+        '''.format(session_id, 
+                   ','.join(entity.keys()), 
+                   ','.join([':{0}'.format(f) for f in entity.keys()])))
+        with engine.begin() as conn:
+            conn.execute(ins, **entity)
+        deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+        field_types = {}
+        for field in field_defs:
+            if field_types.get(field['field']):
+                field_types[field['field']].append(field['type'])
+            else:
+                field_types[field['field']] = [field['type']]
+        for k,v in new_entity.items():
+            if field_types.get(k):
+                if 'Price' in field_types[k]:
+                    if v:
+                        new_entity[k] = float(v)
+                    else:
+                        new_entity[k] = 0
+                else:
+                    new_entity[k] = preProcess(unicode(v))
+        block_keys = [{'record_id': b[1], 'block_key': b[0]} \
+                for b in list(deduper.blocker([(new_entity['record_id'], new_entity)]))]
+        if block_keys:
+            with engine.begin() as conn:
+                conn.execute(text(''' 
+                    INSERT INTO "match_blocks_{0}" (
+                        block_key,
+                        record_id
+                    ) VALUES (:block_key, :record_id)
+                '''.format(sess.id)), *block_keys)
+        else:
+            if sentry:
+                sentry.captureMessage('Unable to block record', extra=post)
 
 def updateEntityMap(clustered_dupes,
                     session_id,
