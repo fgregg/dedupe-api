@@ -62,7 +62,7 @@ def processMessage():
             except (IndexError, ProgrammingError, InternalError):
                 sess = None
                 pass
-            return_value func(*args, **kwargs)
+            return_value = func(*args, **kwargs)
             if sess:
                 with engine.begin() as conn:
                     conn.execute(text('''
