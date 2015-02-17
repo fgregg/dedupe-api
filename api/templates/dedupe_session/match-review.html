@@ -78,7 +78,7 @@
 </script>
 <script type="text/javascript">
     var session_id = "{{ session_id }}"
-    var api_key = "{{ session.get('user').id }}"
+    var api_key = "{{ current_user.id }}"
     var match_obj;
     $(document).ready(function(){
         getAndMatch();

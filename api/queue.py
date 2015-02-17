@@ -62,7 +62,7 @@ def processMessage():
             except (IndexError, ProgrammingError, InternalError):
                 sess = None
                 pass
-            func(*args, **kwargs)
+            return_value func(*args, **kwargs)
             if sess:
                 with engine.begin() as conn:
                     conn.execute(text('''
@@ -70,10 +70,16 @@ def processMessage():
                             processing = FALSE
                         WHERE id = :id
                         '''), id=args[0])
-            with engine.begin() as conn:
-                conn.execute(text(''' 
-                    DELETE FROM work_table WHERE key = :key
-                '''), key=work.key)
+            if return_value:
+                with engine.begin() as conn:
+                    conn.execute(text(''' 
+                        UPDATE work_table SET value = :value WHERE key = :key
+                    '''), key=work.key, value=return_value)
+            else:
+                with engine.begin() as conn:
+                    conn.execute(text(''' 
+                        DELETE FROM work_table WHERE key = :key
+                    '''), key=work.key)
         except Exception, e:
             if client: # pragma: no cover
                 client.captureException()

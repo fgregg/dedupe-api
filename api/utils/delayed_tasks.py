@@ -8,7 +8,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, clusterGen, \
-    makeSampleDict, windowed_query, getDistinct
+    makeSampleDict, windowed_query, getDistinct, getMatches
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash, addToEntityMap
@@ -235,7 +235,7 @@ def getMatchingReady(session_id):
     sess.review_count = count[0][0]
     worker_session.add(sess)
     worker_session.commit()
-    getNextHumanReview(session_id)
+    print getNextHumanReview(session_id)
     return None
 
 @queuefunc
@@ -273,61 +273,6 @@ def getNextHumanReview(session_id):
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
-    return matches
-
-def getMatches(session_id, record):
-    dedupe_session = worker_session.query(DedupeSession).get(session_id)
-    deduper = dedupe.StaticGazetteer(StringIO(dedupe_session.gaz_settings_file))
-    field_defs = json.loads(dedupe_session.field_defs)
-    raw_fields = sorted(list(set([f['field'] \
-            for f in json.loads(dedupe_session.field_defs)])))
-    raw_fields.append('record_id')
-    fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
-    engine = worker_session.bind
-    matches = []
-    for k,v in record.items():
-        record[k] = preProcess(unicode(v))
-    block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', record)]))])
-
-    # Sometimes the blocker does not find blocks. In this case we can't match
-    if block_keys:
-        sel = text('''
-              SELECT r.record_id, {1}
-              FROM "processed_{0}" as r
-              JOIN (
-                SELECT record_id
-                FROM "match_blocks_{0}"
-                WHERE block_key IN :block_keys
-              ) AS s
-              ON r.record_id = s.record_id
-            '''.format(session_id, fields))
-        data_d = {int(i[0]): dict(zip(raw_fields, i[1:])) \
-            for i in list(engine.execute(sel, block_keys=block_keys))}
-        if data_d:
-            deduper.index(data_d)
-            linked = deduper.match({'blob': record}, threshold=0, n_matches=5)
-            if linked:
-                ids = []
-                confs = {}
-                for l in linked[0]:
-                    id_set, confidence = l
-                    ids.extend([i for i in id_set if i != 'blob'])
-                    confs[id_set[1]] = confidence
-                ids = tuple(set(ids))
-                min_fields = ','.join(['MIN(r.{0}) AS {0}'.format(f) for f in raw_fields])
-                sel = text(''' 
-                      SELECT {0}, 
-                        MIN(r.record_id) AS record_id, 
-                        e.entity_id
-                      FROM "raw_{1}" as r
-                      JOIN "entity_{1}" as e
-                        ON r.record_id = e.record_id
-                      WHERE r.record_id IN :ids
-                      GROUP BY e.entity_id
-                    '''.format(min_fields, session_id))
-                matches = [dict(zip(raw_fields, r)) \
-                        for r in list(engine.execute(sel, ids=ids))]
-    return matches
 
 @queuefunc
 def cleanupTables(session_id, tables=None):

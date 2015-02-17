@@ -4,6 +4,7 @@ import os
 import json
 from dedupe.core import frozendict
 from dedupe import canonicalize
+import dedupe
 from api.database import app_session, worker_session, Base, init_engine
 from api.models import DedupeSession
 from sqlalchemy import Table, MetaData, distinct, and_, func, Column, text
@@ -17,6 +18,7 @@ from datetime import datetime, timedelta
 from unidecode import unidecode
 import cPickle
 from itertools import combinations
+from cStringIO import StringIO
 
 STATUS_LIST = [
     {
@@ -160,6 +162,73 @@ def getCluster(session_id, entity_pattern, raw_pattern):
                 c.execute(upd, entity_id=entity_id, one_minute=one_minute)
             return entity_id, cluster_list, false_pos, false_neg
     return None, None, None, None
+
+def getMatches(session_id, record):
+    engine = worker_session.bind
+    dedupe_session = worker_session.query(DedupeSession).get(session_id)
+    deduper = dedupe.StaticGazetteer(StringIO(dedupe_session.gaz_settings_file))
+    field_defs = json.loads(dedupe_session.field_defs)
+    raw_fields = sorted(list(set([f['field'] \
+            for f in json.loads(dedupe_session.field_defs)])))
+    raw_fields.append('record_id')
+    fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
+    field_types = {}
+    for field in field_defs:
+        if field_types.get(field['field']):
+            field_types[field['field']].append(field['type'])
+        else:
+            field_types[field['field']] = [field['type']]
+    matches = []
+    for k,v in record.items():
+        if field_types.get(k):
+            if 'Price' in field_types[k]:
+                if v:
+                    record[k] = float(v)
+                else:
+                    record[k] = 0
+            else:
+                record[k] = preProcess(unicode(v))
+    block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', record)]))])
+
+    # Sometimes the blocker does not find blocks. In this case we can't match
+    if block_keys:
+        sel = text('''
+              SELECT r.record_id, {1}
+              FROM "processed_{0}" as r
+              JOIN (
+                SELECT record_id
+                FROM "match_blocks_{0}"
+                WHERE block_key IN :block_keys
+              ) AS s
+              ON r.record_id = s.record_id
+            '''.format(session_id, fields))
+        data_d = {int(i[0]): dict(zip(raw_fields, i[1:])) \
+            for i in list(engine.execute(sel, block_keys=block_keys))}
+        if data_d:
+            deduper.index(data_d)
+            linked = deduper.match({'blob': record}, threshold=0, n_matches=5)
+            if linked:
+                ids = []
+                confs = {}
+                for l in linked[0]:
+                    id_set, confidence = l
+                    ids.extend([i for i in id_set if i != 'blob'])
+                    confs[id_set[1]] = confidence
+                ids = tuple(set(ids))
+                min_fields = ','.join(['MIN(r.{0}) AS {0}'.format(f) for f in raw_fields])
+                sel = text(''' 
+                      SELECT {0}, 
+                        MIN(r.record_id) AS record_id, 
+                        e.entity_id
+                      FROM "raw_{1}" as r
+                      JOIN "entity_{1}" as e
+                        ON r.record_id = e.record_id
+                      WHERE r.record_id IN :ids
+                      GROUP BY e.entity_id
+                    '''.format(min_fields, session_id))
+                matches = [dict(zip(raw_fields, r)) \
+                        for r in list(engine.execute(sel, ids=ids))]
+    return matches
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
