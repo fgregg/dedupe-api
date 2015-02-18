@@ -168,7 +168,7 @@ def getMatchingReady(session_id):
             break
 
     d.readTraining(StringIO(sess.training_data))
-    d.train()
+    d.train(ppc=0.01)
     g_settings = StringIO()
     d.writeSettings(g_settings)
     g_settings.seek(0)
@@ -431,9 +431,9 @@ def blockDedupe(session_id,
         autoload=True, autoload_with=engine)
     entity_table = Table(entity_table_name, metadata,
         autoload=True, autoload_with=engine)
-    for field in deduper.blocker.tfidf_fields:
-        fd = ((unicode(f[0]), f[1],) for f in \
-                engine.execute('select record_id, {0} from "{1}"'.format(field, table_name)))
+    for field in deduper.blocker.index_fields:
+        fd = (unicode(f[0]) for f in \
+                engine.execute('select distinct {0} from "{1}"'.format(field, table_name)))
         deduper.blocker.index(fd, field)
     """ 
     SELECT p.* <-- need the fields that we trained on at least
