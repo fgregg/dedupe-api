@@ -56,13 +56,13 @@ def processMessage():
             'cleared': True,
         }
         try:
+            sel = text('SELECT id from dedupe_session WHERE id = :id')
+            sess = engine.execute(sel, id=args[0]).first()
+        except (IndexError, ProgrammingError, InternalError):
+            sess = None
+            pass
+        try:
             return_value = func(*args, **kwargs)
-            try:
-                sel = text('SELECT id from dedupe_session WHERE id = :id')
-                sess = engine.execute(sel, id=args[0]).first()
-            except (IndexError, ProgrammingError, InternalError):
-                sess = None
-                pass
             if return_value:
                 with engine.begin() as conn:
                     conn.execute(text(''' 
