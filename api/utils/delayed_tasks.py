@@ -413,6 +413,7 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
         threshold = threshold - 0.1
         if threshold <= 0.1:
             break
+    del rows
     return clustered_dupes
 
 @queuefunc
@@ -509,6 +510,7 @@ def dedupeCanon(session_id, threshold=0.25):
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
     writeBlockingMap(session_id, block_gen, canonical=True)
+    del block_gen
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
