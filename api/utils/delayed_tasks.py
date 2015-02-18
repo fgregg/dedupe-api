@@ -414,6 +414,7 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
         if threshold <= 0.1:
             break
     del rows
+    worker_session.expire_all()
     return clustered_dupes
 
 @queuefunc
