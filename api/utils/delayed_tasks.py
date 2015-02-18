@@ -168,7 +168,7 @@ def getMatchingReady(session_id):
             break
 
     d.readTraining(StringIO(sess.training_data))
-    d.train()
+    d.train(ppc=0.01)
     g_settings = StringIO()
     d.writeSettings(g_settings)
     g_settings.seek(0)
