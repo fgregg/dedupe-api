@@ -469,7 +469,7 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
             writer.writerow(r)
     canon_table_name = name_pattern.format(session_id)
     with engine.begin() as conn:
-        conn.execute('DROP TABLE IF EXISTS {0}'.format(canon_table_name))
+        conn.execute('DROP TABLE IF EXISTS "{0}"'.format(canon_table_name))
     copy_st = 'COPY "{0}" ('.format(canon_table_name)
     for idx, name in enumerate(names):
         if idx < len(names) - 1:
