@@ -15,7 +15,7 @@ engine = init_engine(DB_CONN)
 
 try:
     from raven import Client
-    client = Client(os.environ[''])
+    client = Client(dsn=WORKER_SENTRY)
 except ImportError: # pragma: no cover
     client = None
 except KeyError:
