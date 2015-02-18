@@ -240,11 +240,23 @@ def getMatchingReady(session_id):
     sess.review_count = count[0][0]
     worker_session.add(sess)
     worker_session.commit()
-    print getNextHumanReview(session_id)
+    create_human_review = '''
+        CREATE TABLE "match_review_{0}" AS 
+          SELECT 
+            r.record_id, 
+            ARRAY[]::varchar[] as entities
+          FROM "raw_{0}" as r
+          LEFT JOIN "entity_{0}" as e
+            ON r.record_id = e.record_id
+          WHERE e.record_id IS NULL
+    '''.format(session_id)
+    with engine.begin() as conn:
+        conn.execute(create_human_review)
+    populateHumanReview(session_id)
     return None
 
 @queuefunc
-def getNextHumanReview(session_id):
+def populateHumanReview(session_id):
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
     dedupe_session.processing = True
     worker_session.add(dedupe_session)
@@ -263,10 +275,19 @@ def getNextHumanReview(session_id):
     engine = worker_session.bind
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(sel))
 
-    deduper = dedupe.StaticGazetteer(StringIO(dedupe_session.gaz_settings_file))
-    field_defs = json.loads(dedupe_session.field_defs)
-    matches = []
-    while True:
+    human_queue = []
+    upd_keys = [
+        'entity_id', 
+        'last_update',
+        'match_type',
+        'record_id',
+        'target_record_id',
+        'confidence',
+        'source_hash',
+        'clustered',
+    ]
+
+    while len(human_queue) < 11:
         record = rows.next()
         matches = getMatches(session_id, record)
         if len(matches) <= 1:
@@ -274,7 +295,29 @@ def getNextHumanReview(session_id):
                            record, 
                            match_ids=[m['record_id'] for m in matches])
         else:
-            break
+            r = []
+            human_queue.append(record)
+    upd = ''' 
+        INSERT INTO "entity_{0}" (
+            entity_id, 
+            last_update,
+            match_type,
+            record_id,
+            target_record_id,
+            confidence,
+            source_hash,
+            clustered
+        ) VALUES (
+            :entity_id, 
+            :last_update,
+            :match_type,
+            :record_id,
+            :target_record_id,
+            :confidence,
+            :source_hash,
+            :clustered
+        )
+    '''
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()

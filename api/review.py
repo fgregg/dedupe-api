@@ -62,6 +62,9 @@ def get_cluster():
         resp['false_positive'] = false_pos
         resp['false_negative'] = false_neg
     else:
+        dedupe_session.processing = True
+        db_session.add(dedupe_session)
+        db_session.commit()
         dedupeCanon.delay(dedupe_session.id)
     resp['total_clusters'] = dedupe_session.entity_count
     resp['review_remainder'] = dedupe_session.review_count
@@ -92,6 +95,9 @@ def get_canon_cluster():
         resp['false_positive'] = false_pos
         resp['false_negative'] = false_neg
     else:
+        dedupe_session.processing = True
+        db_session.add(dedupe_session)
+        db_session.commit()
         getMatchingReady.delay(session_id)
     resp['total_clusters'] = dedupe_session.entity_count
     resp['review_remainder'] = dedupe_session.review_count
@@ -112,6 +118,10 @@ def mark_all_clusters():
     session_id = flask_session['session_id']
     # Need to update existing clusters with new entity_id here, too.
     user = db_session.query(User).get(flask_session['api_key']) 
+    dedupe_session = db_session.query(DedupeSession).get(session_id) 
+    dedupe_session.processing = True
+    db_session.add(dedupe_session)
+    db_session.commit()
     bulkMarkClusters.delay(session_id, user=user.name)
 
     response = make_response(json.dumps(resp), status_code)
@@ -313,6 +323,10 @@ def mark_all_canon_cluster():
     status_code = 200
     session_id = flask_session['session_id']
     user = db_session.query(User).get(flask_session['api_key'])
+    dedupe_session = db_session.query(DedupeSession).get(session_id) 
+    dedupe_session.processing = True
+    db_session.add(dedupe_session)
+    db_session.commit()
     bulkMarkCanonClusters.delay(session_id, user=user.name)
 
     resp = make_response(json.dumps(resp), status_code)

@@ -48,28 +48,21 @@ def processMessage():
         with engine.begin() as conn:
             conn.execute(upd, key=work.key)
         func, args, kwargs = loads(work.value)
+        upd_args = {
+            'tb': None,
+            'value': None,
+            'key': work.key,
+            'updated': datetime.now().replace(tzinfo=TIME_ZONE),
+            'cleared': True,
+        }
         try:
+            return_value = func(*args, **kwargs)
             try:
                 sel = text('SELECT id from dedupe_session WHERE id = :id')
                 sess = engine.execute(sel, id=args[0]).first()
-                if sess:
-                    with engine.begin() as conn:
-                        conn.execute(text('''
-                            UPDATE dedupe_session SET
-                                processing = TRUE
-                            WHERE id = :id
-                            '''), id=args[0])
             except (IndexError, ProgrammingError, InternalError):
                 sess = None
                 pass
-            return_value = func(*args, **kwargs)
-            if sess:
-                with engine.begin() as conn:
-                    conn.execute(text('''
-                        UPDATE dedupe_session SET
-                            processing = FALSE
-                        WHERE id = :id
-                        '''), id=args[0])
             if return_value:
                 with engine.begin() as conn:
                     conn.execute(text(''' 
@@ -83,39 +76,35 @@ def processMessage():
         except Exception, e:
             if client: # pragma: no cover
                 client.captureException()
-            tb = traceback.format_exc()
-            print tb
-            upd_args = {
-                'tb': tb,
-                'value': e.message,
-                'key': work.key,
-                'updated': datetime.now().replace(tzinfo=TIME_ZONE)
-            }
-            upd = ''' 
-                    UPDATE work_table SET
-                        traceback = :tb,
-                        value = :value,
-                        updated = :updated,
-                        cleared = FALSE
-                '''
-            if sess:
-                upd = '{0}, session_id = :sess_id'.format(upd)
-                upd_args['sess_id'] = sess.id
-                with engine.begin() as conn:
-                    conn.execute(text('''
-                        UPDATE dedupe_session SET
-                            processing = FALSE
-                        WHERE id = :id
-                        '''), id=sess.id)
-            upd = text('{0} WHERE key = :key'.format(upd))
+            upd_args['tb'] = traceback.format_exc()
+            upd_args['value'] = e.message
+            upd_args['cleared'] = False
+            print upd_args['tb']
+        upd = ''' 
+                UPDATE work_table SET
+                    traceback = :tb,
+                    value = :value,
+                    updated = :updated,
+                    cleared = :cleared
+            '''
+        if sess:
+            upd = '{0}, session_id = :sess_id'.format(upd)
+            upd_args['sess_id'] = sess.id
             with engine.begin() as conn:
-                conn.execute(upd, **upd_args)
+                conn.execute(text('''
+                    UPDATE dedupe_session SET
+                        processing = FALSE
+                    WHERE id = :id
+                    '''), id=sess.id)
+        upd = text('{0} WHERE key = :key'.format(upd))
+        with engine.begin() as conn:
+            conn.execute(upd, **upd_args)
         del args
         del kwargs
 
 def queue_daemon(db_conn=DB_CONN): # pragma: no cover
-    # import logging
-    # logging.getLogger().setLevel(logging.DEBUG)
+    import logging
+    logging.getLogger().setLevel(logging.DEBUG)
     work_table = WorkTable.__table__
     work_table.create(engine, checkfirst=True)
     print 'Listening for messages...'

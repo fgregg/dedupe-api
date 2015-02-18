@@ -77,13 +77,14 @@ def upload():
         filename=f.filename,
         group=group,
         status=STATUS_LIST[0]['machine_name'])
-    db_session.add(sess)
-    db_session.commit()
     u.seek(0)
     with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
         s.write(u.getvalue())
     del u
     del reader
+    sess.processing = True
+    db_session.add(sess)
+    db_session.commit()
     initializeSession.delay(session_id)
     flask_session['session_id'] = session_id
     return jsonify(ready=True, session_id=session_id)
@@ -183,11 +184,7 @@ def select_fields():
 @login_required
 @check_roles(roles=['admin'])
 def select_field_types():
-    dedupe_session = db_session.query(DedupeSession.name, 
-                                      DedupeSession.id, 
-                                      DedupeSession.field_defs)\
-            .filter(DedupeSession.id == flask_session['session_id'])\
-            .first()
+    dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     errors = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
             .filter(WorkTable.cleared == False)\
@@ -223,6 +220,9 @@ def select_field_types():
                 WHERE id = :id
             '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
         if not errors:
+            dedupe_session.processing = True
+            db_session.add(dedupe_session)
+            db_session.commit()
             initializeModel.delay(dedupe_session.id)
         return redirect(url_for('trainer.training_run'))
     return render_template('dedupe_session/select_field_types.html', 
@@ -335,6 +335,9 @@ def mark_pair():
         counter['no'] += 1
         resp = {'counter': counter}
     elif action == 'finish':
+        sess.processing = True
+        db_session.add(sess)
+        db_session.commit()
         dedupeRaw.delay(flask_session['session_id'])
         resp = {'finished': True}
         flask_session['dedupe_start'] = time.time()

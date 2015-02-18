@@ -9,7 +9,7 @@ from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
 from api.utils.helpers import preProcess, getMatches
-from api.utils.delayed_tasks import getNextHumanReview
+#from api.utils.delayed_tasks import getNextHumanReview
 from api.track_usage import tracker
 import dedupe
 from dedupe.serializer import _to_json
@@ -282,6 +282,9 @@ def get_unmatched():
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     resp['remaining'] = dedupe_session.review_count
+    dedupe_session.processing = True
+    db_session.add(dedupe_session)
+    db_session.commit()
     getNextHumanReview.delay(session_id)
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
