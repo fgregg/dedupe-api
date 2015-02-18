@@ -558,6 +558,7 @@ def dedupeCanon(session_id, threshold=0.25):
     else: # pragma: no cover
         print 'did not find clusters'
         getMatchingReady(session_id)
+        dd.processing = False
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
         .count()
