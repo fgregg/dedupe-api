@@ -134,7 +134,7 @@ def bulkMarkCanonClusters(session_id, user=None):
                     WHERE record_id = :record_id
                 '''.format(session_id)),
                 target=row[0], record_id=row[1])
-    getMatchingReady(session_id)
+    # getMatchingReady(session_id)
 
 @queuefunc
 def getMatchingReady(session_id):
@@ -251,8 +251,9 @@ def getMatchingReady(session_id):
           WHERE e.record_id IS NULL
     '''.format(session_id)
     with engine.begin() as conn:
+        conn.execute('DROP TABLE IF EXISTS "match_review_{0}"'.format(session_id))
         conn.execute(create_human_review)
-    populateHumanReview(session_id)
+    # populateHumanReview(session_id)
     return None
 
 @queuefunc
@@ -276,17 +277,8 @@ def populateHumanReview(session_id):
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(sel))
 
     human_queue = []
-    upd_keys = [
-        'entity_id', 
-        'last_update',
-        'match_type',
-        'record_id',
-        'target_record_id',
-        'confidence',
-        'source_hash',
-        'clustered',
-    ]
-
+    cleared = []
+    
     while len(human_queue) < 11:
         record = rows.next()
         matches = getMatches(session_id, record)
@@ -294,30 +286,25 @@ def populateHumanReview(session_id):
             addToEntityMap(session_id, 
                            record, 
                            match_ids=[m['record_id'] for m in matches])
+            cleared.append(record['record_id'])
         else:
             r = []
-            human_queue.append(record)
+            human_queue.append([record['record_id'], 
+                               [m['entity_id'] for m in matches]])
     upd = ''' 
-        INSERT INTO "entity_{0}" (
-            entity_id, 
-            last_update,
-            match_type,
-            record_id,
-            target_record_id,
-            confidence,
-            source_hash,
-            clustered
-        ) VALUES (
-            :entity_id, 
-            :last_update,
-            :match_type,
-            :record_id,
-            :target_record_id,
-            :confidence,
-            :source_hash,
-            :clustered
-        )
-    '''
+        UPDATE "match_review_{0}" SET
+          entities = :entities
+        WHERE record_id = :record_id
+    '''.format(session_id)
+    delete = ''' 
+        DELETE FROM "match_review_{0}" WHERE record_id IN :ids
+    '''.format(session_id)
+    for record in human_queue:
+        with engine.begin() as conn:
+            conn.execute(text(delete), ids=tuple(cleared))
+            conn.execute(text(upd), 
+                         record_id=record[0], 
+                         entities=record[1])
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
