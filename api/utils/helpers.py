@@ -38,7 +38,7 @@ STATUS_LIST = [
     {
         'machine_name': 'entity map updated',
         'human_name': 'Training finished', 
-        'next_step_name': 'Review entites',
+        'next_step_name': 'Review entities',
         'next_step': '/session-review/?session_id={0}',
         'step': 3
     },
@@ -226,8 +226,10 @@ def getMatches(session_id, record):
                       WHERE r.record_id IN :ids
                       GROUP BY e.entity_id
                     '''.format(min_fields, session_id))
-                matches = [dict(zip(raw_fields, r)) \
+                matches = [dict(zip(r.keys(), r.values())) \
                         for r in list(engine.execute(sel, ids=ids))]
+                for match in matches:
+                    match['confidence'] = confs[match['record_id']]
     return matches
 
 def column_windows(session, column, windowsize):
