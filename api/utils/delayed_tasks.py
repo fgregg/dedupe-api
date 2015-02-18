@@ -138,7 +138,7 @@ def bulkMarkCanonClusters(session_id, user=None):
 @queuefunc
 def getMatchingReady(session_id):
     addRowHash(session_id)
-    cleanupTables(session_id)
+    # cleanupTables(session_id)
     engine = worker_session.bind
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "match_blocks_{0}"'\
