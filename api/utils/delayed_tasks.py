@@ -479,6 +479,8 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
             threshold=threshold
         )
         threshold = threshold - 0.1
+        if threshold <= 0.1:
+            break
     return clustered_dupes
 
 @queuefunc
