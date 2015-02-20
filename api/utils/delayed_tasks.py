@@ -161,7 +161,7 @@ def getMatchingReady(session_id):
         ids = []
         for i, definition in enumerate(d.data_model.primary_fields):
             for idx, predicate in enumerate(definition.predicates):
-                if predicate.type == 'TfidfPredicate':
+                if hasattr(predicate, 'index'):
                     ids.append((i, idx,))
                     del d.data_model.primary_fields[i].predicates[idx]
         if not ids:
@@ -176,6 +176,11 @@ def getMatchingReady(session_id):
     worker_session.add(sess)
     worker_session.commit()
 
+    for field in d.blocker.index_fields:
+        fd = (unicode(f[0]) for f in \
+                engine.execute('select distinct {0} from "processed_{1}"'.format(field, session_id)))
+        d.blocker.index(fd, field)
+    
     # Write match_block table
     model_fields = list(set([f['field'] for f in field_defs]))
     fields = ', '.join(['p.{0}'.format(f) for f in model_fields])
