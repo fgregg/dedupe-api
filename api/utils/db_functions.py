@@ -521,15 +521,15 @@ def writeBlockingMap(session_id, block_data, canonical=False):
     insert = '''
         INSERT INTO "plural_key_{0}" ( 
           SELECT 
-            MAX(block_key) as block_key 
+            MAX(b.block_key) as block_key 
           FROM (
             SELECT 
               block_key,
               string_agg(record_id::text, ',' ORDER BY record_id) AS block
             FROM "block_{0}"
             GROUP BY block_key HAVING COUNT(*) > 1
-          ) AS blocks
-          GROUP BY block, block_key
+          ) AS b
+          GROUP BY b.block
         )
     '''.format(session_id)
     idx = ''' 
@@ -546,7 +546,7 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         CREATE TABLE "plural_block_{0}" AS (
             SELECT p.block_id, b.record_id 
                 FROM "block_{0}" AS b
-                INNER JOIN "plural_key_{0}" AS p
+                JOIN "plural_key_{0}" AS p
                 USING (block_key)
             )'''.format(session_id)
     with engine.begin() as c:
