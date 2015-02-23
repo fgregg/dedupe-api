@@ -386,6 +386,10 @@ def rewind():
     session_id = flask_session['session_id']
     step = request.args.get('step')
     threshold = request.args.get('threshold')
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    dedupe_session.processing = True
+    db_session.add(dedupe_session)
+    db_session.commit()
     if step == 'first':
         reDedupeRaw.delay(session_id, threshold=float(threshold))
     if step == 'second':
