@@ -30,7 +30,7 @@
                         {% if status_info.status == 'processing' %}
                             <em>Processing. Please wait ...</em>
                         {% else %}
-                            Step {{ status_info.step + 1 }}: <a href="{{ status_info.next_step }}">{{ status_info.next_step_name }} &raquo;</a>
+                            Step {{ status_info.next_step }}: <a href="{{ status_info.next_step_url }}">{{ status_info.next_step_name }} &raquo;</a>
                         {% endif %}
                     </td>
                 </tr>

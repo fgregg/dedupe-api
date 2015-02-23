@@ -96,7 +96,7 @@
                             {% if first_review %}
                               Save entity
                             {% else %}
-                              Merge entities
+                              <span id='merge-button-text'>Merge entities</span>
                             {% endif %}
                         </button>
                     </div>
@@ -198,6 +198,23 @@
                 else this.checked = false;
               });
             });
+
+            $('.check_record input, #check_toggle_all input').on('click', function(e){
+
+              var none_checked = true;
+              $.each($('.check_record input, #check_toggle_all input'), function(i,el){
+                var checkbox = $(this);
+                if (checkbox.prop("checked")) 
+                  none_checked = false;
+              });
+
+              if (none_checked)
+                $('#merge-button-text').html("All different");
+              else
+                $('#merge-button-text').html("Merge entities");
+            });
+
+
         } else {
             $('#group-display').html("<h3>You're done!</h3>")
             $('#review-buttons').hide()

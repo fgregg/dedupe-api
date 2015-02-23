@@ -20,46 +20,52 @@ from itertools import combinations
 
 STATUS_LIST = [
     {
+        'step': 1,
         'machine_name' : 'dataset uploaded',
         'human_name': 'Dataset uploaded', 
         'next_step_name': 'Fields to compare',
-        'next_step': '/select-fields/?session_id={0}',
-        'step': 1
+        'next_step_url': '/select-fields/?session_id={0}',
+        'next_step': 2
     },
     {
+        'step': 2,
         'machine_name': 'model defined',
         'human_name': 'Model defined', 
         'next_step_name': 'Train',
-        'next_step': '/training-run/?session_id={0}',
-        'step': 2
+        'next_step_url': '/training-run/?session_id={0}',
+        'next_step': 3
     },
     {
+        'step': 3,
         'machine_name': 'entity map updated',
         'human_name': 'Training finished', 
         'next_step_name': 'Review entites',
-        'next_step': '/session-review/?session_id={0}',
-        'step': 3
+        'next_step_url': '/session-review/?session_id={0}',
+        'next_step': 4
     },
     {
+        'step': 4,
         'machine_name': 'canon clustered',
-        'human_name': 'Clusters reviewed', 
+        'human_name': 'Entities reviewed', 
         'next_step_name': 'Merge entities',
-        'next_step': '/session-review/?session_id={0}&second_review=True',
-        'step': 4
+        'next_step_url': '/session-review/?session_id={0}&second_review=True',
+        'next_step': 5
     },
     {
+        'step': 5,
         'machine_name': 'matching ready',
-        'human_name': 'Clusters merged', 
+        'human_name': 'Entities merged', 
         'next_step_name': 'Final review',
-        'next_step': '/match-review/?session_id={0}',
-        'step': 5
+        'next_step_url': '/match-review/?session_id={0}',
+        'next_step': 6
     },
     {
+        'step': 6,
         'machine_name':'canonical',
         'human_name': 'Dataset is canonical', 
         'next_step_name': 'Ready for matching!',
-        'next_step': '/session-admin/?session_id={0}',
-        'step': 6
+        'next_step_url': '/session-admin/?session_id={0}',
+        'next_step': None
     },
 ]
 
