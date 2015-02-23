@@ -134,12 +134,12 @@ def bulkMarkCanonClusters(session_id, user=None):
                     WHERE record_id = :record_id
                 '''.format(session_id)),
                 target=row[0], record_id=row[1])
-    # getMatchingReady(session_id)
+    getMatchingReady(session_id)
 
 @queuefunc
 def getMatchingReady(session_id):
     addRowHash(session_id)
-    # cleanupTables(session_id)
+    cleanupTables(session_id)
     engine = worker_session.bind
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "match_blocks_{0}"'\
@@ -178,7 +178,8 @@ def getMatchingReady(session_id):
 
     for field in d.blocker.index_fields:
         fd = (unicode(f[0]) for f in \
-                engine.execute('select distinct {0} from "processed_{1}"'.format(field, session_id)))
+                engine.execute('select distinct {0} from "processed_{1}"'\
+                    .format(field, session_id)))
         d.blocker.index(fd, field)
     
     # Write match_block table
@@ -241,19 +242,17 @@ def getMatchingReady(session_id):
     worker_session.add(sess)
     worker_session.commit()
     create_human_review = '''
-        CREATE TABLE "match_review_{0}" AS 
-          SELECT 
-            r.record_id, 
-            ARRAY[]::varchar[] as entities
-          FROM "raw_{0}" as r
-          LEFT JOIN "entity_{0}" as e
-            ON r.record_id = e.record_id
-          WHERE e.record_id IS NULL
+        CREATE TABLE "match_review_{0}" (
+            record_id INTEGER, 
+            entity VARCHAR,
+            reviewed BOOL DEFAULT FALSE
+        ) 
     '''.format(session_id)
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "match_review_{0}"'.format(session_id))
         conn.execute(create_human_review)
-    # populateHumanReview(session_id)
+        conn.execute('CREATE INDEX "match_rec_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
+    populateHumanReview(session_id)
     return None
 
 @queuefunc
@@ -268,7 +267,7 @@ def populateHumanReview(session_id):
     fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
     sel = ''' 
       SELECT {0}
-      FROM "raw_{1}" as r
+      FROM "processed_{1}" as r
       LEFT JOIN "entity_{1}" as e
         ON r.record_id = e.record_id
       WHERE e.record_id IS NULL
@@ -276,6 +275,8 @@ def populateHumanReview(session_id):
     engine = worker_session.bind
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(sel))
 
+    # Get a count of records already in the table here. That way this 
+    # can be called before the queue is empty.
     human_queue = []
     cleared = []
     
@@ -288,23 +289,19 @@ def populateHumanReview(session_id):
                            match_ids=[m['record_id'] for m in matches])
             cleared.append(record['record_id'])
         else:
-            r = []
-            human_queue.append([record['record_id'], 
-                               [m['entity_id'] for m in matches]])
-    upd = ''' 
-        UPDATE "match_review_{0}" SET
-          entities = :entities
-        WHERE record_id = :record_id
+            r = [{'record_id': record['record_id'], 'entity': m['entity_id']} \
+                    for m in matches]
+            human_queue.extend(r)
+    ins = ''' 
+        INSERT INTO "match_review_{0}" VALUES (:record_id, :entity)
     '''.format(session_id)
     delete = ''' 
         DELETE FROM "match_review_{0}" WHERE record_id IN :ids
     '''.format(session_id)
-    for record in human_queue:
-        with engine.begin() as conn:
+    with engine.begin() as conn:
+        if cleared:
             conn.execute(text(delete), ids=tuple(cleared))
-            conn.execute(text(upd), 
-                         record_id=record[0], 
-                         entities=record[1])
+        conn.execute(text(ins), *human_queue)
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
@@ -631,7 +628,6 @@ def dedupeCanon(session_id, threshold=0.25):
     else: # pragma: no cover
         print 'did not find clusters'
         getMatchingReady(session_id)
-        dd.processing = False
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
         .count()

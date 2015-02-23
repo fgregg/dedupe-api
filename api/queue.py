@@ -40,14 +40,25 @@ def processMessage():
     if not work:
         time.sleep(1)
     else:
-        upd = text(""" 
+        func, args, kwargs = loads(work.value)
+        try:
+            sel = text('SELECT id from dedupe_session WHERE id = :id')
+            sess = engine.execute(sel, id=args[0]).first()
+        except (IndexError, ProgrammingError, InternalError):
+            sess = None
+            pass
+        upd = """ 
             UPDATE work_table SET
                 claimed = TRUE
-            WHERE key = :key
-        """)
+        """
+        upd_args = {'key': work.key}
+        if sess:
+            upd = '{0}, session_id = :session_id'.format(upd)
+            upd_args['session_id'] = sess.id
+        upd = '{0} WHERE key = :key'.format(upd)
         with engine.begin() as conn:
-            conn.execute(upd, key=work.key)
-        func, args, kwargs = loads(work.value)
+            conn.execute(text(upd), **upd_args)
+        
         upd_args = {
             'tb': None,
             'value': None,
@@ -55,12 +66,6 @@ def processMessage():
             'updated': datetime.now().replace(tzinfo=TIME_ZONE),
             'cleared': True,
         }
-        try:
-            sel = text('SELECT id from dedupe_session WHERE id = :id')
-            sess = engine.execute(sel, id=args[0]).first()
-        except (IndexError, ProgrammingError, InternalError):
-            sess = None
-            pass
         try:
             return_value = func(*args, **kwargs)
             if return_value:
