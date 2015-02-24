@@ -287,16 +287,18 @@ def populateHumanReview(session_id):
       LEFT JOIN "entity_{1}" as e
         ON r.record_id = e.record_id
       WHERE e.record_id IS NULL
-      LIMIT :limit
     '''.format(fields, session_id)
-    rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel), limit=limit))
-
+    rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel)))
     human_queue = []
     cleared = []
     
     while len(human_queue) < limit:
-        record = rows.next()
+        try:
+            record = rows.next()
+        except StopIteration:
+            break
         matches = getMatches(session_id, record)
+        print matches
         if len(matches) <= 1:
             addToEntityMap(session_id, 
                            record, 

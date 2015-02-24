@@ -213,7 +213,7 @@ def initializeEntityMap(session_id, fields):
         FROM STDIN CSV'''.format(session_id), s)
     conn.commit()
 
-def addToEntityMap(session_id, new_entity, match_ids=None):
+def addToEntityMap(session_id, new_entity, match_ids=None, user=None):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
     fds = {}
@@ -285,7 +285,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None):
             entity['entity_id'] = entity_id
             if len(match_ids) > 1:
                 upd_args = {
-                    'entity_id': entity_id.entity_id,
+                    'entity_id': entity_id,
                     'clustered': True,
                     'checked_out': False,
                     'last_update': last_update,

@@ -75,42 +75,43 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     training = {'distinct': [], 'match': []}
     
     all_ids = tuple([i for i in distinct_ids + match_ids])
-    sel = text(''' 
-        SELECT * FROM "processed_{0}" 
-        WHERE record_id IN :record_ids
-    '''.format(session_id))
-    all_records = {r.record_id: dict(zip(r.keys(), r.values())) \
-            for r in engine.execute(sel, record_ids=all_ids)}
-
-    if sess.training_data:
-        training = json.loads(sess.training_data)
-    if distinct_ids and match_ids:
-        distinct_ids.extend(match_ids)
-    
-    distinct_combos = []
-    match_combos = []
-    if distinct_ids:
-        distinct_combos = combinations(distinct_ids, 2)
-    if match_ids:
-        match_combos = combinations(match_ids, 2)
-    
-    distinct_records = []
-    for combo in distinct_combos:
-        combo = tuple([int(c) for c in combo])
-        records = [all_records[combo[0]], all_records[combo[1]]]
-        distinct_records.append(records)
-    training['distinct'].extend(distinct_records)
-    
-    match_records = []
-    for combo in match_combos:
-        combo = tuple([int(c) for c in combo])
-        records = [all_records[combo[0]], all_records[combo[1]]]
-        match_records.append(records)
-
-    training['match'].extend(match_records)
-    sess.training_data = json.dumps(training)
-    worker_session.add(sess)
-    worker_session.commit()
+    if all_ids:
+        sel = text(''' 
+            SELECT * FROM "processed_{0}" 
+            WHERE record_id IN :record_ids
+        '''.format(session_id))
+        all_records = {r.record_id: dict(zip(r.keys(), r.values())) \
+                for r in engine.execute(sel, record_ids=all_ids)}
+ 
+        if sess.training_data:
+            training = json.loads(sess.training_data)
+        if distinct_ids and match_ids:
+            distinct_ids.extend(match_ids)
+        
+        distinct_combos = []
+        match_combos = []
+        if distinct_ids:
+            distinct_combos = combinations(distinct_ids, 2)
+        if match_ids:
+            match_combos = combinations(match_ids, 2)
+        
+        distinct_records = []
+        for combo in distinct_combos:
+            combo = tuple([int(c) for c in combo])
+            records = [all_records[combo[0]], all_records[combo[1]]]
+            distinct_records.append(records)
+        training['distinct'].extend(distinct_records)
+        
+        match_records = []
+        for combo in match_combos:
+            combo = tuple([int(c) for c in combo])
+            records = [all_records[combo[0]], all_records[combo[1]]]
+            match_records.append(records)
+ 
+        training['match'].extend(match_records)
+        sess.training_data = json.dumps(training)
+        worker_session.add(sess)
+        worker_session.commit()
     return None
 
 def getCluster(session_id, entity_pattern, raw_pattern):

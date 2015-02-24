@@ -65,7 +65,7 @@
                                 <label><input type="checkbox" class='select_entity' id="check_<%= match.record_id %>"/> match</label>
                             </td>
                             <% $.each(match, function(field, val){ %>
-                                <% if (field != 'record_id' && field != 'entity_id') { %>
+                                <% if (field != 'record_id' && field != 'entity_id' && field != 'confidence') { %>
                                     <td><label for="check_<%= match.record_id %>"><%= val %></label></td>
                                 <% } %>
                             <% }) %>
@@ -80,58 +80,47 @@
     var session_id = "{{ session_id }}"
     var api_key = "{{ current_user.id }}"
     var match_obj;
+    var matches;
     $(document).ready(function(){
         getAndMatch();
         $('#mark-match').on('click', function(e){
             var data = {
                 'api_key': api_key,
                 'object': match_obj,
-                'match_ids': null
+                'match_ids': null,
+                'add_entity': true
             }
-            data['match_ids'] = [];
-            $.each($('input:checked'), function(i, check){
-                data['match_ids'].push($(check).parent().parent().data('record_id'))
+            data['matches'] = [];
+            $.each($('input:checkbox'), function(i, check){
+                var record_id = $(check).parent().parent().data('record_id');
+                $.each(matches, function(i, match){
+                    if(String(match.record_id) == String(record_id)){
+                        if($(check).is(':checked')){
+                            match['match'] = 1
+                        } else {
+                            match['match'] = 0
+                        }
+                        data['matches'].push(match);
+                    }
+                })
             })
-            data['match_ids'] = data['match_ids'].join(',');
-            $.when(addToEntityMap(JSON.stringify(data))).then(
+            data['session_id'] = session_id
+            $.when(addTraining(JSON.stringify(data))).then(
                 function(resp){
                     getAndMatch();
                 }
             )
         });
-    })
+    });
     function getAndMatch(){
         $('#group-display').spin('large')
         $.when(getRecord()).then(function(resp){
+            $('#group-display').spin(false);
             match_obj = resp['object'];
+            matches = resp['matches'];
             remaining = resp['remaining']
             if (typeof match_obj !== 'undefined' && !$.isEmptyObject(match_obj)){
-                var obj = {
-                        'object': resp['object'],
-                        'num_results': 5,
-                        'api_key': api_key,
-                        'session_id': session_id
-                }
-                $.when(getMatches(JSON.stringify(obj))).then(
-                    function(matches){
-                        $('#group-display').spin(false);
-                        if(matches.matches.length > 0){
-                            displayRecord(matches.matches, obj, remaining)
-                        } else {
-                            $('#group-display').html('')
-                            var data = {
-                                'api_key': api_key,
-                                'object': obj.object,
-                                'match_id': null
-                            }
-                            $.when(addToEntityMap(JSON.stringify(data))).then(
-                                function(resp){
-                                    getAndMatch();
-                                }
-                            )
-                        }
-                    }
-                )
+                displayRecord(resp.matches, resp.object, 0)
             } else {
                 $('#group-display').spin(false);
                 $('#group-display').html('<h2>Matching complete</h2>')
@@ -140,9 +129,7 @@
     }
     function displayRecord(matches, obj, remaining){
         var tpl = new EJS({'text': $('#matchTemplate').html()});
-        // console.log(obj)
-        $('#group-display').html(tpl.render({matches: matches, obj: obj.object, remaining:remaining}))
-
+        $('#group-display').html(tpl.render({matches: matches, obj: obj, remaining:remaining}))
         $('#mark-match').html("None of these match &raquo;");
 
         $('.select_entity').on('click', function(e){
@@ -159,18 +146,10 @@
     function getRecord(){
         return $.getJSON('/get-unmatched-record/?session_id=' + session_id)
     }
-    function getMatches(data){
+    function addTraining(data){
         return $.ajax({
             type: 'POST',
-            url: '/match/',
-            data: data,
-            contentType: 'application/json'
-        })
-    }
-    function addToEntityMap(data){
-        return $.ajax({
-            type: 'POST',
-            url: '/add-entity/?session_id=' + session_id,
+            url: '/train/',
             data: data,
             contentType: 'application/json'
         })

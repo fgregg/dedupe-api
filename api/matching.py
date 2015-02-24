@@ -8,7 +8,9 @@ from api.models import DedupeSession, User
 from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
-from api.utils.helpers import preProcess, getMatches
+from api.utils.helpers import preProcess, getMatches, updateTraining
+from api.utils.db_functions import addToEntityMap
+from api.utils.delayed_tasks import populateHumanReview
 from api.track_usage import tracker
 import dedupe
 from dedupe.serializer import _to_json
@@ -19,6 +21,7 @@ from datetime import datetime
 from hashlib import md5
 from unidecode import unidecode
 from collections import OrderedDict
+from flask_login import current_user
 
 matching = Blueprint('matching', __name__)
 
@@ -161,31 +164,33 @@ def train():
         session_id = post['session_id']
         obj = post['object']
         add_entity = post.get('add_entity', False)
-        positive = []
-        negative = []
+        # positive = []
+        # negative = []
         match_ids = []
+        distinct_ids = []
         for match in post['matches']:
             if match['match'] is 1:
-                positive.append(match)
+                # positive.append(match)
                 if match.get('record_id'):
                     match_ids.append(match['record_id'])
             else:
-                negative.append(match)
+                # negative.append(match)
+                if match.get('record_id'):
+                    distinct_ids.append(match['record_id'])
             for k,v in match.items():
                 match[k] = preProcess(unicode(v))
             del match['match']
-        training_data = json.loads(sess.training_data)
-        if positive:
-            training_data['match'].append([positive[0],obj])
-        for n in negative:
-            training_data['distinct'].append([n,obj])
-        sess.training_data = json.dumps(training_data)
-        db_session.add(sess)
-        db_session.commit()
-        if match_ids and add_entity:
-            addToEntityMap(session_id, obj, match_ids=match_ids)
-        elif len(negative) > 0 and add_entity:
-            addToEntityMap(session_id, obj)
+
+        # Assuming for the time being that all of the incoming training pairs 
+        # already exist in the raw data table. This will need to be updated
+        # to allow us to add new training that does not already exist in the
+        # raw data
+        updateTraining(session_id, 
+                       distinct_ids=distinct_ids, 
+                       match_ids=match_ids)
+        if add_entity:
+            user = db_session.query(User).get(api_key)
+            addToEntityMap(session_id, obj, match_ids=match_ids, user=user)
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -203,10 +208,10 @@ def get_unmatched():
     dedupe_session = db_session.query(DedupeSession.field_defs)\
             .filter(DedupeSession.id == session_id)\
             .first()
-    match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f['field']) \
-            for f in json.loads(dedupe_session.field_defs)])
-    raw_fields = ','.join(['MAX(raw.{0}) AS raw_{0}'.format(f['field']) \
-            for f in json.loads(dedupe_session.field_defs)])
+    fields = [f['field'] for f in json.loads(dedupe_session.field_defs)]
+    fields.append('record_id')
+    match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f) for f in fields])
+    raw_fields = ','.join(['MAX(raw.{0}) AS raw_{0}'.format(f) for f in fields])
     sel = '''
         SELECT 
           {0}, 
@@ -238,6 +243,7 @@ def get_unmatched():
         JOIN "raw_{2}" AS raw 
           ON ent.match_record_id = raw.record_id 
         GROUP BY ent.entity_id
+        ORDER BY MAX(ent.confidence) DESC
     '''.format(match_fields, raw_fields, session_id)
     engine = db_session.bind
     records = list(engine.execute(sel))
@@ -250,9 +256,12 @@ def get_unmatched():
                 raw_record[key.replace('raw_', '')] = getattr(record, key)
             elif key.startswith('match_'):
                 match[key.replace('match_', '')] = getattr(record, key)
+        match = OrderedDict(sorted(match.items()))
+        raw_record = OrderedDict(sorted(raw_record.items()))
         match['entity_id'] = record.entity_id
         match['confidence'] = record.confidence
         matches.append(match)
+    populateHumanReview.delay(session_id)
     resp['object'] = raw_record
     resp['matches'] = matches
     response = make_response(json.dumps(resp, sort_keys=False), status_code)
