@@ -230,6 +230,8 @@ def addToEntityMap(session_id, new_entity, match_ids=None):
             LIMIT 1
         '''.format(session_id))
         row = engine.execute(sel, record_id=new_entity['record_id'])
+
+        # If this is an entirely new record, we need to add it to the processed table
         if not row: # pragma: no cover
             raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
@@ -257,6 +259,8 @@ def addToEntityMap(session_id, new_entity, match_ids=None):
                 record_id = conn.execute(raw_table.insert()\
                     .returning(raw_table.c.record_id) , **new_entity)
                 conn.execute(text(proc_ins), record_id=record_id)
+
+        # Add to entity map
         hash_me = ';'.join([preProcess(unicode(new_entity[i])) for i in fds.keys()])
         md5_hash = md5(unidecode(hash_me)).hexdigest()
         last_update = datetime.now().replace(tzinfo=TIME_ZONE)
@@ -312,6 +316,8 @@ def addToEntityMap(session_id, new_entity, match_ids=None):
                    ','.join([':{0}'.format(f) for f in entity.keys()])))
         with engine.begin() as conn:
             conn.execute(ins, **entity)
+
+        # Update block table
         deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
         field_types = {}
         for field in field_defs:
@@ -341,6 +347,15 @@ def addToEntityMap(session_id, new_entity, match_ids=None):
         else:
             if sentry:
                 sentry.captureMessage('Unable to block record', extra=post)
+
+        # Update match_review table
+        upd = ''' 
+            UPDATE "match_review_{0}" SET
+              reviewed = TRUE
+            WHERE record_id = :record_id
+        '''.format(session_id)
+        with engine.begin() as conn:
+            conn.execute(text(upd), record_id=new_entity['record_id'])
 
 def updateEntityMap(clustered_dupes,
                     session_id,

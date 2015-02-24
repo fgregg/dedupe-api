@@ -242,16 +242,21 @@ def getMatchingReady(session_id):
     worker_session.add(sess)
     worker_session.commit()
     create_human_review = '''
-        CREATE TABLE "match_review_{0}" (
-            record_id INTEGER, 
-            entity VARCHAR,
-            reviewed BOOL DEFAULT FALSE
-        ) 
+        CREATE TABLE "match_review_{0}" AS
+          SELECT
+            r.record_id,
+            ARRAY[]::varchar[] AS entities,
+            FALSE AS reviewed, 
+            ARRAY[]::double precision[] AS confidence
+          FROM "raw_{0}" AS r
+          LEFT JOIN "entity_{0}" AS e
+            ON r.record_id = e.record_id
+          WHERE e.record_id IS NULL
     '''.format(session_id)
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "match_review_{0}"'.format(session_id))
         conn.execute(create_human_review)
-        conn.execute('CREATE INDEX "match_rec_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
+        conn.execute('CREATE INDEX "match_rev_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
     populateHumanReview(session_id)
     return None
 
@@ -261,6 +266,17 @@ def populateHumanReview(session_id):
     dedupe_session.processing = True
     worker_session.add(dedupe_session)
     worker_session.commit()
+    
+    engine = worker_session.bind
+    
+    queue_count = ''' 
+        SELECT count(*) FROM "match_review_{0}"  
+          WHERE array_upper(entities, 1) IS NOT NULL
+            AND reviewed = FALSE
+    '''.format(session_id)
+    queue_count = engine.execute(queue_count).first()[0]
+    limit = 11 - queue_count
+    
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs)])))
     raw_fields.append('record_id')
@@ -271,16 +287,14 @@ def populateHumanReview(session_id):
       LEFT JOIN "entity_{1}" as e
         ON r.record_id = e.record_id
       WHERE e.record_id IS NULL
+      LIMIT :limit
     '''.format(fields, session_id)
-    engine = worker_session.bind
-    rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(sel))
+    rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel), limit=limit))
 
-    # Get a count of records already in the table here. That way this 
-    # can be called before the queue is empty.
     human_queue = []
     cleared = []
     
-    while len(human_queue) < 11:
+    while len(human_queue) < limit:
         record = rows.next()
         matches = getMatches(session_id, record)
         if len(matches) <= 1:
@@ -289,11 +303,17 @@ def populateHumanReview(session_id):
                            match_ids=[m['record_id'] for m in matches])
             cleared.append(record['record_id'])
         else:
-            r = [{'record_id': record['record_id'], 'entity': m['entity_id']} \
-                    for m in matches]
-            human_queue.extend(r)
-    ins = ''' 
-        INSERT INTO "match_review_{0}" VALUES (:record_id, :entity)
+            r = {
+                'record_id': record['record_id'], 
+                'entities': [m['entity_id'] for m in matches],
+                'confidence': [m['confidence'] for m in matches]
+                }
+            human_queue.append(r)
+    upd = ''' 
+        UPDATE "match_review_{0}" SET
+          entities = :entities,
+          confidence = :confidence
+        WHERE record_id = :record_id
     '''.format(session_id)
     delete = ''' 
         DELETE FROM "match_review_{0}" WHERE record_id IN :ids
@@ -301,7 +321,8 @@ def populateHumanReview(session_id):
     with engine.begin() as conn:
         if cleared:
             conn.execute(text(delete), ids=tuple(cleared))
-        conn.execute(text(ins), *human_queue)
+        for member in human_queue:
+            conn.execute(text(upd), **member)
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
