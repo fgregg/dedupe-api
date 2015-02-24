@@ -9,7 +9,6 @@ from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
 from api.utils.helpers import preProcess, getMatches
-# from api.utils.delayed_tasks import getNextHumanReview
 from api.track_usage import tracker
 import dedupe
 from dedupe.serializer import _to_json
@@ -204,46 +203,58 @@ def get_unmatched():
     dedupe_session = db_session.query(DedupeSession.field_defs)\
             .filter(DedupeSession.id == session_id)\
             .first()
-    match_fields = ','.join(['match.{0} AS match_{0}'.format(f['field']) \
+    match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f['field']) \
             for f in json.loads(dedupe_session.field_defs)])
-    raw_fields = ','.join(['raw.{0} AS raw_{0}'.format(f['field']) \
+    raw_fields = ','.join(['MAX(raw.{0}) AS raw_{0}'.format(f['field']) \
             for f in json.loads(dedupe_session.field_defs)])
     sel = '''
         SELECT 
-            match.record_id, 
-            {0},
-            raw.record_id, 
-            {1} 
+          {0}, 
+          {1}, 
+          ent.entity_id, 
+          MAX(ent.confidence) AS confidence
         FROM "raw_{2}" AS match 
         JOIN (
-            SELECT 
-                e.record_id, 
-                mr.record_id AS match_record_id 
-            FROM "entity_{2}" AS e 
-            JOIN (
-                SELECT 
-                    record_id, 
-                    entity
-                FROM "match_review_{2}" 
-                WHERE entity IS NOT NULL 
-                    AND reviewed = FALSE
-                GROUP BY record_id
-            ) AS mr 
-                ON e.entity_id = mr.entity
+          SELECT 
+            e.record_id, 
+            e.entity_id, 
+            s.record_id as match_record_id, 
+            s.confidence[(
+              SELECT i 
+              FROM generate_subscripts(s.entities, 1) AS i
+              WHERE s.entities[i] = e.entity_id
+            )] as confidence
+          FROM "entity_{2}" AS e, 
+          (
+            SELECT record_id, entities, confidence 
+              FROM "match_review_{2}" 
+            WHERE array_upper(entities, 1) IS NOT NULL
+              AND reviewed = FALSE
+            LIMIT 1
+          ) AS s 
+          WHERE e.entity_id = ANY(s.entities)
         ) AS ent 
-            ON match.record_id = ent.record_id 
-        JOIN "raw_{2}" AS raw
-            ON ent.match_record_id = raw.record_id
+          ON match.record_id = ent.record_id 
+        JOIN "raw_{2}" AS raw 
+          ON ent.match_record_id = raw.record_id 
+        GROUP BY ent.entity_id
     '''.format(match_fields, raw_fields, session_id)
     engine = db_session.bind
-    record = list(engine.execute(sel))
-    print [r for r in record]
+    records = list(engine.execute(sel))
     matches = []
     raw_record = {}
-    for key in record.keys():
-        if key.startswith('raw'):
-            raw_record[key] = getattr(record, key)
-
+    for record in records:
+        match = {}
+        for key in record.keys():
+            if key.startswith('raw_'):
+                raw_record[key.replace('raw_', '')] = getattr(record, key)
+            elif key.startswith('match_'):
+                match[key.replace('match_', '')] = getattr(record, key)
+        match['entity_id'] = record.entity_id
+        match['confidence'] = record.confidence
+        matches.append(match)
+    resp['object'] = raw_record
+    resp['matches'] = matches
     response = make_response(json.dumps(resp, sort_keys=False), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response

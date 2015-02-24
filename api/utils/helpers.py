@@ -235,7 +235,7 @@ def getMatches(session_id, record):
                 matches = [dict(zip(r.keys(), r.values())) \
                         for r in list(engine.execute(sel, ids=ids))]
                 for match in matches:
-                    match['confidence'] = confs[unicode(match['record_id'])]
+                    match['confidence'] = float(confs[unicode(match['record_id'])])
     return matches
 
 def column_windows(session, column, windowsize):
