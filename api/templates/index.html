@@ -72,7 +72,7 @@
                 <% if (object.processing == true) { %>
                     <em><i class='fa fa-refresh fa-spin'></i> Processing</em>
                 <% } else { %>
-                    Step <%= object.status_info.step + 1 %>: <a href="<%= object.status_info.next_step %>"><%= object.status_info.next_step_name %> &raquo;</a>
+                    Step <%= object.status_info.next_step %>: <a href="<%= object.status_info.next_step_url %>"><%= object.status_info.next_step_name %> &raquo;</a>
                 <% } %>
             </div>
             <div class="progress">
@@ -83,9 +83,15 @@
         </td>
         <td>
             <% if (object.review_count) { %>
-                <%= object.review_count %>
+                <% if (object.status_info.next_step == 4 || object.status_info.next_step == 5) { %>
+                    <%= object.review_count %> entities
+                <% } else if (object.status_info.next_step == 6) { %>
+                    <%= object.review_count %> records
+                <% } else { %>
+                    None
+                <% } %>   
             <% } else { %>
-                0
+                None
             <% } %>
         </td>
         <td>
@@ -117,7 +123,7 @@
                             $("#status_" + object.id).html("<em><i class='fa fa-refresh fa-spin'></i> Processing</em>");
                         }
                         else {
-                            $("#status_" + object.id).html("Step " + (object.status_info.step + 1) + ": <a href='" + object.status_info.next_step + "'>" + object.status_info.next_step_name + " &raquo;</a>");
+                            $("#status_" + object.id).html("Step " + (object.status_info.next_step) + ": <a href='" + object.status_info.next_step_url + "'>" + object.status_info.next_step_name + " &raquo;</a>");
                         }
                     });
                 }

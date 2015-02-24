@@ -139,7 +139,7 @@ def bulkMarkCanonClusters(session_id, user=None):
 @queuefunc
 def getMatchingReady(session_id):
     addRowHash(session_id)
-    cleanupTables(session_id)
+    # cleanupTables(session_id)
     engine = worker_session.bind
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "match_blocks_{0}"'\
@@ -651,6 +651,7 @@ def dedupeCanon(session_id, threshold=0.25):
     else: # pragma: no cover
         print 'did not find clusters'
         getMatchingReady(session_id)
+        dd.processing = False
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
         .count()

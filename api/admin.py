@@ -339,7 +339,7 @@ def review():
         if row.field_defs:
             d['field_defs'] = json.loads(unicode(row.field_defs))
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
-        d['status_info']['next_step'] = d['status_info']['next_step'].format(row.id)
+        d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
         if row.last_work_status:
             d['last_work_status'] = unicode(row.last_work_status)
         all_sessions.append(d)
