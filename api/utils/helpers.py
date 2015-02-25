@@ -42,7 +42,7 @@ STATUS_LIST = [
         'machine_name': 'entity map updated',
         'human_name': 'Training finished', 
         'next_step_name': 'Review entities',
-        'next_step': '/session-review/?session_id={0}',
+        'next_step_url': '/session-review/?session_id={0}',
         'step': 3
     },
     {
