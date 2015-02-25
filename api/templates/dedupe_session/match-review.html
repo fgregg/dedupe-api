@@ -120,7 +120,7 @@
             matches = resp['matches'];
             remaining = resp['remaining']
             if (typeof match_obj !== 'undefined' && !$.isEmptyObject(match_obj)){
-                displayRecord(resp.matches, resp.object, 0)
+                displayRecord(resp.matches, resp.object, remaining)
             } else {
                 $('#group-display').spin(false);
                 $('#group-display').html('<h2>Matching complete</h2>')

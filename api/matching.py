@@ -190,7 +190,7 @@ def train():
                        match_ids=match_ids)
         if add_entity:
             user = db_session.query(User).get(api_key)
-            addToEntityMap(session_id, obj, match_ids=match_ids, user=user)
+            addToEntityMap(session_id, obj, match_ids=match_ids, reviewer=user.name)
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -205,9 +205,8 @@ def get_unmatched():
     }
     status_code = 200
     session_id = request.args['session_id']
-    dedupe_session = db_session.query(DedupeSession.field_defs)\
-            .filter(DedupeSession.id == session_id)\
-            .first()
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    resp['remaining'] = dedupe_session.review_count
     fields = [f['field'] for f in json.loads(dedupe_session.field_defs)]
     fields.append('record_id')
     match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f) for f in fields])

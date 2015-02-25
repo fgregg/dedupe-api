@@ -236,9 +236,9 @@ def getMatchingReady(session_id):
         ON p.record_id = e.record_id
       WHERE e.record_id IS NULL
     '''.format(session_id)
-    count = list(engine.execute(sel))
+    count = engine.execute(sel).first()
     sess.status = 'matching ready'
-    sess.review_count = count[0][0]
+    sess.review_count = count[0]
     worker_session.add(sess)
     worker_session.commit()
     create_human_review = '''
@@ -247,7 +247,8 @@ def getMatchingReady(session_id):
             r.record_id,
             ARRAY[]::varchar[] AS entities,
             FALSE AS reviewed, 
-            ARRAY[]::double precision[] AS confidence
+            ARRAY[]::double precision[] AS confidence,
+            NULL::varchar AS reviewer
           FROM "raw_{0}" AS r
           LEFT JOIN "entity_{0}" AS e
             ON r.record_id = e.record_id
@@ -269,6 +270,7 @@ def populateHumanReview(session_id):
     
     engine = worker_session.bind
     
+
     queue_count = ''' 
         SELECT count(*) FROM "match_review_{0}"  
           WHERE array_upper(entities, 1) IS NOT NULL
@@ -298,12 +300,20 @@ def populateHumanReview(session_id):
         except StopIteration:
             break
         matches = getMatches(session_id, record)
-        print matches
         if len(matches) <= 1:
-            addToEntityMap(session_id, 
-                           record, 
-                           match_ids=[m['record_id'] for m in matches])
-            cleared.append(record['record_id'])
+            if len(matches) and matches[0]['confidence'] >= 0.8:
+                addToEntityMap(session_id, 
+                               record, 
+                               match_ids=[m['record_id'] for m in matches],
+                               reviewer='machine')
+                cleared.append(record['record_id'])
+            elif len(matches) == 0:
+                addToEntityMap(session_id, 
+                               record, 
+                               match_ids=[m['record_id'] for m in matches],
+                               reviewer='machine')
+                cleared.append(record['record_id'])
+
         else:
             r = {
                 'record_id': record['record_id'], 
@@ -317,14 +327,47 @@ def populateHumanReview(session_id):
           confidence = :confidence
         WHERE record_id = :record_id
     '''.format(session_id)
-    delete = ''' 
-        DELETE FROM "match_review_{0}" WHERE record_id IN :ids
+    reviewed = ''' 
+        UPDATE "match_review_{0}" SET 
+        reviewed = TRUE,
+        reviewer = :reviewer
+        WHERE record_id IN :ids
     '''.format(session_id)
     with engine.begin() as conn:
         if cleared:
-            conn.execute(text(delete), ids=tuple(cleared))
+            conn.execute(text(reviewed), ids=tuple(cleared), reviewer='machine')
         for member in human_queue:
             conn.execute(text(upd), **member)
+
+    # Calculate running average for review count
+    worker_session.refresh(dedupe_session)
+    
+    total_reviewed = ''' 
+        SELECT count(*) 
+        FROM "match_review_{0}"
+        WHERE reviewed = TRUE
+    '''.format(session_id)
+    total_reviewed = engine.execute(text(total_reviewed)).first()[0]
+    human_count = ''' 
+        SELECT count(*) 
+        FROM "match_review_{0}"
+        WHERE reviewer != :reviewer
+            AND reviewed = TRUE
+    '''.format(session_id)
+    human_count = engine.execute(text(human_count), reviewer='machine').first()[0]
+    remaining_count = ''' 
+        SELECT count(*)
+        FROM "match_review_{0}"
+        WHERE reviewed = FALSE
+    '''.format(session_id)
+    remaining_count = engine.execute(text(remaining_count)).first()[0]
+    review_prop = (human_count + 0.001) / (total_reviewed + 0.001)
+    print human_count
+    print total_reviewed
+    print review_prop
+    print remaining_count
+    dedupe_session.review_count = remaining_count * review_prop
+    print dedupe_session.review_count
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
@@ -543,6 +586,20 @@ def reDedupeCanon(session_id, threshold=0.25):
     last_update = datetime.now().replace(tzinfo=TIME_ZONE)
     with engine.begin() as c:
         c.execute(upd, last_update=last_update)
+    delete = ''' 
+        DELETE FROM "entity_{0}" 
+        WHERE record_id IN (
+            SELECT record_id
+            FROM "match_review_{0}"
+        )
+    '''.format(session_id)
+    conn = engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute(delete)
+        trans.commit()
+    except Exception:
+        trans.rollback()
     dedupeCanon(session_id, threshold=threshold)
     sess = worker_session.query(DedupeSession).get(session_id)
     sess.status = 'canon clustered'

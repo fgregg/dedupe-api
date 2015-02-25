@@ -213,7 +213,7 @@ def initializeEntityMap(session_id, fields):
         FROM STDIN CSV'''.format(session_id), s)
     conn.commit()
 
-def addToEntityMap(session_id, new_entity, match_ids=None, user=None):
+def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs)
     fds = {}
@@ -289,7 +289,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, user=None):
                     'clustered': True,
                     'checked_out': False,
                     'last_update': last_update,
-                    'reviewer': user.name,
+                    'reviewer': reviewer,
                     'match_ids': tuple([m for m in match_ids]),
                     'match_type': 'merge from match'
                 }
@@ -351,11 +351,14 @@ def addToEntityMap(session_id, new_entity, match_ids=None, user=None):
         # Update match_review table
         upd = ''' 
             UPDATE "match_review_{0}" SET
-              reviewed = TRUE
+              reviewed = TRUE,
+              reviewer = :reviewer
             WHERE record_id = :record_id
         '''.format(session_id)
         with engine.begin() as conn:
-            conn.execute(text(upd), record_id=new_entity['record_id'])
+            conn.execute(text(upd), 
+                         record_id=new_entity['record_id'], 
+                         reviewer=reviewer)
 
 def updateEntityMap(clustered_dupes,
                     session_id,
