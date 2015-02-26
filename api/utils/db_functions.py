@@ -346,7 +346,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                 '''.format(sess.id)), *block_keys)
         else:
             if sentry:
-                sentry.captureMessage('Unable to block record', extra=post)
+                sentry.captureMessage('Unable to block record', extra=new_entity)
 
         # Update match_review table
         upd = ''' 
