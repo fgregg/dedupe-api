@@ -437,7 +437,7 @@ def initializeModel(session_id, init=True):
     worker_session.expire_all()
     sess = worker_session.query(DedupeSession).get(session_id)
     while True:
-        worker_session.refresh(sess, ['field_defs', 'sample'])
+        worker_session.refresh(sess, ['field_defs', 'sample', 'record_count'])
         if not sess.field_defs: # pragma: no cover
             time.sleep(3)
         else:
@@ -447,12 +447,14 @@ def initializeModel(session_id, init=True):
                 writeProcessedTable(session_id)
             updated_fds = []
             for field in field_defs:
+                distinct_vals = getDistinct(field['field'], session_id)
                 if field['type'] == 'Categorical':
-                    categories = getDistinct(field['field'], session_id)
-                    if len(categories) <= 6:
-                        field.update({'categories': categories})
+                    if len(distinct_vals) <= 6:
+                        field.update({'categories': distinct_vals})
                     else:
                         field['type'] = 'Exact'
+                if len(distinct_vals) < sess.record_count:
+                    field.update({'has_missing': True})
                 updated_fds.append(field)
             sess.field_defs = json.dumps(updated_fds)
             sess.status = 'model defined'

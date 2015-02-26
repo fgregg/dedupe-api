@@ -200,17 +200,10 @@ def select_field_types():
         ftypes = sorted(form.items())
         for k,g in groupby(ftypes, key=lambda x: x[0].rsplit('_', 1)[0]):
             vals = list(g)
-            has_missing = False
-            for ftype, val in vals:
-                if ftype == '{0}_missing'.format(k):
-                    has_missing = True
             fs = []
             for field, val in vals:
                 fs.extend([{'field': k, 'type': val[i]} \
                     for i in range(len(val)) if field.endswith('type')])
-            for f in fs:
-                if has_missing:
-                    f.update({'has_missing': True})
             field_defs.extend(fs)
         engine = db_session.bind
         with engine.begin() as conn:
