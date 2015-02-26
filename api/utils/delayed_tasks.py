@@ -156,19 +156,8 @@ def getMatchingReady(session_id):
     # Save Gazetteer settings
     d = dedupe.Gazetteer(field_defs)
     
-    # Disabling canopy based predicates for now
-    while True:
-        ids = []
-        for i, definition in enumerate(d.data_model.primary_fields):
-            for idx, predicate in enumerate(definition.predicates):
-                if hasattr(predicate, 'index'):
-                    ids.append((i, idx,))
-                    del d.data_model.primary_fields[i].predicates[idx]
-        if not ids:
-            break
-
     d.readTraining(StringIO(sess.training_data))
-    d.train(ppc=0.01)
+    d.train(ppc=0.01, index_predicates=False)
     g_settings = StringIO()
     d.writeSettings(g_settings)
     g_settings.seek(0)
