@@ -266,7 +266,7 @@ def populateHumanReview(session_id):
             AND reviewed = FALSE
     '''.format(session_id)
     queue_count = engine.execute(queue_count).first()[0]
-    limit = 11 - queue_count
+    limit = 21 - queue_count
     
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs)])))
@@ -299,18 +299,30 @@ def populateHumanReview(session_id):
             elif len(matches) == 0:
                 addToEntityMap(session_id, 
                                record, 
-                               match_ids=[m['record_id'] for m in matches],
                                reviewer='machine')
                 cleared.append(record['record_id'])
 
         else:
-            print [m['confidence'] for m in matches]
-            r = {
-                'record_id': record['record_id'], 
-                'entities': [m['entity_id'] for m in matches],
-                'confidence': [m['confidence'] for m in matches]
-                }
-            human_queue.append(r)
+            for idx, match in enumerate(matches):
+                if match['confidence'] < 0.2:
+                    addToEntityMap(session_id, 
+                                   record, 
+                                   reviewer='machine')
+                    matches.pop(idx)
+            if len(matches) > 1:
+                r = {
+                    'record_id': record['record_id'], 
+                    'entities': [m['entity_id'] for m in matches],
+                    'confidence': [m['confidence'] for m in matches]
+                    }
+                human_queue.append(r)
+            else:
+                addToEntityMap(session_id, 
+                               record, 
+                               match_ids=[m['record_id'] for m in matches],
+                               reviewer='machine')
+                cleared.append(record['record_id'])
+
     upd = ''' 
         UPDATE "match_review_{0}" SET
           entities = :entities,
