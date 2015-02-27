@@ -97,10 +97,10 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     if all_ids:
         sel_clauses = set()
         for field in raw_fields:
-            sel_clauses.add(field)
+            sel_clauses.add('"{0}"'.format(field))
             if fields_by_type.get(field):
                 if 'Price' in fields_by_type[field]:
-                    sel_clauses.add('{0}::double precision'.format(field))
+                    sel_clauses.add('"{0}"::double precision'.format(field))
         for field, types in fields_by_type.items():
             if 'Price' in types:
                 sel_clauses.add('{0}::double precision'.format(field))
