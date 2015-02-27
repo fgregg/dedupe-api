@@ -344,7 +344,7 @@ def getDistinct(field_name, session_id):
         SELECT DISTINCT {0}
         FROM "processed_{1}"
         WHERE {0} IS NOT NULL
-            AND {0} != ''
+            AND {0}::varchar != ''
     '''.format(field_name, session_id)
     distinct_values = list(set([unicode(v[0]) for v in engine.execute(sel)]))
     return distinct_values
