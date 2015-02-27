@@ -246,6 +246,8 @@ def get_unmatched():
     '''.format(match_fields, raw_fields, session_id)
     engine = db_session.bind
     records = list(engine.execute(sel))
+    if records:
+        populateHumanReview.delay(session_id)
     matches = []
     raw_record = {}
     for record in records:
@@ -260,7 +262,6 @@ def get_unmatched():
         match['entity_id'] = record.entity_id
         match['confidence'] = record.confidence
         matches.append(match)
-    populateHumanReview.delay(session_id)
     resp['object'] = raw_record
     resp['matches'] = matches
     response = make_response(json.dumps(resp, sort_keys=False), status_code)

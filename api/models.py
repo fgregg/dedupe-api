@@ -22,7 +22,7 @@ def entity_map(name, metadata, record_id_type=BigInteger):
                 server_default=text('CURRENT_TIMESTAMP')),
         Column('last_update', DateTime(timezone=True)),
         Column('match_type', String),
-        Column('record_id', record_id_type, index=True),
+        Column('record_id', record_id_type, unique=True, index=True),
         Column('target_record_id', record_id_type),
         Column('confidence', Float(precision=50)),
         Column('source_hash', String(32)),

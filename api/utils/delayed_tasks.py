@@ -157,7 +157,7 @@ def getMatchingReady(session_id):
     d = dedupe.Gazetteer(field_defs)
     
     d.readTraining(StringIO(sess.training_data))
-    d.train(ppc=0.01, index_predicates=False)
+    d.train(ppc=0.1, index_predicates=False)
     g_settings = StringIO()
     d.writeSettings(g_settings)
     g_settings.seek(0)
@@ -289,18 +289,17 @@ def populateHumanReview(session_id):
         except StopIteration:
             break
         matches = getMatches(session_id, record)
-        if len(matches) <= 1:
-            if len(matches) and matches[0]['confidence'] >= 0.8:
+        if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
                 addToEntityMap(session_id, 
                                record, 
                                match_ids=[m['record_id'] for m in matches],
                                reviewer='machine')
                 cleared.append(record['record_id'])
-            elif len(matches) == 0:
-                addToEntityMap(session_id, 
-                               record, 
-                               reviewer='machine')
-                cleared.append(record['record_id'])
+        elif len(matches) == 0:
+            addToEntityMap(session_id, 
+                           record, 
+                           reviewer='machine')
+            cleared.append(record['record_id'])
 
         else:
             # check if any of the matches are low confidence
@@ -308,26 +307,26 @@ def populateHumanReview(session_id):
                 if match['confidence'] < 0.2:
                     matches.pop(idx)
             
-            if len(matches) > 1:
+            if len(matches):
                 r = {
                     'record_id': record['record_id'], 
                     'entities': [m['entity_id'] for m in matches],
                     'confidence': [m['confidence'] for m in matches]
                     }
-                human_queue.append(r)
+                upd = ''' 
+                    UPDATE "match_review_{0}" SET
+                      entities = :entities,
+                      confidence = :confidence
+                    WHERE record_id = :record_id
+                '''.format(session_id)
+                with engine.begin() as conn:
+                    conn.execute(text(upd), **r)
             else:
                 addToEntityMap(session_id, 
                                record, 
-                               match_ids=[m['record_id'] for m in matches],
                                reviewer='machine')
                 cleared.append(record['record_id'])
 
-    upd = ''' 
-        UPDATE "match_review_{0}" SET
-          entities = :entities,
-          confidence = :confidence
-        WHERE record_id = :record_id
-    '''.format(session_id)
     reviewed = ''' 
         UPDATE "match_review_{0}" SET 
         reviewed = TRUE,
@@ -337,9 +336,7 @@ def populateHumanReview(session_id):
     with engine.begin() as conn:
         if cleared:
             conn.execute(text(reviewed), ids=tuple(cleared), reviewer='machine')
-        for member in human_queue:
-            conn.execute(text(upd), **member)
-
+    
     # Calculate running average for review count
     worker_session.refresh(dedupe_session)
     
