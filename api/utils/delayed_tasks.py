@@ -303,12 +303,11 @@ def populateHumanReview(session_id):
                 cleared.append(record['record_id'])
 
         else:
+            # check if any of the matches are low confidence
             for idx, match in enumerate(matches):
                 if match['confidence'] < 0.2:
-                    addToEntityMap(session_id, 
-                                   record, 
-                                   reviewer='machine')
                     matches.pop(idx)
+            
             if len(matches) > 1:
                 r = {
                     'record_id': record['record_id'], 
