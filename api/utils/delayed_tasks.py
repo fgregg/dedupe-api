@@ -304,6 +304,7 @@ def populateHumanReview(session_id):
                 cleared.append(record['record_id'])
 
         else:
+            print [m['confidence'] for m in matches]
             r = {
                 'record_id': record['record_id'], 
                 'entities': [m['entity_id'] for m in matches],
@@ -351,12 +352,7 @@ def populateHumanReview(session_id):
     '''.format(session_id)
     remaining_count = engine.execute(text(remaining_count)).first()[0]
     review_prop = (human_count + 0.001) / (total_reviewed + 0.001)
-    print human_count
-    print total_reviewed
-    print review_prop
-    print remaining_count
     dedupe_session.review_count = remaining_count * review_prop
-    print dedupe_session.review_count
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
@@ -460,14 +456,41 @@ def trainDedupe(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     data_sample = cPickle.loads(dd_session.sample)
-    deduper = dedupe.Dedupe(json.loads(dd_session.field_defs), 
-        data_sample=data_sample)
-    training_data = StringIO(dd_session.training_data)
+    field_defs = json.loads(dd_session.field_defs)
+    fields_by_type = {}
+    for field in field_defs:
+        try:
+            fields_by_type[field['field']].append(field['type'])
+        except KeyError:
+            fields_by_type[field['field']] = [field['type']]
+    td = {'distinct': [], 'match': []}
+    training_data = json.loads(dd_session.training_data)
+    for types, records in training_data.items():
+        for pair in records:
+            p = []
+            for member in pair:
+                r = {}
+                for key, value in member.items():
+                    r[key] = value
+                    if fields_by_type.get(key):
+                        if 'Price' in fields_by_type[key]:
+                            try:
+                                r[key] = float(value)
+                            except ValueError:
+                                r[key] = 0
+                p.append(r)
+            td[types].append(p)
+    training_data['distinct'] = td['distinct'][:150]
+    training_data['match'] = td['match'][:150]
+    deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
+    training_data = StringIO(json.dumps(training_data))
     deduper.readTraining(training_data)
     deduper.train()
     settings_file_obj = StringIO()
     deduper.writeSettings(settings_file_obj)
     dd_session.settings_file = settings_file_obj.getvalue()
+    training_data.seek(0)
+    dd_session.training_data = training_data.getvalue()
     worker_session.add(dd_session)
     worker_session.commit()
     deduper.cleanupTraining()
