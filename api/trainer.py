@@ -17,7 +17,8 @@ import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable
-from api.utils.helpers import getDistinct, slugify, STATUS_LIST, updateTraining
+from api.utils.helpers import getDistinct, slugify, STATUS_LIST, \
+    updateTraining, convertTraining
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
@@ -340,7 +341,11 @@ def mark_pair():
         resp = {'counter': counter}
     db_session.refresh(sess, ['training_data'])
     labels = json.loads(sess.training_data)
-    deduper.markPairs(labels)
+    try:
+        deduper.markPairs(labels)
+    except TypeError:
+        td = convertTraining(field_defs, labels)
+        deduper.markPairs(td)
     if resp.get('finished'):
         del flask_session['deduper']
     resp = make_response(json.dumps(resp))

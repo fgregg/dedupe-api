@@ -78,14 +78,37 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     sess = worker_session.query(DedupeSession).get(session_id)
     worker_session.refresh(sess)
     engine = worker_session.bind
-    training = {'distinct': [], 'match': []}
     
+    meta = MetaData()
+    raw_table = Table('raw_{0}'.format(session_id), meta, 
+            autoload=True, autoload_with=engine)
+    raw_fields = [r.name for r in raw_table.columns]
+
+    training = {'distinct': [], 'match': []}
+    field_defs = json.loads(sess.field_defs)
+    fields_by_type = {}
+    for field in field_defs:
+        try:
+            fields_by_type[field['field']].append(field['type'])
+        except KeyError:
+            fields_by_type[field['field']] = [field['type']]
+
     all_ids = tuple([i for i in distinct_ids + match_ids])
     if all_ids:
+        sel_clauses = set()
+        for field in raw_fields:
+            sel_clauses.add(field)
+            if fields_by_type.get(field):
+                if 'Price' in fields_by_type[field]:
+                    sel_clauses.add('{0}::double precision'.format(field))
+        for field, types in fields_by_type.items():
+            if 'Price' in types:
+                sel_clauses.add('{0}::double precision'.format(field))
+        sel_clauses = ', '.join(sel_clauses)
         sel = text(''' 
-            SELECT * FROM "processed_{0}" 
+            SELECT {1} FROM "processed_{0}" 
             WHERE record_id IN :record_ids
-        '''.format(session_id))
+        '''.format(session_id, sel_clauses))
         all_records = {r.record_id: dict(zip(r.keys(), r.values())) \
                 for r in engine.execute(sel, record_ids=all_ids)}
  
@@ -123,6 +146,33 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
         worker_session.add(sess)
         worker_session.commit()
     return None
+
+def convertTraining(field_defs, training_data):
+    fields_by_type = {}
+    for field in field_defs:
+        try:
+            fields_by_type[field['field']].append(field['type'])
+        except KeyError:
+            fields_by_type[field['field']] = [field['type']]
+    td = {'distinct': [], 'match': []}
+    for types, records in training_data.items():
+        for pair in records:
+            p = []
+            for member in pair:
+                r = {}
+                for key, value in member.items():
+                    r[key] = value
+                    if fields_by_type.get(key):
+                        if 'Price' in fields_by_type[key]:
+                            try:
+                                r[key] = float(value)
+                            except ValueError:
+                                r[key] = 0
+                p.append(r)
+            td[types].append(p)
+    training_data['distinct'] = td['distinct'][:150]
+    training_data['match'] = td['match'][:150]
+    return training_data
 
 def getCluster(session_id, entity_pattern, raw_pattern):
     ent_name = entity_pattern.format(session_id)

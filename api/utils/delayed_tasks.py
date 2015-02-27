@@ -8,7 +8,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, clusterGen, \
-    makeSampleDict, windowed_query, getDistinct, getMatches
+    makeSampleDict, windowed_query, getDistinct, getMatches, convertTraining
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash, addToEntityMap
@@ -469,31 +469,8 @@ def trainDedupe(session_id):
         .get(session_id)
     data_sample = cPickle.loads(dd_session.sample)
     field_defs = json.loads(dd_session.field_defs)
-    fields_by_type = {}
-    for field in field_defs:
-        try:
-            fields_by_type[field['field']].append(field['type'])
-        except KeyError:
-            fields_by_type[field['field']] = [field['type']]
-    td = {'distinct': [], 'match': []}
     training_data = json.loads(dd_session.training_data)
-    for types, records in training_data.items():
-        for pair in records:
-            p = []
-            for member in pair:
-                r = {}
-                for key, value in member.items():
-                    r[key] = value
-                    if fields_by_type.get(key):
-                        if 'Price' in fields_by_type[key]:
-                            try:
-                                r[key] = float(value)
-                            except ValueError:
-                                r[key] = 0
-                p.append(r)
-            td[types].append(p)
-    training_data['distinct'] = td['distinct'][:150]
-    training_data['match'] = td['match'][:150]
+    training_data = convertTraining(field_defs, training_data)
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
     training_data = StringIO(json.dumps(training_data))
     deduper.readTraining(training_data)
