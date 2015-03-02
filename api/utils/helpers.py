@@ -435,6 +435,6 @@ def updateEntityCount(session_id):
           GROUP BY e.entity_id
         ) AS s
         WHERE id = :id
-    '''
+    '''.format(session_id)
     with engine.begin() as conn:
         conn.execute(text(upd), id=session_id)

@@ -269,7 +269,10 @@ def populateHumanReview(session_id):
             AND reviewed = FALSE
     '''.format(session_id)
     queue_count = engine.execute(queue_count).first()[0]
-    limit = 21 - queue_count
+    if queue_count > 20:
+        limit = 21
+    else:
+        limit = 21 - queue_count
     
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs)])))
