@@ -105,7 +105,12 @@
                 </span>
             <% } %>
         </td>
-        <td><a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a></td>
+        <td>
+            <a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a>
+            <% if (object.status_info.next_step > 2) { %>
+                <br /><a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search'></i> Browse entities</a>
+            <% } %>
+        </td>
     </tr>
 </script>
 

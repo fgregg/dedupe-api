@@ -48,7 +48,10 @@
                 </tr>
                 <tr>
                     <td>Unique entities</td>
-                    <td>{{ dedupe_session.entity_count | format_number }}</td>
+                    <td>
+                        {{ dedupe_session.entity_count | format_number }}
+                        (<a href="{{url_for('admin.entity_browser', session_id=dedupe_session.id)}}">Browse entities</a>)
+                    </td>
                 </tr>
                 <tr>
                     <td>To review</td>
@@ -434,7 +437,7 @@
                     'threshold': threshold
                 }
                 $.getJSON('/rewind/', params, function(resp){
-                    console.log(resp);
+                    window.location = '/'
                 })
             })
         })

@@ -2,12 +2,26 @@
 {% from 'macros.html' import pager %}
 {% block title %}Dedupe sessions{% endblock %}
 {% block content %}
+
+<span class='pull-right'>
+  <a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a>
+</span>
+
+<p><a href='/'>&laquo; back to home</a></p>
+
+<h2>{{ dedupe_session.name }}</h2>
+{% if dedupe_session.description %}
+    <p>{{ dedupe_session.description }}</p>
+{% endif %}
+
+<p>{{ dedupe_session.entity_count | format_number }} entities</p>
+
 <div class="row">
     <div class="col-md-12 overflow-container" id="group-table">
         <table class="table table-bordered table-condensed">
             <thead>
                 <tr>
-                    <th></th>
+                    <th>Records</th>
                     {% for field in fields %}
                         <th>{{ field }}</th>
                     {% endfor %}
@@ -15,10 +29,10 @@
             </thead>
             <tbody>
                 {% for entity in entities %}
-                    <tr id="{{ entity.entity_id }}" class="warning">
+                    <tr id="{{ entity.entity_id }}">
                         <td>
-                            <a href="javascript://" class="reveal-records" data-entity_id="{{ entity.entity_id }}">
-                              <i class="fa fa-plus"> </i> {{ entity.record_count }} records
+                            <a href="javascript://" class="reveal-records nowrap" data-entity_id="{{ entity.entity_id }}">
+                              <i class="fa fa-caret-right"> </i> {{ entity.record_count }}
                             </a>
                         </td>
                         {% for field in fields %}
@@ -61,8 +75,8 @@
             }
             var self = this;
             if (entity_id != last_clicked){
-                $(self).find('i').removeClass('fa-plus');
-                $(self).find('i').addClass('fa-minus');
+                $(self).find('i').removeClass('fa-caret-right');
+                $(self).find('i').addClass('fa-caret-down');
                 $.when(getRecords(entity_id)).then(function(resp){
                     var tpl = new EJS({'text': $('#recordsTemplate').html()});
                     var context = {
@@ -75,8 +89,8 @@
                 last_clicked = entity_id;
             } else {
                 last_clicked = null
-                $(self).find('i').removeClass('fa-minus');
-                $(self).find('i').addClass('fa-plus');
+                $(self).find('i').removeClass('fa-caret-down');
+                $(self).find('i').addClass('fa-caret-right');
             }
         })
     })

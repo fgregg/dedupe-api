@@ -486,6 +486,7 @@ def entity_browser():
     page_count = int(round(dedupe_session.entity_count, -2) / 100)
     print page_count
     return render_template('entity-browser.html', 
+                           dedupe_session=dedupe_session,
                            entities=entities, 
                            fields=list(field_names), 
                            page_count=page_count)
