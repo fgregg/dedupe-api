@@ -434,3 +434,64 @@ def add_bulk_training():
     }
     return redirect(url_for('admin.session_admin'))
 
+
+@admin.route('/get-entity-records/', methods=['GET'])
+@login_required
+@check_sessions()
+def get_entity_records():
+    session_id = flask_session['session_id']
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
+    fields = ', '.join(['r.{0}'.format(f) for f in field_names])
+    entity_id = request.args.get('entity_id')
+    sel = ''' 
+        SELECT {0}
+        FROM "raw_{1}" AS r
+        JOIN "entity_{1}" AS e
+          ON r.record_id = e.record_id
+        WHERE e.entity_id = :entity_id
+    '''.format(fields, session_id)
+    engine = db_session.bind
+    records = [dict(zip(r.keys(), r.values())) \
+            for r in engine.execute(text(sel), entity_id=entity_id)]
+    response = make_response(json.dumps({'status': 'ok', 'records': records}))
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+@admin.route('/entity-browser/', methods=['POST', 'GET'])
+@login_required
+@check_sessions()
+def entity_browser():
+    session_id = flask_session['session_id']
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
+    fields = ', '.join(['MAX(r.{0}) AS {0}'.format(f) for f in field_names])
+    sel = ''' 
+        SELECT {0},
+          COUNT(*) AS record_count,
+          e.entity_id
+        FROM "raw_{1}" AS r
+        JOIN "entity_{1}" AS e
+          ON r.record_id = e.record_id
+        GROUP BY e.entity_id
+        ORDER BY record_count DESC
+        LIMIT 100
+    '''.format(fields, session_id)
+    if request.args.get('page'):
+        offset = (page - 1) * 100
+        sel = '{0} OFFSET {1}'.format(sel, offset)
+    engine = db_session.bind
+    entities = list(engine.execute(sel))
+    print entities
+    return render_template('entity-browser.html', 
+                           entities=entities, 
+                           fields=list(field_names))
+
+@admin.route('/entity-lookup/', methods=['POST', 'GET'])
+@login_required
+@check_sessions()
+def entity_lookup():
+    session_id = flask_session['session_id']
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    fields = [f['field'] for f in json.loads(dedupe_session.field_defs)]
+    return render_template('entity-lookup.html', fields=fields)

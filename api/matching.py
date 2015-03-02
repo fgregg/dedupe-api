@@ -134,9 +134,9 @@ def match():
                 match_list.append(d)
         matches = getMatches(session_id, obj)
         for match in matches:
-            m = OrderedDict([(f, getattr(match, f),) for f in model_fields])
-            m['record_id'] = getattr(match, 'record_id')
-            m['entity_id'] = getattr(match, 'entity_id')
+            m = OrderedDict([(f, match[f],) for f in model_fields])
+            m['record_id'] = match['record_id']
+            m['entity_id'] = match['entity_id']
             # m['match_confidence'] = float(confs[str(m['entity_id'])])
             match_list.append(m)
         r['matches'] = match_list
