@@ -427,13 +427,16 @@ def updateEntityCount(session_id):
     engine = worker_session.bind
     upd = ''' 
         UPDATE dedupe_session SET
-        entity_count = s.entity_count FROM (
-          SELECT COUNT(*) AS entity_count
-          FROM "raw_{0}" AS r
-          JOIN "entity_{0}" AS e
-            ON r.record_id = e.record_id
-          GROUP BY e.entity_id
-        ) AS s
+        entity_count = subq.entity_count FROM (
+          SELECT SUM(s.row_number) AS entity_count
+          FROM (
+            SELECT ROW_NUMBER() OVER(PARTITION BY e.entity_id) AS row_number 
+            FROM "raw_{0}" AS r 
+            JOIN "entity_{0}" AS e 
+              ON r.record_id = e.record_id 
+            GROUP BY e.entity_id
+          ) AS s
+        ) AS subq
         WHERE id = :id
     '''.format(session_id)
     with engine.begin() as conn:

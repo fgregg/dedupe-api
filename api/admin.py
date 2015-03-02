@@ -478,13 +478,17 @@ def entity_browser():
         LIMIT 100
     '''.format(fields, session_id)
     if request.args.get('page'):
+        page = int(request.args['page'])
         offset = (page - 1) * 100
         sel = '{0} OFFSET {1}'.format(sel, offset)
     engine = db_session.bind
     entities = list(engine.execute(sel))
+    page_count = int(round(dedupe_session.entity_count, -2) / 100)
+    print page_count
     return render_template('entity-browser.html', 
                            entities=entities, 
-                           fields=list(field_names))
+                           fields=list(field_names), 
+                           page_count=page_count)
 
 @admin.route('/entity-lookup/', methods=['POST', 'GET'])
 @login_required
