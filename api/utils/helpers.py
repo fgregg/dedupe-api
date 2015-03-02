@@ -422,3 +422,19 @@ def checkinSessions():
 
 def formatPercentage(num):
     return "{0:.0f}%".format(float(num) * 100)
+
+def updateEntityCount(session_id):
+    engine = worker_session.bind
+    upd = ''' 
+        UPDATE dedupe_session SET
+        entity_count = s.entity_count FROM (
+          SELECT COUNT(*) AS entity_count
+          FROM "raw_{0}" AS r
+          JOIN "entity_{0}" AS e
+            ON r.record_id = e.record_id
+          GROUP BY e.entity_id
+        ) AS s
+        WHERE id = :id
+    '''
+    with engine.begin() as conn:
+        conn.execute(text(upd), id=session_id)

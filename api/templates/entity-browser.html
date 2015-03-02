@@ -6,7 +6,7 @@
         <table class="table table-bordered table-condensed">
             <thead>
                 <tr>
-                    <th>View individual records</th>
+                    <th></th>
                     {% for field in fields %}
                         <th>{{ field }}</th>
                     {% endfor %}
@@ -14,10 +14,10 @@
             </thead>
             <tbody>
                 {% for entity in entities %}
-                    <tr id="{{ entity.entity_id }}">
+                    <tr id="{{ entity.entity_id }}" class="warning">
                         <td>
                             <a href="javascript://" class="reveal-records" data-entity_id="{{ entity.entity_id }}">
-                                <i class="fa fa-arrow-down"> </i>
+                              <i class="fa fa-plus"> </i> {{ entity.record_count }} records
                             </a>
                         </td>
                         {% for field in fields %}
@@ -34,7 +34,7 @@
 <script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
 <script type="text/EJS" id="recordsTemplate">
     <% $.each(records, function(i, record){ %>
-        <tr>
+        <tr class="<%= entity_id %>">
             <td></td>
             <% $.each(fields, function(i, field){ %>
                 <td><%= record[field] %> </td>
@@ -44,17 +44,33 @@
 </script>
 <script type="text/javascript">
     var fields = {{ fields|tojson|safe }};
+    var last_clicked = null;
     $(document).ready(function(){
         $('.reveal-records').on('click', function(){
             var entity_id = $(this).data('entity_id');
             var entity_row = $('tr#' + entity_id);
-            console.log(entity_id);
-            $.when(getRecords(entity_id)).then(function(resp){
-                console.log(resp);
-                var tpl = new EJS({'text': $('#recordsTemplate').html()});
-                $(entity_row).insertAfter(tpl.render({fields: fields,records:resp.records}))
-
-            })
+            if (last_clicked){
+                $('.' + last_clicked).remove();
+            }
+            var self = this;
+            if (entity_id != last_clicked){
+                $(self).find('i').removeClass('fa-plus');
+                $(self).find('i').addClass('fa-minus');
+                $.when(getRecords(entity_id)).then(function(resp){
+                    var tpl = new EJS({'text': $('#recordsTemplate').html()});
+                    var context = {
+                        fields: fields,
+                        records: resp.records,
+                        entity_id: entity_id
+                    }
+                    $(entity_row).after(tpl.render(context))
+                })
+                last_clicked = entity_id;
+            } else {
+                last_clicked = null
+                $(self).find('i').removeClass('fa-minus');
+                $(self).find('i').addClass('fa-plus');
+            }
         })
     })
     function getRecords(entity_id){

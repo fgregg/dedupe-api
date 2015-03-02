@@ -5,7 +5,7 @@ from cStringIO import StringIO
 from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
-from api.utils.helpers import preProcess, slugify
+from api.utils.helpers import preProcess, slugify, updateEntityCount
 from api.app_config import TIME_ZONE
 from csvkit import convert
 from csvkit.unicsv import UnicodeCSVDictReader
@@ -212,6 +212,7 @@ def initializeEntityMap(session_id, fields):
         ) 
         FROM STDIN CSV'''.format(session_id), s)
     conn.commit()
+    updateEntityCount(session_id)
 
 def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
     sess = worker_session.query(DedupeSession).get(session_id)

@@ -482,7 +482,6 @@ def entity_browser():
         sel = '{0} OFFSET {1}'.format(sel, offset)
     engine = db_session.bind
     entities = list(engine.execute(sel))
-    print entities
     return render_template('entity-browser.html', 
                            entities=entities, 
                            fields=list(field_names))

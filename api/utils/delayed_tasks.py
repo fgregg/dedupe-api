@@ -8,7 +8,8 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, clusterGen, \
-    makeSampleDict, windowed_query, getDistinct, getMatches, convertTraining
+    makeSampleDict, windowed_query, getDistinct, getMatches, convertTraining, \
+    updateEntityCount
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash, addToEntityMap
@@ -88,6 +89,7 @@ def bulkMarkClusters(session_id, user=None):
             entity_count = :entity_count
           WHERE id = :id
           '''), entity_count=count, id=session_id)
+    updateEntityCount(session_id)
     dedupeCanon(session_id)
     return None
 
@@ -134,6 +136,7 @@ def bulkMarkCanonClusters(session_id, user=None):
                     WHERE record_id = :record_id
                 '''.format(session_id)),
                 target=row[0], record_id=row[1])
+    updateEntityCount(session_id)
     getMatchingReady(session_id)
 
 @queuefunc
@@ -336,6 +339,8 @@ def populateHumanReview(session_id):
     with engine.begin() as conn:
         if cleared:
             conn.execute(text(reviewed), ids=tuple(cleared), reviewer='machine')
+    
+    updateEntityCount(session_id)
     
     # Calculate running average for review count
     worker_session.refresh(dedupe_session)
