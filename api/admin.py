@@ -295,7 +295,7 @@ def review():
     }
     status_code = 200
     all_sessions = []
-    sessions = db_session.query(DedupeSession)\
+    sessions = db_session.query(DedupeSession.id)\
         .filter(DedupeSession.group.has(
             Group.id.in_([i.id for i in current_user.groups])))\
         .order_by(DedupeSession.date_updated.desc())\

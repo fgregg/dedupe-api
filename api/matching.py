@@ -264,6 +264,10 @@ def get_unmatched():
         matches.append(match)
     resp['object'] = raw_record
     resp['matches'] = matches
+    if len(resp['matches']) == 0:
+        dedupe_session.status = 'canonical'
+        db_session.add(dedupe_session)
+        db_session.commit()
     response = make_response(json.dumps(resp, sort_keys=False), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response

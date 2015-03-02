@@ -72,7 +72,11 @@
                 <% if (object.processing == true) { %>
                     <em><i class='fa fa-refresh fa-spin'></i> Processing</em>
                 <% } else { %>
-                    Step <%= object.status_info.next_step %>: <a href="<%= object.status_info.next_step_url %>"><%= object.status_info.next_step_name %> &raquo;</a>
+                    <% if (object.status_info.next_step){ %>
+                        Step <%= object.status_info.next_step %>: <a href="<%= object.status_info.next_step_url %>"><%= object.status_info.next_step_name %> &raquo;</a>
+                    <% } else { %>
+                        <a href="<%= object.status_info.next_step_url %>"><%= object.status_info.next_step_name %> &raquo;</a>
+                    <% } %>
                 <% } %>
             </div>
             <div class="progress">
@@ -89,7 +93,7 @@
                     <%= object.review_count %> records
                 <% } else { %>
                     None
-                <% } %>   
+                <% } %>
             <% } else { %>
                 None
             <% } %>
@@ -109,7 +113,7 @@
 <script type='text/javascript'>
     function refresh_display(){
         setTimeout(function () {
-            
+
             $.when($.getJSON('/session-list/')).then(
               function(resp){
 
@@ -123,7 +127,11 @@
                             $("#status_" + object.id).html("<em><i class='fa fa-refresh fa-spin'></i> Processing</em>");
                         }
                         else {
-                            $("#status_" + object.id).html("Step " + (object.status_info.next_step) + ": <a href='" + object.status_info.next_step_url + "'>" + object.status_info.next_step_name + " &raquo;</a>");
+                            if (object.status_info.next_step){
+                                $("#status_" + object.id).html("Step " + (object.status_info.next_step) + ": <a href='" + object.status_info.next_step_url + "'>" + object.status_info.next_step_name + " &raquo;</a>");
+                            } else {
+                                $("#status_" + object.id).html("<a href='" + object.status_info.next_step_url + "'>" + object.status_info.next_step_name + " &raquo;</a>");
+                            }
                         }
                     });
                 }
@@ -195,15 +203,15 @@
                 "paging": false,
                 "searching": false,
                 "info": false
-            } ); 
+            } );
         })
     }
 
     $(document).ready(function(){
         // wait one second to get updates from the server
         $('#spinner').spin({'top': 100});
-        setTimeout(function () { 
-            render_session_list(); 
+        setTimeout(function () {
+            render_session_list();
             $('#spinner').spin(false);
         }, 1000);
         refresh_display();

@@ -43,7 +43,7 @@ STATUS_LIST = [
         'human_name': 'Training finished', 
         'next_step_name': 'Review entities',
         'next_step_url': '/session-review/?session_id={0}',
-        'step': 3
+        'next_step': 3
     },
     {
         'step': 4,
