@@ -441,3 +441,31 @@ def updateEntityCount(session_id):
     '''.format(session_id)
     with engine.begin() as conn:
         conn.execute(text(upd), id=session_id)
+
+    # Create or refresh materialized view used by entity browser
+    conn = engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute('REFRESH MATERIALIZED VIEW "browser_{0}"'.format(session_id))
+        trans.commit()
+    except ProgrammingError:
+        trans.rollback()
+        conn = engine.connect()
+        trans = conn.begin()
+        dedupe_session = worker_session.query(DedupeSession).get(session_id)
+        field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
+        fields = ', '.join(['MAX(r.{0}) AS {0}'.format(f) for f in field_names])
+        create = ''' 
+            CREATE MATERIALIZED VIEW "browser_{1}" AS (
+              SELECT {0},
+                COUNT(*) AS record_count,
+                e.entity_id
+              FROM "raw_{1}" AS r
+              JOIN "entity_{1}" AS e
+                ON r.record_id = e.record_id
+              GROUP BY e.entity_id
+              ORDER BY record_count DESC
+            )
+            '''.format(fields, session_id)
+        conn.execute(create)
+        trans.commit()

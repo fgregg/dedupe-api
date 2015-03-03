@@ -465,18 +465,9 @@ def entity_browser():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
-    fields = ', '.join(['MAX(r.{0}) AS {0}'.format(f) for f in field_names])
     sel = ''' 
-        SELECT {0},
-          COUNT(*) AS record_count,
-          e.entity_id
-        FROM "raw_{1}" AS r
-        JOIN "entity_{1}" AS e
-          ON r.record_id = e.record_id
-        GROUP BY e.entity_id
-        ORDER BY record_count DESC
-        LIMIT 100
-    '''.format(fields, session_id)
+        SELECT * FROM "browser_{0}" LIMIT 100
+    '''.format(session_id)
     if request.args.get('page'):
         page = int(request.args['page'])
         offset = (page - 1) * 100
@@ -484,7 +475,6 @@ def entity_browser():
     engine = db_session.bind
     entities = list(engine.execute(sel))
     page_count = int(round(dedupe_session.entity_count, -2) / 100)
-    print page_count
     return render_template('entity-browser.html', 
                            dedupe_session=dedupe_session,
                            entities=entities, 
