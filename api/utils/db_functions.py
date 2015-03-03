@@ -160,7 +160,8 @@ def initializeEntityMap(session_id, fields):
                   autoload=True, autoload_with=engine, keep_existing=True)
     rows = worker_session.query(exact_table)
     entity_table = entity_map('entity_%s' % session_id, metadata)
-    entity_table.drop(engine, checkfirst=True)
+    with engine.begin() as conn:
+        conn.execute('DROP TABLE IF EXISTS "entity_{0}" CASCADE'.format(session_id))
     entity_table.create(engine)
     s = StringIO()
     writer = UnicodeCSVWriter(s)
