@@ -478,7 +478,7 @@ def trainDedupe(session_id):
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
     training_data = StringIO(json.dumps(training_data))
     deduper.readTraining(training_data)
-    deduper.train()
+    d.train(index_predicates=False)
     settings_file_obj = StringIO()
     deduper.writeSettings(settings_file_obj)
     dd_session.settings_file = settings_file_obj.getvalue()
