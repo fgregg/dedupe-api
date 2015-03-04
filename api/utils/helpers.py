@@ -257,17 +257,19 @@ def getMatches(session_id, record):
               SELECT r.record_id, {1}
               FROM "processed_{0}" as r
               JOIN (
-                SELECT record_id
+                SELECT DISTINCT record_id
                 FROM "match_blocks_{0}"
                 WHERE block_key IN :block_keys
               ) AS s
               ON r.record_id = s.record_id
             '''.format(session_id, fields))
-        data_d = {int(i[0]): dict(zip(raw_fields, i[1:])) \
-            for i in list(engine.execute(sel, block_keys=block_keys))}
-        if data_d:
-            deduper.index(data_d)
-            linked = deduper.match({'blob': record}, threshold=0, n_matches=5)
+        canonical_records = [
+                (int(i[0]), dict(zip(raw_fields, i[1:])), set([]),) \
+                    for i in list(engine.execute(sel, block_keys=block_keys))]
+        if canonical_records:
+            incoming = (('blob', record, set([]),),)
+            block = (incoming, canonical_records,)
+            linked = deduper.matchBlocks([block], 0, 5)
             if linked:
                 ids = []
                 confs = {}
