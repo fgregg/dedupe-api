@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Dedupe sessions{% endblock %}
+{% block content %}
+<span class='pull-right'>
+  <a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a>
+</span>
+
+<p><a href='{{ url_for("admin.entity_browser", session_id=session.session_id) }}'>&laquo; back to browse</a></p>
+
+<h2>{{ dedupe_session.name }} | {{ entity_id }}</h2>
+{% if dedupe_session.description %}
+    <p>{{ dedupe_session.description }}</p>
+{% endif %}
+<div class="row">
+    <div class="col-md-12 overflow-container">
+        <table class="table table-bordered table-condensed">
+            <thead>
+                <tr>
+                    {% for field in entity_fields %}
+                        <th class="success">{{ field }}</th>
+                    {% endfor %}
+                    {% for field in raw_fields %}
+                        {% if field in model_fields %}
+                            <th class="warning">{{ field }}</th>
+                        {% else %}
+                            <th>{{ field }}</th>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                    <tr id="{{ record.record_id }}">
+                        {% for field in entity_fields %}
+                            <td class="success">{{ record|attr(field) }}</td>
+                        {% endfor %}
+                        {% for field in raw_fields %}
+                            {% if field in model_fields %}
+                            <td class="warning">{{ record|attr(field) }}</td>
+                            {% else %}
+                            <td>{{ record|attr(field) }}</td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
