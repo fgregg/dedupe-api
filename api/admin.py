@@ -6,7 +6,8 @@ from api.database import app_session as db_session, Base
 from api.models import User, Role, DedupeSession, Group, WorkTable
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import preProcess, STATUS_LIST
-from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, reDedupeCanon
+from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, \
+    reDedupeCanon, trainDedupe
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
@@ -525,3 +526,55 @@ def entity_detail():
                            entity_fields=entity_fields,
                            entity_id=entity_id,
                            dedupe_session=dedupe_session)
+
+@admin.route('/edit-model/', methods=['POST', 'GET'])
+@login_required
+@check_sessions()
+def edit_model():
+    session_id = flask_session['session_id']
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    field_types = [
+        "String",
+        "Address",
+        "Price",
+        "ShortString",
+        "Text",
+        "LatLong",
+        "Set",
+        "Exact",
+        "Exists",
+        "Categorical",
+        "Source",
+    ]
+    if request.method == 'POST':
+        field_defs = []
+        form = {}
+        for k in request.form.keys():
+            if k != 'csrf_token':
+                form[k] = request.form.getlist(k)
+        ftypes = sorted(form.items())
+        for k,g in groupby(ftypes, key=lambda x: x[0].rsplit('_', 1)[0]):
+            vals = list(g)
+            fs = []
+            for field, val in vals:
+                fs.extend([{'field': k, 'type': val[i]} \
+                    for i in range(len(val)) if field.endswith('type')])
+            field_defs.extend(fs)
+        engine = db_session.bind
+        with engine.begin() as conn:
+            conn.execute(text(''' 
+                UPDATE dedupe_session SET
+                    field_defs = :field_defs
+                WHERE id = :id
+            '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
+        flash('Model updated!')
+        dedupe_session.processing = True
+        db_session.add(dedupe_session)
+        db_session.commit()
+        trainDedupe.delay(session_id)
+        return redirect(url_for('admin.index'))
+    return render_template('edit-model.html',
+                           dedupe_session=dedupe_session,
+                           model=json.loads(dedupe_session.field_defs),
+                           field_types=field_types)
+

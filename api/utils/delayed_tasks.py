@@ -251,6 +251,7 @@ def getMatchingReady(session_id):
         conn.execute(create_human_review)
         conn.execute('CREATE INDEX "match_rev_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
     populateHumanReview(session_id)
+    del d
     return None
 
 @queuefunc
@@ -414,6 +415,7 @@ def drawSample(session_id):
     sess.sample = cPickle.dumps(d.data_sample)
     worker_session.add(sess)
     worker_session.commit()
+    del d
 
 @queuefunc
 def initializeSession(session_id):
@@ -468,6 +470,7 @@ def initializeModel(session_id, init=True):
             break
     return 'woo'
 
+@queuefunc
 def trainDedupe(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
@@ -478,7 +481,7 @@ def trainDedupe(session_id):
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
     training_data = StringIO(json.dumps(training_data))
     deduper.readTraining(training_data)
-    deduper.train(index_predicates=False)
+    deduper.train()
     settings_file_obj = StringIO()
     deduper.writeSettings(settings_file_obj)
     dd_session.settings_file = settings_file_obj.getvalue()
@@ -487,6 +490,7 @@ def trainDedupe(session_id):
     worker_session.add(dd_session)
     worker_session.commit()
     deduper.cleanupTraining()
+    del deduper
 
 def blockDedupe(session_id, 
                 table_name=None, 
@@ -558,6 +562,7 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
             break
     del rows
     worker_session.expire_all()
+    del deduper
     return clustered_dupes
 
 @queuefunc

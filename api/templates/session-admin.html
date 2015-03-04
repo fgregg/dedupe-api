@@ -61,7 +61,7 @@
         </table>
         {% if session_info %}
             <hr />
-            <h4 id='data-model'>Data model</h4>
+            <h4 id='data-model'>Data model <small><a href="{{url_for('admin.edit_model', session_id=session.session_id)}}">(Edit)</a></small></h4>
             <table class="table table-condensed table-striped">
                 <thead>
                     <th></th>

@@ -1,38 +1,29 @@
 {% extends 'base.html' %}
-{% from "partials/dedupe_steps.html" import dedupe_steps %}
-{% block title %}{{dedupe_session.name}} - Fields to compare{% endblock %}
+{% block title %}Dedupe sessions{% endblock %}
 {% block content %}
-    <div class="col-md-12">
-    {{ dedupe_steps( dedupe_session ) }}
-    <h3>2. Fields to compare <small>Field comparators</small></h3>
-    </div>
-    {% if not errors %}
+<div class="row">
     <div class="col-md-12">
         <div class="row">
             <div class="col-md-8">
                 <p>Fine-tune the way that dedupe will compare your selected fields. By default, we'll look at how similar the text is (String comparator), but more advanced comparisons are possible.</p>
-                <form id="fields" role="form" action="{{ url_for('trainer.select_field_types')}}" method="post" enctype="multipart/form-data" class='form-horizontal'>
+                <form id="fields" role="form" action="{{ url_for('admin.edit_model')}}" method="post" class='form-horizontal'>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                    {% for field in field_list %}
+                    {% for field in model %}
                     <div class="form-group">
-                        <label for="{{ field }}_type" class="col-sm-2 control-label">{{ field }}</label>
-                        <div class="col-sm-10" id="{{ field }}-container">
-                            <div class="input-group" id="{{ field }}-add">
-                                <select class="form-control" name="{{ field }}_type">
-                                    <option value="String">String (default)</option>
-                                    <option value="Address">Address</option>
-                                    <option value="Price">Price</option>
-                                    <option value="ShortString">ShortString</option>
-                                    <option value="Text">Text</option>
-                                    <option value="LatLong">LatLong</option>
-                                    <option value="Set">Set</option>
-                                    <option value="Exact">Exact</option>
-                                    <option value="Exists">Exists</option>
-                                    <option value="Categorical">Categorical</option>
-                                    <option value="Source">Source</option>
+                        <label for="{{ field.field }}_type" class="col-sm-2 control-label">{{ field.field }}</label>
+                        <div class="col-sm-10" id="{{ field.field }}-container">
+                            <div class="input-group" id="{{ field.field }}-add">
+                                <select class="form-control" name="{{ field.field }}_type">
+                                    {% for ft in field_types %}
+                                        {% if ft == field.type %}
+                                            <option selected="true" value="{{ ft }}">{{ ft }}</option>
+                                        {% else %}
+                                            <option value="{{ ft }}">{{ ft }}</option>
+                                        {% endif %}
+                                    {% endfor %}
                                 </select>
                                 <span class="input-group-btn">
-                                    <button class="btn btn-link add-field-type" data-fieldname="{{field}}">
+                                    <button class="btn btn-link add-field-type" data-fieldname="{{field.field}}">
                                         <i class="fa fa-plus"> </i>
                                     </button>
                                 </span>
@@ -42,7 +33,7 @@
                     {% endfor %}
                     <hr />
                     <button type="submit" class="btn btn-info" id="start-training">
-                        Next &raquo;
+                        Save
                     </button>
                 </form>
             </div>
@@ -55,14 +46,9 @@
             </div>
         </div>
     </div>
-    {% else %}
-        {% include "partials/error.html" %}
-    {% endif %}
+</div>
 {% endblock %}
 {% block extra_javascript %}
-{% if not fields %}
-<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
 <script type="text/EJS" id="fieldInput">
     <div class="input-group" id="<%= field %>-remove">
@@ -101,5 +87,4 @@
         $(this).parent().parent().remove();
     }
 </script>
-{% endif %}
 {% endblock %}

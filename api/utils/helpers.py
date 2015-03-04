@@ -293,6 +293,7 @@ def getMatches(session_id, record):
                         for r in list(engine.execute(sel, ids=ids))]
                 for match in matches:
                     match['confidence'] = float(confs[unicode(match['record_id'])])
+    del deduper
     return matches
 
 def column_windows(session, column, windowsize):
@@ -471,3 +472,4 @@ def updateEntityCount(session_id):
             '''.format(fields, session_id)
         conn.execute(create)
         trans.commit()
+
