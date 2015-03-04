@@ -34,6 +34,10 @@
                             <a href="javascript://" class="reveal-records nowrap" data-entity_id="{{ entity.entity_id }}">
                               <i class="fa fa-caret-right"> </i> {{ entity.record_count }}
                             </a>
+                            <br />
+                            <a href="{{ url_for('admin.entity_detail', session_id=session.session_id, entity_id=entity.entity_id)}}" >
+                              <i class="fa fa-search"> </i> Detail
+                            </a>
                         </td>
                         {% for field in fields %}
                             <td>{{ entity|attr(field) }}</td>

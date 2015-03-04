@@ -11,7 +11,7 @@ from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
 from wtforms.validators import DataRequired, Email
-from sqlalchemy import Table, and_, text
+from sqlalchemy import Table, and_, text, MetaData
 from sqlalchemy.sql import select
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
@@ -481,11 +481,47 @@ def entity_browser():
                            fields=list(field_names), 
                            page_count=page_count)
 
-@admin.route('/entity-lookup/', methods=['POST', 'GET'])
+@admin.route('/entity-detail/', methods=['POST', 'GET'])
 @login_required
 @check_sessions()
-def entity_lookup():
+def entity_detail():
     session_id = flask_session['session_id']
+    entity_id = request.args.get('entity_id')
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    fields = [f['field'] for f in json.loads(dedupe_session.field_defs)]
-    return render_template('entity-lookup.html', fields=fields)
+    model_fields = [f['field'] for f in json.loads(dedupe_session.field_defs)]
+    sel = ''' 
+      SELECT 
+        e.entity_id,
+        e.reviewer,
+        e.date_added,
+        e.last_update,
+        e.match_type,
+        e.target_record_id,
+        e.confidence,
+        r.*
+      FROM "entity_{0}" AS e
+      JOIN "raw_{0}" AS r
+        ON e.record_id = r.record_id
+      WHERE e.entity_id = :entity_id
+    '''.format(session_id)
+    engine = db_session.bind
+    records = list(engine.execute(text(sel), entity_id=entity_id))
+    meta = MetaData()
+    raw_table = Table('raw_{0}'.format(session_id), meta, 
+        autoload=True, autoload_with=engine)
+    raw_fields = raw_table.columns.keys()
+    entity_fields = [
+        'reviewer', 
+        'date_added', 
+        'last_update', 
+        'match_type', 
+        'target_record_id', 
+        'confidence'
+    ]
+    return render_template('entity-detail.html',
+                           model_fields=model_fields,
+                           raw_fields=raw_fields,
+                           records=records,
+                           entity_fields=entity_fields,
+                           entity_id=entity_id,
+                           dedupe_session=dedupe_session)
