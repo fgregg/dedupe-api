@@ -227,7 +227,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
 def getMatches(session_id, record):
     engine = worker_session.bind
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
-    deduper = dedupe.StaticGazetteer(StringIO(dedupe_session.gaz_settings_file))
+    deduper = dedupe.StaticGazetteer(StringIO(dedupe_session.gaz_settings_file), num_cores=1)
     field_defs = json.loads(dedupe_session.field_defs)
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs)])))
