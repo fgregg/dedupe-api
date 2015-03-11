@@ -131,7 +131,7 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
             distinct_records.append(records)
         training['distinct'].extend(distinct_records)
         if len(training['distinct']) > 150:
-            training['distinct'] = training['distinct'][:-150]
+            training['distinct'] = training['distinct'][-150:]
 
         match_records = []
         for combo in match_combos:
@@ -140,7 +140,7 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
             match_records.append(records)
         training['match'].extend(match_records)
         if len(training['match']) > 150:
-            training['match'] = training['match'][:-150]
+            training['match'] = training['match'][-150:]
 
         sess.training_data = json.dumps(training)
         worker_session.add(sess)
