@@ -9,16 +9,14 @@ from api.database import app_session, worker_session, Base, init_engine
 from api.models import DedupeSession
 from sqlalchemy import Table, MetaData, distinct, and_, func, Column, text
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
-from unidecode import unidecode
 from unicodedata import normalize
 from itertools import count
 from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
 from datetime import datetime, timedelta
-from unidecode import unidecode
-import cPickle
+import pickle
 from itertools import combinations
-from cStringIO import StringIO
+from io import StringIO
 
 STATUS_LIST = [
     {
@@ -182,10 +180,10 @@ def getCluster(session_id, entity_pattern, raw_pattern):
     
     cluster_list = []
     prediction = None
-    machine = cPickle.loads(sess.review_machine)
+    machine = pickle.loads(sess.review_machine)
     entity_id = machine.get_next()
     if entity_id:
-        sess.review_machine = cPickle.dumps(machine)
+        sess.review_machine = pickle.dumps(machine)
         app_session.add(sess)
         app_session.commit()
         engine = app_session.bind
@@ -248,7 +246,7 @@ def getMatches(session_id, record):
                 else:
                     record[k] = 0
             else:
-                record[k] = preProcess(unicode(v))
+                record[k] = preProcess(str(v))
     block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', record)]))])
 
     # Sometimes the blocker does not find blocks. In this case we can't match
@@ -292,7 +290,7 @@ def getMatches(session_id, record):
                 matches = [dict(zip(r.keys(), r.values())) \
                         for r in list(engine.execute(sel, ids=ids))]
                 for match in matches:
-                    match['confidence'] = float(confs[unicode(match['record_id'])])
+                    match['confidence'] = float(confs[str(match['record_id'])])
     del deduper
     return matches
 
@@ -336,25 +334,23 @@ def windowed_query(q, column, windowsize):
         for row in q.filter(whereclause).order_by(column):
             yield row
 
-def slugify(text, delim=u'_'):
+def slugify(text, delim='_'):
     if text:
-        text = unicode(text)
         punct_re = re.compile(r'[\t !"#$%&\'()*\-/<=>?@\[\\\]^_`{|},.:;]+')
         result = []
         for word in punct_re.split(text.lower()):
-            word = normalize('NFKD', word).encode('ascii', 'ignore')
             if word:
-                result.append(word)
-        return unicode(delim.join(result))
+                result.append(str(word))
+        return delim.join(result)
     else: # pragma: no cover
         return text
 
 def preProcess(column):
     if not column:
-        column = u''
+        column = ''
     if column == None:
-        column = u''
-    column = unidecode(column)
+        column = ''
+    column = str(column)
     column = re.sub('  +', ' ', column)
     column = re.sub('\n', ' ', column)
     column = column.strip().strip('"').strip("'").lower().strip()
@@ -403,7 +399,7 @@ def getDistinct(field_name, session_id):
         WHERE {0} IS NOT NULL
             AND {0}::varchar != ''
     '''.format(field_name, session_id)
-    distinct_values = list(set([unicode(v[0]) for v in engine.execute(sel)]))
+    distinct_values = list(set([str(v[0]) for v in engine.execute(sel)]))
     return distinct_values
 
 def checkinSessions():

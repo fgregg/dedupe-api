@@ -1,7 +1,7 @@
 import os
 import json
 import dedupe
-from cStringIO import StringIO
+from io import StringIO
 from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
@@ -20,6 +20,7 @@ from csvkit.unicsv import UnicodeCSVWriter
 from datetime import datetime
 from operator import itemgetter
 from itertools import groupby
+import csv
 
 try: # pragma: no cover
     from raven import Client as Sentry
@@ -58,8 +59,9 @@ def writeRawTable(session_id=None,
     """ 
     Create a table from incoming tabular data
     """
-    file_obj = open(file_path, 'rb')
-    fieldnames = [slugify(unicode(f)) for f in file_obj.next().strip('\r\n').split(',')]
+    file_obj = open(file_path, 'r')
+    reader = csv.reader(file_obj)
+    fieldnames = [slugify(str(f)) for f in next(reader)]
     file_obj.seek(0)
     cols = []
     for field in fieldnames:
@@ -85,8 +87,7 @@ def writeRawTable(session_id=None,
         cur.copy_expert(copy_st, file_obj)
         conn.commit()
         os.remove(file_path)
-    except Exception, e:
-        print e
+    except Exception as e:
         conn.rollback()
         raise e
     return fieldnames

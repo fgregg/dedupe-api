@@ -23,13 +23,13 @@ class TrackUserUsage(TrackUsage):
         app.after_request(self.after_request)
 
     def include(self, view):
-        self._include_views.add(view.func_name)
+        self._include_views.add(view.__name__)
 
     def after_request(self, response):
         ctx = _request_ctx_stack.top
         view_func = self.app.view_functions.get(ctx.request.endpoint)
         if view_func:
-            view_func = view_func.func_name
+            view_func = view_func.__name__
             if view_func in self._include_views and \
                 ctx.request.endpoint != 'static':
                 

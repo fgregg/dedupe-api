@@ -24,7 +24,7 @@ except KeyError:
 def queuefunc(f):
     def delay(*args, **kwargs):
         s = dumps((f, args, kwargs))
-        key = unicode(uuid4())
+        key = str(uuid4())
         with engine.begin() as conn:
             conn.execute(text(''' 
                 INSERT INTO work_table(key, value) 
@@ -78,13 +78,13 @@ def processMessage():
                     conn.execute(text(''' 
                         DELETE FROM work_table WHERE key = :key
                     '''), key=work.key)
-        except Exception, e:
+        except Exception as e:
             if client: # pragma: no cover
                 client.captureException()
             upd_args['tb'] = traceback.format_exc()
-            upd_args['value'] = e.message
+            upd_args['value'] = str(e)
             upd_args['cleared'] = False
-            print upd_args['tb']
+            print(upd_args['tb'])
         upd = ''' 
                 UPDATE work_table SET
                     traceback = :tb,
@@ -112,6 +112,6 @@ def queue_daemon(db_conn=DB_CONN): # pragma: no cover
     logging.getLogger().setLevel(logging.DEBUG)
     work_table = WorkTable.__table__
     work_table.create(engine, checkfirst=True)
-    print 'Listening for messages...'
+    print('Listening for messages...')
     while 1:
         processMessage()

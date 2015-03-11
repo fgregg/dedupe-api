@@ -14,7 +14,6 @@ from api.utils.delayed_tasks import populateHumanReview
 from api.track_usage import tracker
 import dedupe
 from dedupe.serializer import _to_json
-from cStringIO import StringIO
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from sqlalchemy import Table, text
 from datetime import datetime
@@ -96,7 +95,7 @@ def match():
                 else:
                     hash_me.append('')
             hash_me = ';'.join(hash_me)
-        except KeyError, e:
+        except KeyError as e:
             r['status'] = 'error'
             r['message'] = 'Sent fields "{0}" do no match model fields "{1}"'\
                 .format(','.join(obj.keys()), ','.join(model_fields))

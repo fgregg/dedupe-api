@@ -2,7 +2,7 @@ import dedupe
 import os
 import json
 import time
-from cStringIO import StringIO
+from io import StringIO
 from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
@@ -25,7 +25,7 @@ from csvkit.unicsv import UnicodeCSVDictReader, UnicodeCSVReader, \
     UnicodeCSVWriter
 from os.path import join, dirname, abspath
 from datetime import datetime
-import cPickle
+import pickle
 from uuid import uuid4
 from api.app_config import TIME_ZONE
 
@@ -154,7 +154,7 @@ def getMatchingReady(session_id):
             )
             '''.format(session_id))
     sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs)
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
 
     # Save Gazetteer settings
     d = dedupe.Gazetteer(field_defs)
@@ -202,7 +202,7 @@ def getMatchingReady(session_id):
         curs.copy_expert('COPY "match_blocks_{0}" FROM STDIN CSV'\
             .format(session_id), s)
         conn.commit()
-    except Exception, e: # pragma: no cover
+    except Exception as e: # pragma: no cover
         conn.rollback()
         raise e
     conn.close()
@@ -276,7 +276,7 @@ def populateHumanReview(session_id):
         limit = 21 - queue_count
     
     raw_fields = sorted(list(set([f['field'] \
-            for f in json.loads(dedupe_session.field_defs)])))
+            for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
     raw_fields.append('record_id')
     fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
     sel = ''' 
@@ -374,13 +374,13 @@ def cleanupTables(session_id, tables=None):
         try:
             conn.execute('DROP TABLE "{0}"'.format(tname))
             trans.commit()
-        except Exception, e:
+        except Exception as e:
             trans.rollback()
     conn.close()
 
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs)
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
     d = dedupe.Dedupe(field_defs)
     data_d = makeSampleDict(sess.id)
     if len(data_d) < 50001:
@@ -388,7 +388,7 @@ def drawSample(session_id):
     else: # pragma: no cover
         sample_size = round(int(len(data_d) * 0.01), -3)
     d.sample(data_d, sample_size=sample_size, blocked_proportion=1)
-    sess.sample = cPickle.dumps(d.data_sample)
+    sess.sample = pickle.dumps(d.data_sample)
     worker_session.add(sess)
     worker_session.commit()
     del d
@@ -409,7 +409,7 @@ def initializeSession(session_id):
     sess.record_count = worker_session.query(raw_table).count()
     worker_session.add(sess)
     worker_session.commit()
-    print 'session initialized'
+    print('session initialized')
 
 @queuefunc
 def initializeModel(session_id, init=True):
@@ -420,7 +420,7 @@ def initializeModel(session_id, init=True):
         if not sess.field_defs: # pragma: no cover
             time.sleep(3)
         else:
-            field_defs = json.loads(sess.field_defs)
+            field_defs = json.loads(sess.field_defs.decode('utf-8'))
             fields = list(set([f['field'] for f in field_defs]))
             if init:
                 writeProcessedTable(session_id)
@@ -442,7 +442,7 @@ def initializeModel(session_id, init=True):
             if init:
                 initializeEntityMap(session_id, fields)
                 drawSample(session_id)
-            print 'got sample'
+            print('got sample')
             break
     return 'woo'
 
@@ -450,8 +450,8 @@ def initializeModel(session_id, init=True):
 def trainDedupe(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
-    data_sample = cPickle.loads(dd_session.sample)
-    field_defs = json.loads(dd_session.field_defs)
+    data_sample = pickle.loads(dd_session.sample)
+    field_defs = json.loads(dd_session.field_defs.decode('utf-8'))
     training_data = json.loads(dd_session.training_data)
     training_data = convertTraining(field_defs, training_data)
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
@@ -521,7 +521,7 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
         autoload=True, autoload_with=engine, keep_existing=True)
     proc = Table(proc_format.format(session_id), metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
-    trained_fields = list(set([f['field'] for f in json.loads(dd_session.field_defs)]))
+    trained_fields = list(set([f['field'] for f in json.loads(dd_session.field_defs.decode('utf-8'))]))
     proc_cols = [getattr(proc.c, f) for f in trained_fields]
     cols = [c for c in small_cov.columns] + proc_cols
     rows = worker_session.query(*cols)\
@@ -544,7 +544,7 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
 @queuefunc
 def reDedupeRaw(session_id, threshold=0.75):
     sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs)
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fields = list(set([f['field'] for f in field_defs]))
     initializeEntityMap(session_id, fields)
     dedupeRaw(session_id, threshold=threshold)
@@ -622,7 +622,7 @@ def dedupeRaw(session_id, threshold=0.75):
     clusters = engine.execute(sel)
     machine = ReviewMachine(clusters)
     dd = worker_session.query(DedupeSession).get(session_id)
-    dd.review_machine = cPickle.dumps(machine)
+    dd.review_machine = pickle.dumps(machine)
     dd.entity_count = entity_count
     dd.review_count = review_count
     dd.status = 'entity map updated'
@@ -690,11 +690,10 @@ def dedupeCanon(session_id, threshold=0.25):
                     FROM STDIN CSV'''.format(session_id), f)
                 conn.commit()
                 os.remove(fname)
-            except Exception, e: # pragma: no cover
+            except Exception as e: # pragma: no cover
                 conn.rollback()
                 raise e
     else: # pragma: no cover
-        print 'did not find clusters'
         getMatchingReady(session_id)
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
@@ -709,7 +708,7 @@ def dedupeCanon(session_id, threshold=0.25):
     '''.format(session_id)
     clusters = engine.execute(sel)
     machine = ReviewMachine(clusters)
-    dd.review_machine = cPickle.dumps(machine)
+    dd.review_machine = pickle.dumps(machine)
     dd.review_count = review_count
     dd.status = 'canon clustered'
     worker_session.add(dd)

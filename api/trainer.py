@@ -24,13 +24,12 @@ from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
 from sqlalchemy.exc import OperationalError, NoSuchTableError
 from sqlalchemy import Table, MetaData, text
-from cStringIO import StringIO
+from io import StringIO, BytesIO
 from redis import Redis
 from uuid import uuid4
 import collections
-from csvkit.unicsv import UnicodeCSVReader
+import csv
 from csvkit import convert
-from unidecode import unidecode
 from operator import itemgetter
 
 redis = Redis()
@@ -48,23 +47,23 @@ def allowed_file(filename):
 @trainer.route('/upload/', methods=['POST'])
 @login_required
 def upload():
-    session_id = unicode(uuid4())
+    session_id = str(uuid4())
     f = request.files['input_file']
     flask_session['session_name'] = f.filename
     file_type = f.filename.rsplit('.')[1]
-    u = StringIO(f.read())
+    u = StringIO(f.read().decode('utf-8'))
     u.seek(0)
     if file_type != 'csv': # pragma: no cover
         file_format = convert.guess_format(flask_session['session_name'])
-        u = StringIO(convert.convert(u, file_format))
-    reader = UnicodeCSVReader(u)
-    fieldnames = [slugify(unidecode(unicode(i))) for i in reader.next()]
+        u = StringIO(convert.convert(u, file_format).decode('utf-8'))
+    reader = csv.reader(u)
+    fieldnames = [slugify(str(i)) for i in next(reader)]
     sample_values = [[] for i in range(len(fieldnames))]
     v = 0
     while v < 10:
-        line = reader.next()
+        line = next(reader)
         for i in range(len(fieldnames)):
-            sample_values[i].append(unidecode(unicode(line[i])))
+            sample_values[i].append(str(line[i]))
         v += 1
     flask_session['fieldnames'] = fieldnames
     flask_session['sample_values'] = sample_values
@@ -80,7 +79,7 @@ def upload():
         status=STATUS_LIST[0]['machine_name'])
     u.seek(0)
     with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
-        s.write(u.getvalue())
+        s.write(bytes(u.getvalue(), 'utf-8'))
     del u
     del reader
     sess.processing = True
@@ -251,9 +250,9 @@ def training_run():
         status_code = 200
         time.sleep(1)
         db_session.refresh(dedupe_session)
-        field_defs = json.loads(dedupe_session.field_defs)
+        field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
         if not dedupe_session.processing and dedupe_session.sample:
-            sample = cPickle.loads(dedupe_session.sample)
+            sample = pickle.loads(dedupe_session.sample)
             if sample[0][0].get('record_id'):
                 deduper = dedupe.Dedupe(field_defs, data_sample=sample)
                 flask_session['deduper'] = deduper

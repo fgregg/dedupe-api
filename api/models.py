@@ -93,7 +93,7 @@ class DedupeSession(Base):
         if self.date_updated:
             d['date_updated'] = self.date_updated.isoformat()
         if self.field_defs:
-            d['field_defs'] = json.loads(self.field_defs)
+            d['field_defs'] = json.loads(self.field_defs.decode('utf-8'))
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == self.status][0]
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(self.id)
         return d
