@@ -244,8 +244,27 @@ def get_unmatched():
         GROUP BY ent.entity_id
         ORDER BY MAX(ent.confidence) DESC
     '''.format(match_fields, raw_fields, session_id)
+    count = '''
+        SELECT (
+          SELECT 
+            COUNT(*)::double precision 
+          FROM "match_review_{0}" 
+          WHERE reviewed = FALSE
+          ) * (((
+            SELECT COUNT(*)::double precision 
+              FROM "match_review_{0}" 
+            WHERE reviewed = TRUE 
+              AND reviewer != 'machine'
+          ) + 0.00001 ) / ((
+            SELECT COUNT(*)::double precision 
+            FROM "match_review_{0}" 
+            WHERE reviewed = TRUE
+          ) + 0.00001 ) 
+        ) AS review_count
+        '''.format(session_id)
     engine = db_session.bind
     records = list(engine.execute(sel))
+    count = engine.execute(count).first().review_count
     if records:
         populateHumanReview.delay(session_id)
     matches = []
@@ -266,8 +285,9 @@ def get_unmatched():
     resp['matches'] = matches
     if len(resp['matches']) == 0:
         dedupe_session.status = 'canonical'
-        db_session.add(dedupe_session)
-        db_session.commit()
+    dedupe_session.review_count = count
+    db_session.add(dedupe_session)
+    db_session.commit()
     response = make_response(json.dumps(resp, sort_keys=False), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response

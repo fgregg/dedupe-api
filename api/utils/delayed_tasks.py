@@ -346,30 +346,6 @@ def populateHumanReview(session_id):
     
     updateEntityCount(session_id)
     
-    # Calculate running average for review count
-    worker_session.refresh(dedupe_session)
-    
-    total_reviewed = ''' 
-        SELECT count(*) 
-        FROM "match_review_{0}"
-        WHERE reviewed = TRUE
-    '''.format(session_id)
-    total_reviewed = engine.execute(text(total_reviewed)).first()[0]
-    human_count = ''' 
-        SELECT count(*) 
-        FROM "match_review_{0}"
-        WHERE reviewer != :reviewer
-            AND reviewed = TRUE
-    '''.format(session_id)
-    human_count = engine.execute(text(human_count), reviewer='machine').first()[0]
-    remaining_count = ''' 
-        SELECT count(*)
-        FROM "match_review_{0}"
-        WHERE reviewed = FALSE
-    '''.format(session_id)
-    remaining_count = engine.execute(text(remaining_count)).first()[0]
-    review_prop = (human_count + 0.001) / (total_reviewed + 0.001)
-    dedupe_session.review_count = remaining_count * review_prop
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()

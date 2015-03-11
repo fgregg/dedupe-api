@@ -49,9 +49,9 @@ def init_db(sess=None, eng=None):
     
     try:
         sess.commit()
-    except IntegrityError, e: # pragma: no cover
+    except IntegrityError as e: # pragma: no cover
         sess.rollback()
-        print e.message
+        print(e.message)
 
     admin = sess.query(api.models.Role)\
         .filter(api.models.Role.name == 'admin').first()
