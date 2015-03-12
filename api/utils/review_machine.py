@@ -32,9 +32,9 @@ class ReviewMachine(object):
 
         self.examples['label'][self.examples['id'] == entity_id] = label
 
-        labels = self.examples['label'][~numpy.isnan(self.examples['label'])].astype('i4')
+        labels = self.examples['label'][~numpy.isnan(self.examples['label'])][-30:].astype('i4')
         
-        attributes = self.examples['attributes'][~numpy.isnan(self.examples['label'])]
+        attributes = self.examples['attributes'][~numpy.isnan(self.examples['label'])][-30:]
 
         self.weight = rlr.lr(labels, attributes, 11)
         self.labeled_count += 1
