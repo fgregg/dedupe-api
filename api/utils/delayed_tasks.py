@@ -328,6 +328,7 @@ def populateHumanReview(session_id):
                 '''.format(session_id)
                 with engine.begin() as conn:
                     conn.execute(text(upd), **r)
+                human_queue.append(record)
             else:
                 addToEntityMap(session_id, 
                                record, 

@@ -108,8 +108,8 @@ def processMessage():
         del kwargs
 
 def queue_daemon(db_conn=DB_CONN): # pragma: no cover
-    import logging
-    logging.getLogger().setLevel(logging.DEBUG)
+    # import logging
+    # logging.getLogger().setLevel(logging.DEBUG)
     work_table = WorkTable.__table__
     work_table.create(engine, checkfirst=True)
     print 'Listening for messages...'
