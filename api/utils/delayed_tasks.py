@@ -270,10 +270,6 @@ def populateHumanReview(session_id):
             AND reviewed = FALSE
     '''.format(session_id)
     queue_count = engine.execute(queue_count).first()[0]
-    if queue_count > 20:
-        limit = 21
-    else:
-        limit = 21 - queue_count
     
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs)])))
@@ -290,7 +286,7 @@ def populateHumanReview(session_id):
     human_queue = []
     cleared = []
     
-    while len(human_queue) < limit:
+    while len(human_queue) < 20:
         try:
             record = rows.next()
         except StopIteration:
