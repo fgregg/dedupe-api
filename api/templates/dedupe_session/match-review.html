@@ -32,11 +32,7 @@
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
 <script type="text/EJS" id="matchTemplate">
-    <div class="row">
-        <div id="counter" class="col-md-12">
-            <h4><strong><%= remaining %></strong> left to review</h4>
-        </div>
-    </div>
+    <div id='review-count'></div>
     <div class='overflow-container'>
         <table class="table table-bordered table-condensed">
             <thead>
@@ -81,6 +77,7 @@
     var api_key = "{{ current_user.id }}"
     var match_obj;
     var matches;
+    var est_remaining = 0;
     $(document).ready(function(){
         getAndMatch();
         $('#mark-match').on('click', function(e){
@@ -133,6 +130,21 @@
         var tpl = new EJS({'text': $('#matchTemplate').html()});
         $('#group-display').html(tpl.render({matches: matches, obj: obj, remaining:remaining}))
         $('#mark-match').html("None of these match &raquo;");
+
+        console.log("est_remaining:" + est_remaining)
+        console.log("remaining:" + remaining)
+        if (est_remaining >= remaining) {
+            var to_review = remaining;
+            if (to_review > 30)
+                to_review = "about " + (Math.ceil(remaining / 10) * 10);
+            if (to_review < 10)
+                to_review = "almost done!"
+            $('#review-count').html("<h4>Estimate of records left: <strong>" + to_review + "</strong></h4>");
+        }
+        else {
+            $('#review-count').html("<h4>Estimate of records left: calculating&hellip; <small>(review more for an estimate)</small></h4>");
+        }
+        est_remaining = remaining;
 
         $('.select_entity').on('click', function(e){
             var count = 0;
