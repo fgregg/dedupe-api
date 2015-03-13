@@ -1,5 +1,5 @@
 import json
-import cPickle
+import pickle
 import dedupe
 from os.path import join, abspath, dirname, exists
 from flask import request, session
