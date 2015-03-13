@@ -281,7 +281,7 @@ def populateHumanReview(session_id):
       LEFT JOIN "entity_{1}" as e
         ON r.record_id = e.record_id
       WHERE e.record_id IS NULL
-      ORDER BY RANDOM
+      ORDER BY RANDOM()
     '''.format(fields, session_id)
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel)))
     human_queue = []
