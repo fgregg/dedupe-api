@@ -27,7 +27,7 @@ def queuefunc(f):
         key = str(uuid4())
         with engine.begin() as conn:
             conn.execute(text(''' 
-                INSERT INTO work_table(key, value) 
+                INSERT INTO work_table(key, work_value) 
                 VALUES (:key, :value)
             '''), key=key, value=s)
         return key
@@ -40,7 +40,7 @@ def processMessage():
     if not work:
         time.sleep(1)
     else:
-        func, args, kwargs = loads(work.value)
+        func, args, kwargs = loads(work.work_value)
         try:
             sel = text('SELECT id from dedupe_session WHERE id = :id')
             sess = engine.execute(sel, id=args[0]).first()
@@ -61,17 +61,17 @@ def processMessage():
         
         upd_args = {
             'tb': None,
-            'value': None,
+            'return_value': None,
             'key': work.key,
             'updated': datetime.now().replace(tzinfo=TIME_ZONE),
             'cleared': True,
         }
         try:
             return_value = func(*args, **kwargs)
-            if return_value:
+            if return_value is not None:
                 with engine.begin() as conn:
                     conn.execute(text(''' 
-                        UPDATE work_table SET value = :value WHERE key = :key
+                        UPDATE work_table SET return_value = :value WHERE key = :key
                     '''), key=work.key, value=return_value)
             else:
                 with engine.begin() as conn:
@@ -82,13 +82,13 @@ def processMessage():
             if client: # pragma: no cover
                 client.captureException()
             upd_args['tb'] = traceback.format_exc()
-            upd_args['value'] = str(e)
+            upd_args['return_value'] = str(e)
             upd_args['cleared'] = False
             print(upd_args['tb'])
         upd = ''' 
                 UPDATE work_table SET
                     traceback = :tb,
-                    value = :value,
+                    return_value = :return_value,
                     updated = :updated,
                     cleared = :cleared
             '''

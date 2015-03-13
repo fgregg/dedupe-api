@@ -316,11 +316,12 @@ def review():
             d.review_count,
             d.processing,
             d.field_defs,
-            w.value AS last_work_status
+            w.return_value AS last_work_status
         FROM dedupe_session AS d
         LEFT JOIN (
-            SELECT value, session_id
+            SELECT return_value, session_id
             FROM work_table
+            WHERE claimed = TRUE
             ORDER BY updated DESC
             LIMIT 1
         ) AS w
@@ -342,8 +343,7 @@ def review():
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
         if row.last_work_status:
-            d['last_work_status'] = row.last_work_status.tobytes()#.decode('utf-8')
-            print(d['last_work_status'])
+            d['last_work_status'] = row.last_work_status
         all_sessions.append(d)
 
     resp['objects'] = all_sessions

@@ -2,7 +2,7 @@ import dedupe
 import os
 import json
 import time
-from io import StringIO
+from io import StringIO, BytesIO
 from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
@@ -21,11 +21,10 @@ from itertools import groupby
 from operator import itemgetter
 from collections import OrderedDict
 from csvkit import convert
-from csvkit.unicsv import UnicodeCSVDictReader, UnicodeCSVReader, \
-    UnicodeCSVWriter
 from os.path import join, dirname, abspath
 from datetime import datetime
 import pickle
+import csv
 from uuid import uuid4
 from api.app_config import TIME_ZONE
 
@@ -159,9 +158,9 @@ def getMatchingReady(session_id):
     # Save Gazetteer settings
     d = dedupe.Gazetteer(field_defs)
     
-    d.readTraining(StringIO(sess.training_data))
+    d.readTraining(StringIO(sess.training_data.decode('utf-8')))
     d.train(ppc=0.1, index_predicates=False)
-    g_settings = StringIO()
+    g_settings = BytesIO()
     d.writeSettings(g_settings)
     g_settings.seek(0)
     sess.gaz_settings_file = g_settings.getvalue()
@@ -169,7 +168,7 @@ def getMatchingReady(session_id):
     worker_session.commit()
 
     for field in d.blocker.index_fields:
-        fd = (unicode(f[0]) for f in \
+        fd = (str(f[0]) for f in \
                 engine.execute('select distinct {0} from "processed_{1}"'\
                     .format(field, session_id)))
         d.blocker.index(fd, field)
@@ -192,7 +191,7 @@ def getMatchingReady(session_id):
         for row in rows)
     block_gen = d.blocker(data)
     s = StringIO()
-    writer = UnicodeCSVWriter(s)
+    writer = csv.writer(s)
     writer.writerows(block_gen)
     conn.close()
     s.seek(0)
@@ -281,7 +280,7 @@ def populateHumanReview(session_id):
       LEFT JOIN "entity_{1}" as e
         ON r.record_id = e.record_id
       WHERE e.record_id IS NULL
-      ORDER BY RANDOM
+      ORDER BY RANDOM()
     '''.format(fields, session_id)
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel)))
     human_queue = []
@@ -289,7 +288,7 @@ def populateHumanReview(session_id):
     
     while len(human_queue) < 20:
         try:
-            record = rows.next()
+            record = next(rows)
         except StopIteration:
             break
         matches = getMatches(session_id, record)
@@ -433,7 +432,7 @@ def initializeModel(session_id, init=True):
                 if len(distinct_vals) < sess.record_count:
                     field.update({'has_missing': True})
                 updated_fds.append(field)
-            sess.field_defs = json.dumps(updated_fds)
+            sess.field_defs = bytes(json.dumps(updated_fds).encode('utf-8'))
             sess.status = 'model defined'
             worker_session.add(sess)
             worker_session.commit()
@@ -442,7 +441,6 @@ def initializeModel(session_id, init=True):
                 drawSample(session_id)
             print('got sample')
             break
-    return 'woo'
 
 @queuefunc
 def trainDedupe(session_id):
@@ -450,17 +448,17 @@ def trainDedupe(session_id):
         .get(session_id)
     data_sample = pickle.loads(dd_session.sample)
     field_defs = json.loads(dd_session.field_defs.decode('utf-8'))
-    training_data = json.loads(dd_session.training_data)
+    training_data = json.loads(dd_session.training_data.decode('utf-8'))
     training_data = convertTraining(field_defs, training_data)
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
     training_data = StringIO(json.dumps(training_data))
     deduper.readTraining(training_data)
     deduper.train()
-    settings_file_obj = StringIO()
+    settings_file_obj = BytesIO()
     deduper.writeSettings(settings_file_obj)
     dd_session.settings_file = settings_file_obj.getvalue()
     training_data.seek(0)
-    dd_session.training_data = training_data.getvalue()
+    dd_session.training_data = bytes(training_data.getvalue().encode('utf-8'))
     worker_session.add(dd_session)
     worker_session.commit()
     deduper.cleanupTraining()
@@ -477,7 +475,7 @@ def blockDedupe(session_id,
         entity_table_name = 'entity_{0}'.format(session_id)
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
-    deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
+    deduper = dedupe.StaticDedupe(BytesIO(dd_session.settings_file))
     engine = worker_session.bind
     metadata = MetaData()
     proc_table = Table(table_name, metadata,
@@ -485,7 +483,7 @@ def blockDedupe(session_id,
     entity_table = Table(entity_table_name, metadata,
         autoload=True, autoload_with=engine)
     for field in deduper.blocker.index_fields:
-        fd = (unicode(f[0]) for f in \
+        fd = (str(f[0]) for f in \
                 engine.execute('select distinct {0} from "{1}"'.format(field, table_name)))
         deduper.blocker.index(fd, field)
     """ 
@@ -507,7 +505,7 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     worker_session.refresh(dd_session)
-    deduper = dedupe.StaticDedupe(StringIO(dd_session.settings_file))
+    deduper = dedupe.StaticDedupe(BytesIO(dd_session.settings_file))
     engine = worker_session.bind
     metadata = MetaData()
     sc_format = 'small_cov_{0}'
@@ -651,10 +649,10 @@ def dedupeCanon(session_id, threshold=0.25):
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
-        with open(fname, 'wb') as f:
-            writer = UnicodeCSVWriter(f)
+        with open(fname, 'w') as f:
+            writer = csv.writer(f)
             for ids, scores in clustered_dupes:
-                new_ent = unicode(uuid4())
+                new_ent = str(uuid4())
                 writer.writerow([
                     new_ent,
                     ids[0],

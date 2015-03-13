@@ -81,7 +81,7 @@ def match():
         n_matches = post.get('num_matches', 5)
         obj = post['object']
         
-        field_defs = json.loads(sess.field_defs)
+        field_defs = json.loads(sess.field_defs.decode('utf-8'))
         model_fields = sorted(list(set([f['field'] for f in field_defs])))
         fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
         engine = db_session.bind
@@ -149,7 +149,7 @@ def match():
 @check_sessions()
 def train():
     try:
-        post = json.loads(request.data)
+        post = json.loads(request.data.decode('utf-8'))
     except ValueError:
         post = json.loads(request.form.keys()[0])
     r, status_code, sess = validate_post(post)
@@ -177,7 +177,7 @@ def train():
                 if match.get('record_id'):
                     distinct_ids.append(match['record_id'])
             for k,v in match.items():
-                match[k] = preProcess(unicode(v))
+                match[k] = preProcess(str(v))
             del match['match']
 
         # Assuming for the time being that all of the incoming training pairs 
@@ -186,7 +186,7 @@ def train():
         # raw data
         updateTraining(session_id, 
                        distinct_ids=distinct_ids, 
-                       match_ids=match_ids)
+                       match_ids=match_ids + [obj['record_id']])
         if add_entity:
             user = db_session.query(User).get(api_key)
             addToEntityMap(session_id, obj, match_ids=match_ids, reviewer=user.name)
@@ -206,7 +206,8 @@ def get_unmatched():
     session_id = request.args['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     resp['remaining'] = dedupe_session.review_count
-    fields = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
+    fields = set([f['field'] for f in \
+            json.loads(dedupe_session.field_defs.decode('utf-8'))])
     fields.add('record_id')
     match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f) for f in fields])
     raw_fields = ','.join(['MAX(raw.{0}) AS raw_{0}'.format(f) for f in fields])
@@ -271,7 +272,6 @@ def get_unmatched():
     records = list(engine.execute(sel))
     count = engine.execute(count).first().review_count
     queue_count = engine.execute(queue_count).first().queue_count
-    print queue_count
     if queue_count <= 10:
         populateHumanReview.delay(session_id)
     matches = []

@@ -16,7 +16,7 @@ from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 import pickle
 from itertools import combinations
-from io import StringIO
+from io import StringIO, BytesIO
 
 STATUS_LIST = [
     {
@@ -83,7 +83,7 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     raw_fields = [r.name for r in raw_table.columns]
 
     training = {'distinct': [], 'match': []}
-    field_defs = json.loads(sess.field_defs)
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fields_by_type = {}
     for field in field_defs:
         try:
@@ -111,7 +111,7 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
                 for r in engine.execute(sel, record_ids=all_ids)}
  
         if sess.training_data:
-            training = json.loads(sess.training_data)
+            training = json.loads(sess.training_data.decode('utf-8'))
         if distinct_ids and match_ids:
             distinct_ids.extend(match_ids)
         
@@ -140,7 +140,7 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
         if len(training['match']) > 150:
             training['match'] = training['match'][-150:]
 
-        sess.training_data = json.dumps(training)
+        sess.training_data = bytes(json.dumps(training).encode('utf-8'))
         worker_session.add(sess)
         worker_session.commit()
     return None
@@ -181,13 +181,14 @@ def getCluster(session_id, entity_pattern, raw_pattern):
     cluster_list = []
     prediction = None
     machine = pickle.loads(sess.review_machine)
-    entity_id = machine.get_next()
+    entity_id = bytes(machine.get_next()).decode('utf-8')
     if entity_id:
         sess.review_machine = pickle.dumps(machine)
         app_session.add(sess)
         app_session.commit()
         engine = app_session.bind
-        model_fields = list(set([f['field'] for f in json.loads(sess.field_defs)]))
+        model_fields = list(set([f['field'] for f in \
+                json.loads(sess.field_defs.decode('utf-8'))]))
         raw_cols = ', '.join(['r.{0}'.format(f) for f in model_fields])
         sel = text('''
             SELECT 
@@ -225,10 +226,11 @@ def getCluster(session_id, entity_pattern, raw_pattern):
 def getMatches(session_id, record):
     engine = worker_session.bind
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
-    deduper = dedupe.StaticGazetteer(StringIO(dedupe_session.gaz_settings_file), num_cores=1)
-    field_defs = json.loads(dedupe_session.field_defs)
+    settings_file = BytesIO(dedupe_session.gaz_settings_file)
+    deduper = dedupe.StaticGazetteer(settings_file, num_cores=1)
+    field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
     raw_fields = sorted(list(set([f['field'] \
-            for f in json.loads(dedupe_session.field_defs)])))
+            for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
     raw_fields.append('record_id')
     fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
     field_types = {}
@@ -452,7 +454,8 @@ def updateEntityCount(session_id):
         conn = engine.connect()
         trans = conn.begin()
         dedupe_session = worker_session.query(DedupeSession).get(session_id)
-        field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
+        field_names = set([f['field'] for f in \
+                json.loads(dedupe_session.field_defs.decode('utf-8'))])
         fields = ', '.join(['MAX(r.{0}) AS {0}'.format(f) for f in field_names])
         create = ''' 
             CREATE MATERIALIZED VIEW "browser_{1}" AS (

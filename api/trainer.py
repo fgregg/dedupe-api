@@ -6,7 +6,7 @@ from werkzeug import secure_filename
 import time
 from datetime import datetime, timedelta
 import json
-import cPickle
+import pickle
 import re
 import os
 import copy
@@ -230,7 +230,7 @@ def select_field_types():
 def training_run():
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
     if dedupe_session.training_data:
-        td = json.loads(dedupe_session.training_data)
+        td = json.loads(dedupe_session.training_data.decode('utf-8'))
         flask_session['counter'] = {
                 'yes': len(td['match']),
                 'no': len(td['distinct']),
@@ -305,7 +305,7 @@ def mark_pair():
 
     # Attempt to cast the training input appropriately
     # TODO: Figure out LatLong type
-    field_defs = json.loads(sess.field_defs)
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fds = {}
     for fd in field_defs:
         try:
@@ -316,7 +316,7 @@ def mark_pair():
     left, right = current_pair
     record_ids = [left['record_id'], right['record_id']]
     if sess.training_data:
-        labels = json.loads(sess.training_data)
+        labels = json.loads(sess.training_data.decode('utf-8'))
     else:
         labels = {'distinct' : [], 'match' : []}
     if action == 'yes':
@@ -339,7 +339,7 @@ def mark_pair():
         flask_session['counter'] = counter
         resp = {'counter': counter}
     db_session.refresh(sess, ['training_data'])
-    labels = json.loads(sess.training_data)
+    labels = json.loads(sess.training_data.decode('utf-8'))
     try:
         deduper.markPairs(labels)
     except TypeError:
