@@ -26,12 +26,8 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-                    <p class="modal-title">Are you sure you want to accept the remaining entities?</p>
-                    <p>If you accept, we predict there will be:</p>
-                    <ul>
-                      <li><strong id='false-positive'>0</strong> false positive clusters</li>
-                      <li><strong id='false-negative'>0</strong> false negative clusters</li>
-                    </ul>
+                    <p class="modal-title">Are you sure you want to accept the remaining <strong id='modal_remaining'>0</strong> entities?</p>
+                    <p id='uncertain_modal'></p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
@@ -89,7 +85,7 @@
                 </div>
             </div>
             <div class="row">
-                <div class="col-md-9">
+                <div class="col-md-8">
                     <div id="review-buttons">
                         <button class="btn btn-info mark-entity">
                             <i class='fa fa-check'></i>
@@ -101,10 +97,10 @@
                         </button>
                     </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <button class="btn btn-link" id="accept-confirm" data-toggle="modal" data-target="#confirm-modal">
                         <i class='fa fa-check'></i>
-                        Accept the remaining <%= resp.review_remainder %> entites &raquo;
+                        Accept the remaining <%= resp.review_remainder %> entites (<%= resp.uncertain_records %> uncertain) &raquo;
                     </button>
                 </div>
             </div>
@@ -178,13 +174,16 @@
     function displayCluster(resp){
         $('#group-display').spin(false);
         if (resp.objects.length > 0){
+            resp.uncertain_records = parseInt(resp.false_negative) + parseInt(resp.false_positive);
             var template = new EJS({'text': $('#reviewTemplate').html()})
             $('#group-display').html(template.render({resp: resp}));
             $('.mark-entity').on('click', markEntity);
             $('#accept-all').on('click', acceptAll);
             $('.check_record, #check_toggle_all').popover({trigger: "hover", placement: "right"});
-            $('#false-negative').html(parseInt(resp.false_negative));
-            $('#false-positive').html(parseInt(resp.false_positive));
+
+            $("#modal_remaining").html(resp.review_remainder);
+            if (resp.uncertain_records > 0)
+              $('#uncertain_modal').html("There are still <strong>" + resp.uncertain_records + "</strong> entities we are unsure about.");
 
             $('#check_toggle_all input').on('click', function(e){
               var checkbox = $(this);

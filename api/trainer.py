@@ -6,7 +6,7 @@ from werkzeug import secure_filename
 import time
 from datetime import datetime, timedelta
 import json
-import pickle
+import cPickle
 import re
 import os
 import copy

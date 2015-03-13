@@ -261,10 +261,18 @@ def get_unmatched():
           ) + 0.00001 ) 
         ) AS review_count
         '''.format(session_id)
+    queue_count = ''' 
+        SELECT count(record_id) AS queue_count 
+          FROM "match_review_{0}" 
+        WHERE array_upper(entities, 1) IS NOT NULL
+          AND reviewed = FALSE
+    '''.format(session_id)
     engine = db_session.bind
     records = list(engine.execute(sel))
     count = engine.execute(count).first().review_count
-    if records:
+    queue_count = engine.execute(queue_count).first().queue_count
+    print queue_count
+    if queue_count <= 10:
         populateHumanReview.delay(session_id)
     matches = []
     raw_record = {}

@@ -270,10 +270,6 @@ def populateHumanReview(session_id):
             AND reviewed = FALSE
     '''.format(session_id)
     queue_count = engine.execute(queue_count).first()[0]
-    if queue_count > 20:
-        limit = 21
-    else:
-        limit = 21 - queue_count
     
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
@@ -285,12 +281,13 @@ def populateHumanReview(session_id):
       LEFT JOIN "entity_{1}" as e
         ON r.record_id = e.record_id
       WHERE e.record_id IS NULL
+      ORDER BY RANDOM
     '''.format(fields, session_id)
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel)))
     human_queue = []
     cleared = []
     
-    while len(human_queue) < limit:
+    while len(human_queue) < 20:
         try:
             record = rows.next()
         except StopIteration:
@@ -328,6 +325,7 @@ def populateHumanReview(session_id):
                 '''.format(session_id)
                 with engine.begin() as conn:
                     conn.execute(text(upd), **r)
+                human_queue.append(record)
             else:
                 addToEntityMap(session_id, 
                                record, 
