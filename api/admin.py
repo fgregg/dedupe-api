@@ -231,14 +231,9 @@ def delete_data_model():
     ]
     engine = db_session.bind
     for table in tables: # pragma: no cover
-        try:
-            data_table = Table(table.format(session_id), 
-                Base.metadata, autoload=True, autoload_with=engine)
-            data_table.drop(engine)
-        except NoSuchTableError:
-            pass
-        except ProgrammingError:
-            pass
+        with engine.begin() as conn:
+            table_name = table.format(session_id)
+            conn.execute('DROP TABLE IF EXISTS "{0}" CASCADE'.format(table_name))
     resp = {
         'status': 'ok',
         'message': 'Data model for session {0} deleted'.format(session_id)
