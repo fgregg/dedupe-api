@@ -61,7 +61,7 @@ def validate_post(post):
 @matching.route('/match/', methods=['POST'])
 def match():
     try:
-        post = json.loads(request.data)
+        post = json.loads(request.data.decode('utf-8'))
     except ValueError:
         r = {
             'status': 'error',
@@ -69,7 +69,7 @@ def match():
                 The content of your request should be a 
                 string encoded JSON object.
             ''',
-            'object': request.data,
+            'object': request.data.decode('utf-8'),
         }
         resp = make_response(json.dumps(r), 400)
         resp.headers['Content-Type'] = 'application/json'
@@ -91,7 +91,7 @@ def match():
             hash_me = []
             for field in model_fields:
                 if obj[field]:
-                    hash_me.append(unicode(obj[field]))
+                    hash_me.append(str(obj[field]))
                 else:
                     hash_me.append('')
             hash_me = ';'.join(hash_me)
@@ -109,7 +109,7 @@ def match():
             resp = make_response(json.dumps(r), 400)
             resp.headers['Content-Type'] = 'application/json'
             return resp
-        md5_hash = md5(unidecode(hash_me)).hexdigest()
+        md5_hash = md5(hash_me.encode('utf-8')).hexdigest()
         exact_match = db_session.query(entity_table)\
             .filter(entity_table.c.source_hash == md5_hash).first()
         match_list = []
