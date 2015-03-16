@@ -69,7 +69,7 @@ class ReviewTest(DedupeAPITestCase):
                 json_resp_2 = json.loads(rv.data.decode('utf-8'))
                 assert json_resp_2['entity_id'] != json_resp['entity_id']
 
-                matches = ','.join([unicode(r['record_id']) for r in \
+                matches = ','.join([str(r['record_id']) for r in \
                                     json_resp['objects']])
                 params = '&match_ids={0}&entity_id={1}'\
                     .format(matches, json_resp['entity_id'])
@@ -85,7 +85,7 @@ class ReviewTest(DedupeAPITestCase):
                                 entity_id=json_resp['entity_id']))
                 assert list(set([r[0] for r in rows])) == [True]
 
-                distinct = ','.join([unicode(r['record_id']) for r in \
+                distinct = ','.join([str(r['record_id']) for r in \
                                      json_resp_2['objects']])
                 params = '&distinct_ids={0}&entity_id={1}'\
                     .format(distinct, json_resp_2['entity_id'])
