@@ -5,9 +5,11 @@ from uuid import uuid4
 from api import create_app
 import time
 from api.database import app_session, worker_session, init_engine
-from api.models import WorkTable
 from .test_config import DEFAULT_USER, DB_CONN
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy import text
+
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
 
 @queuefunc
 def add(a, b):
@@ -29,6 +31,7 @@ class QueueTest(unittest.TestCase):
             conn.execute('delete from work_table')
 
     def setUp(self):
+        processMessage(db_conn=self.app.config['DB_CONN'])
         with self.engine.begin() as conn:
             conn.execute('delete from work_table')
 
@@ -41,15 +44,18 @@ class QueueTest(unittest.TestCase):
 
     def test_queuefunc(self):
         key = add.delay(1,3)
-        processMessage()
+        processMessage(db_conn=self.app.config['DB_CONN'])
         time.sleep(1)
-        work = worker_session.query(WorkTable).get(key)
-        assert work is None
+        work = self.engine.execute(
+                text('SELECT return_value FROM work_table where key = :key'), 
+                key=key).first()
+        assert int(work.return_value) == 4
 
     def test_exception(self):
         key = error.delay()
-        processMessage()
+        processMessage(db_conn=self.app.config['DB_CONN'])
         time.sleep(1)
-        work = worker_session.query(WorkTable).get(key)
-        worker_session.refresh(work)
-        assert work.value == 'Test Exception'
+        work = self.engine.execute(
+                text('SELECT * FROM work_table where key = :key'), 
+                key=key).first()
+        assert work.return_value == 'Test Exception'

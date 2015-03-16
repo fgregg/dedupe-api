@@ -11,6 +11,9 @@ from tests import DedupeAPITestCase
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
+
 class TrainerTest(DedupeAPITestCase):
     ''' 
     Test the training module

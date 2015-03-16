@@ -3,6 +3,9 @@ from .test_config import DEFAULT_USER
 from api.database import app_session, worker_session
 from tests import DedupeAPITestCase
 
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
+
 class AuthTest(DedupeAPITestCase):
     ''' 
     Test the admin module

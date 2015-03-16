@@ -15,6 +15,9 @@ from .test_config import DEFAULT_USER
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
+
 class AdminTest(DedupeAPITestCase):
     ''' 
     Test the admin module
@@ -84,7 +87,6 @@ class AdminTest(DedupeAPITestCase):
                     sess['user_id'] = self.user.id
                 rv = c.open('/training-data/?session_id=' + self.dd_sess.id)
                 td = json.loads(rv.data.decode('utf-8'))
-                print(td.keys())
                 assert set(td.keys()) == set(['distinct', 'match'])
 
     def test_td_no_access(self):

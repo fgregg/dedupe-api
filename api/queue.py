@@ -11,7 +11,7 @@ from sqlalchemy.exc import ProgrammingError, InternalError
 from sqlalchemy import text
 import time
 
-engine = init_engine(DB_CONN)
+engine = None
 
 try:
     from raven import Client
@@ -34,19 +34,19 @@ def queuefunc(f):
     f.delay = delay
     return f
 
-def processMessage():
+def processMessage(db_conn=DB_CONN):
+    global engine
+    engine = init_engine(db_conn)
     sel = "SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1"
     work = engine.execute(sel).first()
     if not work:
         time.sleep(1)
     else:
         func, args, kwargs = loads(work.work_value)
-        try:
+        sess = None
+        if args:
             sel = text('SELECT id from dedupe_session WHERE id = :id')
-            sess = engine.execute(sel, id=args[0]).first()
-        except (IndexError, ProgrammingError, InternalError):
-            sess = None
-            pass
+            sess = engine.execute(sel, id=str(args[0])).first()
         upd = """ 
             UPDATE work_table SET
                 claimed = TRUE
@@ -67,17 +67,7 @@ def processMessage():
             'cleared': True,
         }
         try:
-            return_value = func(*args, **kwargs)
-            if return_value is not None:
-                with engine.begin() as conn:
-                    conn.execute(text(''' 
-                        UPDATE work_table SET return_value = :value WHERE key = :key
-                    '''), key=work.key, value=return_value)
-            else:
-                with engine.begin() as conn:
-                    conn.execute(text(''' 
-                        DELETE FROM work_table WHERE key = :key
-                    '''), key=work.key)
+            upd_args['return_value'] = func(*args, **kwargs)
         except Exception as e:
             if client: # pragma: no cover
                 client.captureException()
@@ -106,10 +96,13 @@ def processMessage():
             conn.execute(upd, **upd_args)
         del args
         del kwargs
+    engine.dispose()
 
 def queue_daemon(db_conn=DB_CONN): # pragma: no cover
     # import logging
     # logging.getLogger().setLevel(logging.DEBUG)
+    global engine
+    engine = init_engine(DB_CONN)
     work_table = WorkTable.__table__
     work_table.create(engine, checkfirst=True)
     print('Listening for messages...')

@@ -15,6 +15,9 @@ from api.utils.delayed_tasks import initializeSession, initializeModel, \
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
+
 class TrackUsageTest(unittest.TestCase):
     ''' 
     Test the track_usage module
