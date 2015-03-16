@@ -6,7 +6,7 @@ from flask import request, session
 from api import create_app
 from api.models import User, DedupeSession, Group
 from api.database import init_engine, app_session, worker_session
-from test_config import DEFAULT_USER, DB_CONN
+from .test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST
@@ -38,7 +38,7 @@ class TrackUsageTest(unittest.TestCase):
         settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
         training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
         cls.dd_sess = DedupeSession(
-                        id=unicode(uuid4()), 
+                        id=str(uuid4()), 
                         filename='test_filename.csv',
                         name='Test Session',
                         group=cls.group,
@@ -100,7 +100,7 @@ class TrackUsageTest(unittest.TestCase):
                 i = 0
                 while i < 10:
                     unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
-                    obj = json.loads(unmatched.data)['object']
+                    obj = json.loads(unmatched.data.decode('utf-8'))['object']
                     post_data = {
                         'api_key': self.user.id,
                         'session_id': self.dd_sess.id,
@@ -144,7 +144,7 @@ class TrackUsageTest(unittest.TestCase):
                 i = 0
                 while i < 10:
                     unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
-                    obj = json.loads(unmatched.data)['object']
+                    obj = json.loads(unmatched.data.decode('utf-8'))['object']
                     post_data = {
                         'api_key': extra_user_id,
                         'session_id': self.dd_sess.id,
@@ -160,7 +160,7 @@ class TrackUsageTest(unittest.TestCase):
                 i = 0
                 while i < 10:
                     unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
-                    obj = json.loads(unmatched.data)['object']
+                    obj = json.loads(unmatched.data.decode('utf-8'))['object']
                     post_data = {
                         'api_key': self.user.id,
                         'session_id': self.dd_sess.id,

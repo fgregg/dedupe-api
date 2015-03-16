@@ -35,9 +35,9 @@ class MatchingTest(unittest.TestCase):
         cls.user = cls.session.query(User).first()
         cls.group = cls.user.groups[0]
         cls.user_pw = DEFAULT_USER['user']['password']
-        cls.field_defs = open(join(fixtures_path, 'field_defs.json'), 'r').read()
+        cls.field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
         settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
-        training = open(join(fixtures_path, 'training_data.json'), 'r').read()
+        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
         cls.dd_sess = DedupeSession(
                         id=str(uuid4()), 
                         filename='test_filename.csv',
@@ -45,8 +45,8 @@ class MatchingTest(unittest.TestCase):
                         group=cls.group,
                         status=STATUS_LIST[0]['machine_name'],
                         settings_file=settings,
-                        field_defs=bytes(cls.field_defs.encode('utf-8')),
-                        training_data=bytes(training.encode('utf-8'))
+                        field_defs=cls.field_defs,
+                        training_data=training,
                       )
         cls.session.add(cls.dd_sess)
         cls.session.commit()
@@ -83,7 +83,7 @@ class MatchingTest(unittest.TestCase):
         return self.client.get('/logout/')
 
     def test_exact_match(self):
-        model_fields = [f['field'] for f in json.loads(self.field_defs)]
+        model_fields = [f['field'] for f in json.loads(self.field_defs.decode('utf-8'))]
         fields = ','.join([u'r.{0}'.format(f) for f in model_fields])
         sel = ''' 
           SELECT 
@@ -141,7 +141,7 @@ class MatchingTest(unittest.TestCase):
                 assert 'JSON object' in json.loads(rv.data.decode('utf-8'))['message']
     
     def test_no_match(self):
-        model_fields = [f['field'] for f in json.loads(self.field_defs)]
+        model_fields = [f['field'] for f in json.loads(self.field_defs.decode('utf-8'))]
         match_record = {a: str(i) for i,a in enumerate(model_fields)}
         post_data = {
             'api_key': self.user.id,
@@ -176,24 +176,23 @@ class MatchingTest(unittest.TestCase):
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data.decode('utf-8'))['matches']
-                    if not matches:
-                        add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
-                                            data=json.dumps(post_data))
+
                 matches[0]['match'] = 1
-                del matches[0]['record_id']
                 del matches[0]['entity_id']
                 for match in matches[1:]:
                     match['match'] = 0
-                    del match['record_id']
                     del match['entity_id']
                 post_data['matches'] = matches
-                del post_data['object']['record_id']
                 rv = c.post('/train/', data=json.dumps(post_data))
                 self.session.refresh(self.dd_sess)
-                td = json.loads(self.dd_sess.training_data)
+                td = json.loads(self.dd_sess.training_data.decode('utf-8'))
                 del matches[0]['match']
                 matched = {k:preProcess(str(v)) for k,v in matches[0].items()}
-                assert [matched, obj] in td['match']
+                record_ids = set()
+                for left, right in td['match']:
+                    record_ids.add(left['record_id'])
+                    record_ids.add(right['record_id'])
+                assert set([matched['record_id'], obj['record_id']]).intersection(record_ids)
                 for match in matches[1:]:
                     m = {k:preProcess(str(v)) for k,v in match.items()}
                     del m['match']
