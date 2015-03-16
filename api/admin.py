@@ -68,7 +68,10 @@ class AddUserForm(Form):
 @login_required
 @check_roles(roles=['admin', 'reviewer'])
 def index():
-    return render_template('index.html')
+    status = request.args.get('status')
+    if status is None:
+        status = 'in-progress'
+    return render_template('index.html', status=status)
 
 @admin.route('/add-user/', methods=['GET', 'POST'])
 @login_required

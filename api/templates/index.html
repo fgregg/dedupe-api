@@ -1,7 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Dedupe sessions{% endblock %}
 {% block content %}
-<div class="row">
     <div class="col-md-12">
         {% for role in current_user.roles %}
             {% if role.name == 'admin' %}
@@ -21,38 +20,54 @@
                 </div>
             {% endif %}
         {% endfor %}
-        <div id='spinner'></div>
-        <div id='dedupe-sessions' style='display: none;'>
-            <div class="row">
-                <div class="col-md-12">
+        <div class="row">
+            <div class="col-md-12">
 
-                    <h2>Dedupe sessions</h2>
-                    <p><a role="button" href="{{url_for('trainer.new_session')}}" class="btn btn-info">
-                        Start a new session &raquo;
-                    </a></p>
+                <p class='pull-right'><br /><br /><a class='btn btn-info' href="{{url_for('trainer.new_session')}}">
+                    Start a new session &raquo;
+                </a></p>
 
-                    <div id='processing-msg' class='alert alert-info alert-dismissible' role='alert' style="display: none;">
-                        <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-                        <p>We need a few moments to process your data. When we're done, you will be able to proceed to the next step.</p>
-                    </div>
+                {% if status == 'canonical' %}
+                    <h2>Dedupe sessions <small>Canonical</small></h2>
+                    <p>These datasets have been de-duplicated and are ready to browse and match against.</p>
+                {% else %}
+                    <h2>Dedupe sessions <small>In progress</small></h2>
+                    <p>These datasets are in the process of being de-duplicated. When finished, they will become <a href='/?status=canonical'>canonical</a> and ready to work with.</p>
+                {% endif %}
 
-                    <table class="table">
-                        <thead>
-                            <tr id="review-header">
+                <ul class="nav nav-tabs">
+                  <li class="{% if status == 'in-progress' %}active{% endif %}" role="presentation"><a href="/?status=in-progress"><i class='fa fa-spinner'></i> In progress</a></li>
+                  <li class="{% if status == 'canonical' %}active{% endif %}" role="presentation"><a href="/?status=canonical"><i class='fa fa-share-alt fa-rotate-180'></i> Canonical</a></li>
+                </ul>
+
+                <div id='processing-msg' class='alert alert-info alert-dismissible' role='alert' style="display: none;">
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <p>We need a few moments to process your data. When we're done, you will be able to proceed to the next step.</p>
+                </div>
+
+                <div id='spinner'></div>
+                <table id='dedupe-sessions' style='display: none;' class="table">
+                    <thead>
+                        <tr id="review-header">
+                            {% if status == 'canonical' %}
+                                <th>Name</th>
+                                <th>Unique entities</th>
+                                <th>Updated</th>
+                                <th></th>
+                            {% else %}
                                 <th>Name</th>
                                 <th>Progress</th>
                                 <th>To review</th>
                                 <th>Updated</th>
                                 <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="session-list"></tbody>
-                    </table>
-                </div>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody id="session-list"></tbody>
+                </table>
             </div>
         </div>
     </div>
-</div>
 {% endblock %}
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
@@ -62,9 +77,30 @@
 <script src="{{ url_for('static', filename='js/jquery.dataTables.sorting.js') }}"></script>
 <script type="text/EJS" id="sessionTemplate">
 
+    {% if status == 'canonical' %}
+        <tr>
+        <td>
+            <a href="/entity-browser/?session_id=<%= object.id %>"><%= object.name %></a><br />
+            <small><%= object.description %></small>
+        </td>
+        <td>
+            <a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search'></i> <%= object.entity_count %> Entities</a>
+        </td>
+        <td>
+            <% if (object.date_updated) { %>
+                <span datetime='<%= moment(object.date_updated + 0000).format("YYYYMMDDHHmm") %>' title='<%= moment(object.date_updated + 0000).format("MMM, DD, YYYY HH:mm") %>'>
+                <%= moment(object.date_updated + "+0000").from(moment()) %>
+                </span>
+            <% } %>
+        </td>
+        <td>
+            <a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a>
+        </td>
+    </tr>
+    {% else %}
     <tr>
         <td>
-            <a href="/session-admin/?session_id=<%= object.id %>"><%= object.name %></a><br />
+            <a href="<%= object.status_info.next_step_url %>"><%= object.name %></a><br />
             <small><%= object.description %></small>
         </td>
         <td>
@@ -112,17 +148,17 @@
             <% } %>
         </td>
     </tr>
+    {% endif %}
 </script>
 
 
 <script type='text/javascript'>
-    var in_progress_sessions_url = '/session-list/?status=in-progress';
-    var canonical_sessions_url = '/session-list/?status=canonical'
+    var sessions_url = '/session-list/?status={{status}}';
 
     function refresh_display(){
         setTimeout(function () {
 
-            $.when($.getJSON(in_progress_sessions_url)).then(
+            $.when($.getJSON(sessions_url)).then(
               function(resp){
 
                 // update display of processing message
@@ -151,7 +187,7 @@
     }
 
     function render_session_list() {
-        $.when($.getJSON(in_progress_sessions_url)).then(
+        $.when($.getJSON(sessions_url)).then(
           function(resp){
             //console.log(resp);
             $('#session-list').html("");
@@ -190,7 +226,7 @@
                 var row = $(this).parent()
                 $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
                     function(data){
-                        $.when($.getJSON(in_progress_sessions_url)).then(
+                        $.when($.getJSON(sessions_url)).then(
                           function(resp){
                               make_display(resp)
                           }
@@ -199,19 +235,34 @@
                 )
             })
 
-            $('#dedupe-sessions table').DataTable( {
-                "aaSorting": [ [3,'desc'] ],
-                "aoColumns": [
-                    null,
-                    null,
-                    null,
-                    { "sType": "datetime" },
-                    { "bSortable": false }
-                ],
-                "paging": false,
-                "searching": false,
-                "info": false
-            } );
+            {% if status == 'canonical' %}
+                $('#dedupe-sessions').DataTable( {
+                    "aaSorting": [ [2,'desc'] ],
+                    "aoColumns": [
+                        null,
+                        null,
+                        { "sType": "datetime" },
+                        { "bSortable": false }
+                    ],
+                    "paging": false,
+                    "searching": false,
+                    "info": false
+                } );
+            {% else %}
+                $('#dedupe-sessions').DataTable( {
+                    "aaSorting": [ [3,'desc'] ],
+                    "aoColumns": [
+                        null,
+                        null,
+                        null,
+                        { "sType": "datetime" },
+                        { "bSortable": false }
+                    ],
+                    "paging": false,
+                    "searching": false,
+                    "info": false
+                } );
+            {% endif %}
         })
     }
 
