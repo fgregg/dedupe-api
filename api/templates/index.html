@@ -116,10 +116,13 @@
 
 
 <script type='text/javascript'>
+    var in_progress_sessions_url = '/session-list/?status=in-progress';
+    var canonical_sessions_url = '/session-list/?status=canonical'
+
     function refresh_display(){
         setTimeout(function () {
 
-            $.when($.getJSON('/session-list/')).then(
+            $.when($.getJSON(in_progress_sessions_url)).then(
               function(resp){
 
                 // update display of processing message
@@ -148,7 +151,7 @@
     }
 
     function render_session_list() {
-        $.when($.getJSON('/session-list/')).then(
+        $.when($.getJSON(in_progress_sessions_url)).then(
           function(resp){
             //console.log(resp);
             $('#session-list').html("");
@@ -187,7 +190,7 @@
                 var row = $(this).parent()
                 $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
                     function(data){
-                        $.when($.getJSON('/session-list/')).then(
+                        $.when($.getJSON(in_progress_sessions_url)).then(
                           function(resp){
                               make_display(resp)
                           }

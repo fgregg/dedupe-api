@@ -38,7 +38,7 @@
                             <td>{{ entity|attr(field) }}</td>
                         {% endfor %}
                         <td class='nowrap'>
-                            <a href="{{ url_for('admin.entity_detail', session_id=session.session_id, entity_id=entity.entity_id)}}" ><i class="fa fa-search"></i> Detail</a>
+                            <a href="{{ url_for('admin.entity_detail', session_id=session.session_id, entity_id=entity.entity_id)}}" ><i class="fa fa-search"></i> Details</a>
                         </td>
                     </tr>
                 {% endfor %}

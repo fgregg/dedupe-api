@@ -284,6 +284,7 @@ def delete_session():
 def review():
     
     sess_id = request.args.get('session_id')
+    status = request.args.get('status')
 
     resp = {
         'status': 'ok',
@@ -320,12 +321,18 @@ def review():
             LIMIT 1
         ) AS w
         ON d.id = w.session_id
+        WHERE 1=1
     '''
     qargs = {}
     if sess_id:
         if sess_id in [s.id for s in sessions]:
-            sel = text('{0} WHERE d.id = :sess_id'.format(sel))
+            sel = text('{0} AND d.id = :sess_id'.format(sel))
             qargs['sess_id'] = sess_id
+    if status:
+        if status == 'canonical':
+            sel = text("{0} AND d.status = 'canonical'".format(sel))
+        elif status == 'in-progress':
+            sel = text("{0} AND d.status != 'canonical'".format(sel))
     for row in engine.execute(sel, **qargs):
         d = dict(zip(row.keys(), row.values()))
         if row.date_added:
