@@ -549,7 +549,6 @@ def edit_model():
         "Exact",
         "Exists",
         "Categorical",
-        "Source",
     ]
     if request.method == 'POST':
         field_defs = []

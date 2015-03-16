@@ -27,9 +27,8 @@
                                     <option value="Address">Address</option>
                                     <option value="Price">Price</option>
                                     <option value="LatLong">Latitude/Longitude</option>
-                                    <option value="Set">Set</option>
-                                    <option value="Categorical">Categorical</option>
-                                    <option value="Source">Source</option>
+                                    <option value="Set">Set (advanced)</option>
+                                    <option value="Categorical">Categories (advanced)</option>
                                 </select>
                                 <span class="input-group-btn">
                                     <button class="btn btn-link add-field-type" data-fieldname="{{field}}">
@@ -48,9 +47,9 @@
             </div>
             <div class='col-md-4'>
                 <div class='alert alert-info'>
-                    <p><i class='fa fa-info-circle'></i> If you're not sure how to compare your fields, just stick with the <strong>String</strong> type.</p>
+                    <p><i class='fa fa-info-circle'></i> If you're not sure how to compare your fields, just stick with the <strong>Text</strong> type.</p>
 
-                    <p><a target='_blank' href='http://dedupe.readthedocs.org/en/latest/Variable-definition.html'>Read more about type comparitors &raquo;</a></p>
+                    <p><a target='_blank' href='{{url_for('trainer.help')}}'>Read more about type comparitors &raquo;</a></p>
                 </div>
             </div>
         </div>
@@ -75,9 +74,8 @@
             <option value="Address">Address</option>
             <option value="Price">Price</option>
             <option value="LatLong">Latitude/Longitude</option>
-            <option value="Set">Set</option>
-            <option value="Categorical">Categories</option>
-            <option value="Source">Source</option>
+            <option value="Set">Set (advanced)</option>
+            <option value="Categorical">Categories (advanced)</option>
         </select>
         <span class="input-group-btn">
             <button class="btn btn-link remove-field-type" data-fieldname="<%= field %>">

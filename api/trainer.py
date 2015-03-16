@@ -367,3 +367,11 @@ def about(): # pragma: no cover
     if user_id:
         user = db_session.query(User).get(flask_session['user_id'])
     return render_template("about.html", user=user)
+
+@trainer.route('/help/')
+def help(): # pragma: no cover
+    user_id = flask_session.get('user_id')
+    user = None
+    if user_id:
+        user = db_session.query(User).get(flask_session['user_id'])
+    return render_template("help.html", user=user)
