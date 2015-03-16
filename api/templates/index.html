@@ -108,7 +108,7 @@
         <td>
             <a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a>
             <% if (object.status_info.step > 2) { %>
-                <br /><a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search'></i> Browse entities</a>
+                <br /><a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search'></i> <%= object.entity_count %> Entities</a>
             <% } %>
         </td>
     </tr>

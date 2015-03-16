@@ -4,17 +4,15 @@
 {% block content %}
 
 <span class='pull-right'>
-  <a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a>
+  <a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Settings</a> | <i class='fa fa-search'></i> {{ dedupe_session.entity_count | format_number }} entities
 </span>
 
 <p><a href='/'>&laquo; back to home</a></p>
 
-<h2>{{ dedupe_session.name }}</h2>
+<h2>{{ dedupe_session.name }} > Browse Entities</h2>
 {% if dedupe_session.description %}
     <p>{{ dedupe_session.description }}</p>
 {% endif %}
-
-<p>{{ dedupe_session.entity_count | format_number }} entities</p>
 
 <div class="row">
     <div class="col-md-12 overflow-container" id="group-table">
@@ -25,6 +23,7 @@
                     {% for field in fields %}
                         <th>{{ field }}</th>
                     {% endfor %}
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -34,14 +33,13 @@
                             <a href="javascript://" class="reveal-records nowrap" data-entity_id="{{ entity.entity_id }}">
                               <i class="fa fa-caret-right"> </i> {{ entity.record_count }}
                             </a>
-                            <br />
-                            <a href="{{ url_for('admin.entity_detail', session_id=session.session_id, entity_id=entity.entity_id)}}" >
-                              <i class="fa fa-search"> </i> Detail
-                            </a>
                         </td>
                         {% for field in fields %}
                             <td>{{ entity|attr(field) }}</td>
                         {% endfor %}
+                        <td class='nowrap'>
+                            <a href="{{ url_for('admin.entity_detail', session_id=session.session_id, entity_id=entity.entity_id)}}" ><i class="fa fa-search"></i> Detail</a>
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>

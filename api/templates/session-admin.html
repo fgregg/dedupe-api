@@ -2,8 +2,12 @@
 {% block title %}{{ dedupe_session.name }} settings{% endblock %}
 {% block content %}
 
+<span class='pull-right'>
+  <i class='fa fa-gears'></i> Settings | <a href='/entity-browser/?session_id={{dedupe_session.id}}'><i class='fa fa-search'></i> {{ dedupe_session.entity_count | format_number }} entities</a>
+</span>
+
 <p><a href='/'>&laquo; back to home</a></p>
-<h2>{{ dedupe_session.name }}</h2>
+<h2>{{ dedupe_session.name }} > Settings</h2>
 {% if dedupe_session.description %}
     <p>{{ dedupe_session.description }}</p>
 {% endif %}
@@ -49,8 +53,7 @@
                 <tr>
                     <td>Unique entities</td>
                     <td>
-                        {{ dedupe_session.entity_count | format_number }}
-                        (<a href="{{url_for('admin.entity_browser', session_id=dedupe_session.id)}}">Browse entities</a>)
+                        <a href="{{url_for('admin.entity_browser', session_id=dedupe_session.id)}}"><i class='fa fa-search'></i> {{ dedupe_session.entity_count | format_number }} Entities</a>
                     </td>
                 </tr>
                 <tr>

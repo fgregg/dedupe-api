@@ -2,7 +2,7 @@
 {% block title %}Dedupe sessions{% endblock %}
 {% block content %}
 <span class='pull-right'>
-  <a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Session settings</a>
+  <a href='/session-admin/?session_id={{dedupe_session.id}}'><i class='fa fa-gears'></i> Settings</a>
 </span>
 
 <p><a href='{{ url_for("admin.entity_browser", session_id=session.session_id) }}'>&laquo; back to browse</a></p>
