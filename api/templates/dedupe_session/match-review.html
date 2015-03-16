@@ -2,16 +2,17 @@
 {% from "partials/dedupe_steps.html" import dedupe_steps %}
 {% block title %}{{dedupe_session.name}} - Final review {% endblock %}
 {% block content %}
+    <div class="col-md-12">
+        {{ dedupe_steps( dedupe_session ) }}
+        <h3>6. Final review</h3>
+        <p>Below is a single record that doesn't belong to any entity. Match it to one or more of the entities below. If it doesn't belong with any of them, skip it and move on.</p>
 
-    {{ dedupe_steps( dedupe_session ) }}
-    <h3>6. Final review</h3>
-    <p>Below is a single record that doesn't belong to any entity. Match it to one or more of the entities below. If it doesn't belong with any of them, skip it and move on.</p>
-
-    <div id="group-display"></div>
-    <div id="review-buttons">
-        <button class="btn btn-info" id="mark-match">
-            None of these match &raquo;
-        </button>
+        <div id="group-display"></div>
+        <div id="review-buttons">
+            <button class="btn btn-info" id="mark-match">
+                None of these match &raquo;
+            </button>
+        </div>
     </div>
 {% endblock %}
 {% block extra_javascript %}
@@ -19,7 +20,14 @@
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ejs_production.js') }}"></script>
 <script type="text/EJS" id="matchTemplate">
-    <h4 id='review-count' data-content="This is an estimate of the number of records we need you to review based on what you've matched so far. The more you review, the more accurate it will be." rel="popover" data-placement="top" data-trigger="hover">Uncertain records: <strong><%= remaining %></strong></h4>
+    <div class='row'>
+        <div class='col-md-4'>
+        <h4 id='review-count' data-content="This is an estimate of the number of records we need you to review based on what you've matched so far. The more you review, the more accurate it will be." rel="popover" data-placement="top" data-trigger="hover">
+            Uncertain records: <strong><%= remaining %></strong>
+            | Confidence: <span class='label label-info'>low</span>
+        </h4>
+        </div>
+    </div>
     <div class='overflow-container'>
         <table class="table table-bordered table-condensed">
             <thead>
