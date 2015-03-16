@@ -136,7 +136,7 @@ def match():
             m = OrderedDict([(f, match[f],) for f in model_fields])
             m['record_id'] = match['record_id']
             m['entity_id'] = match['entity_id']
-            # m['match_confidence'] = float(confs[str(m['entity_id'])])
+            m['match_confidence'] = match['confidence']
             match_list.append(m)
         r['matches'] = match_list
 
@@ -163,17 +163,13 @@ def train():
         session_id = post['session_id']
         obj = post['object']
         add_entity = post.get('add_entity', False)
-        # positive = []
-        # negative = []
         match_ids = []
         distinct_ids = []
         for match in post['matches']:
             if match['match'] is 1:
-                # positive.append(match)
                 if match.get('record_id'):
                     match_ids.append(match['record_id'])
             else:
-                # negative.append(match)
                 if match.get('record_id'):
                     distinct_ids.append(match['record_id'])
             for k,v in match.items():

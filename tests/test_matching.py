@@ -11,9 +11,13 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST, preProcess
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
-    dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
+    dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters, \
+    populateHumanReview
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
+
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
 
 class MatchingTest(unittest.TestCase):
     ''' 
@@ -103,8 +107,8 @@ class MatchingTest(unittest.TestCase):
                 with c.session_transaction() as sess:
                     sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.post('/match/', data=json.dumps(post_data))
-                for match in json.loads(rv.data.decode('utf-8'))['matches']:
-                    assert float(match['match_confidence']) == 1.0
+                matches = json.loads(rv.data.decode('utf-8'))['matches']
+                assert max([float(m['match_confidence']) for m in matches]) == 1.0
 
     def test_bad_fields(self):
         post_data = {
@@ -122,8 +126,8 @@ class MatchingTest(unittest.TestCase):
                     sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.post('/match/', data=json.dumps(post_data))
                 assert rv.status == '400 BAD REQUEST'
-                assert json.loads(rv.data)['status'] == 'error'
-                assert 'schmoo' in json.loads(rv.data)['message']
+                assert json.loads(rv.data.decode('utf-8'))['status'] == 'error'
+                assert 'schmoo' in json.loads(rv.data.decode('utf-8'))['message']
 
     def test_bad_post(self):
         with self.app.test_request_context():
@@ -133,8 +137,8 @@ class MatchingTest(unittest.TestCase):
                     sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.post('/match/', data='lalala')
                 assert rv.status == '400 BAD REQUEST'
-                assert json.loads(rv.data)['status'] == 'error'
-                assert 'JSON object' in json.loads(rv.data)['message']
+                assert json.loads(rv.data.decode('utf-8'))['status'] == 'error'
+                assert 'JSON object' in json.loads(rv.data.decode('utf-8'))['message']
     
     def test_no_match(self):
         model_fields = [f['field'] for f in json.loads(self.field_defs)]
@@ -150,8 +154,8 @@ class MatchingTest(unittest.TestCase):
                 with c.session_transaction() as sess:
                     sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.post('/match/', data=json.dumps(post_data))
-                assert json.loads(rv.data)['status'] == 'ok'
-                assert len(json.loads(rv.data)['matches']) == 0
+                assert json.loads(rv.data.decode('utf-8'))['status'] == 'ok'
+                assert len(json.loads(rv.data.decode('utf-8'))['matches']) == 0
 
     def test_train(self):
         with self.app.test_request_context():
@@ -164,14 +168,14 @@ class MatchingTest(unittest.TestCase):
                 matches = []
                 while not matches:
                     unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
-                    obj = json.loads(unmatched.data)['object']
+                    obj = json.loads(unmatched.data.decode('utf-8'))['object']
                     post_data = {
                         'api_key': self.user.id,
                         'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
-                    matches = json.loads(rv.data)['matches']
+                    matches = json.loads(rv.data.decode('utf-8'))['matches']
                     if not matches:
                         add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
                                             data=json.dumps(post_data))
@@ -206,24 +210,22 @@ class MatchingTest(unittest.TestCase):
                 matches = []
                 while not matches:
                     unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
-                    obj = json.loads(unmatched.data)['object']
+                    obj = json.loads(unmatched.data.decode('utf-8'))['object']
                     post_data = {
                         'api_key': self.user.id,
                         'session_id': self.dd_sess.id,
                         'object': obj
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
-                    matches = json.loads(rv.data)['matches']
-                    if not matches:
-                        add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
-                                            data=json.dumps(post_data))
-                post_data['object'] = obj
-                post_data['match_ids'] = ','.join([str(m['record_id']) for m in matches])
-                del post_data['session_id']
+                    matches = json.loads(rv.data.decode('utf-8'))['matches']
+                
+                for match in matches:
+                    match['match'] = 1
+                post_data['matches'] = matches
+                post_data['add_entity'] = True
 
                 # Second, add a matched record to the entity map
-                add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
-                                    data=json.dumps(post_data))
+                add_entity = c.post('/train/', data=json.dumps(post_data))
                 rows = []
                 with self.engine.begin() as conn:
                     rows = list(conn.execute(text(''' 
@@ -235,51 +237,6 @@ class MatchingTest(unittest.TestCase):
 
                 # Check to see that the status is OK and that the new entry is
                 # associated with the correct entity
-                assert json.loads(add_entity.data)['status'] == 'ok'
+                assert json.loads(add_entity.data.decode('utf-8'))['status'] == 'ok'
                 assert entity_id == matches[0]['entity_id']
-                rows = []
 
-                # Now, get all of the entity IDs
-                with self.engine.begin() as conn:
-                    rows = list(conn.execute('''
-                        SELECT entity_id FROM "entity_{0}"
-                        '''.format(self.dd_sess.id)))
-                existing = [r[0] for r in rows]
-                post_data = {}
-                obj = {}
-
-                # Find a record that doesn't match anything
-                while matches:
-                    unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
-                    obj = json.loads(unmatched.data)['object']
-                    post_data = {
-                        'api_key': self.user.id,
-                        'session_id': self.dd_sess.id,
-                        'object': obj
-                    }
-                    rv = c.post('/match/', data=json.dumps(post_data))
-                    matches = json.loads(rv.data)['matches']
-                    del post_data['session_id']
-                    if matches:
-                        # Have to make entries when we do find matches otherwise 
-                        # we keep getting the same record over and over. This also
-                        # gives us an opportunity to test training
-                        post_data['match_id'] = matches[0]['record_id']
-                        add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
-                                            data=json.dumps(post_data))
-
-                # Last, add an new entry to the entity map (that doesn't
-                # reference any existing entity)
-                add_entity = c.post('/add-entity/?session_id=' + self.dd_sess.id, 
-                                    data=json.dumps(post_data))
-                rows = []
-                with self.engine.begin() as conn:
-                    rows = list(conn.execute(text(''' 
-                        SELECT entity_id 
-                          FROM "entity_{0}"
-                        WHERE record_id = :record_id
-                    '''.format(self.dd_sess.id)), record_id=obj['record_id']))
-                entity_id = rows[0][0]
-
-                # Check to make sure that a new entity was indeed made
-                assert entity_id not in existing

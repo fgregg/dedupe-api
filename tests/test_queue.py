@@ -6,7 +6,7 @@ from api import create_app
 import time
 from api.database import app_session, worker_session, init_engine
 from api.models import WorkTable
-from test_config import DEFAULT_USER, DB_CONN
+from .test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy.orm import sessionmaker, scoped_session
 
 @queuefunc
