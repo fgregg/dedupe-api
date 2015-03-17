@@ -38,7 +38,7 @@ def processMessage(db_conn=DB_CONN):
     engine = init_engine(db_conn)
     with engine.begin() as conn:
         upd = '''
-            UPDATE work_table set claimed = FALSE FROM (
+            UPDATE work_table set claimed = TRUE FROM (
                 SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1
             ) AS s
             WHERE work_table.key = s.key
