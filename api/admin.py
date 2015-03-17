@@ -18,11 +18,11 @@ from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
 from operator import itemgetter
 import json
-from cPickle import loads
+from pickle import loads
 from dedupe.convenience import canonicalize
 from csvkit.unicsv import UnicodeCSVReader
 import dedupe
-from cStringIO import StringIO
+from io import StringIO, BytesIO
 from datetime import datetime
 
 admin = Blueprint('admin', __name__)
@@ -116,7 +116,7 @@ def session_admin():
     training_data = None
     status_info = dedupe_session.as_dict()['status_info']
     if dedupe_session.field_defs:
-        field_defs = json.loads(dedupe_session.field_defs)
+        field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
         for fd in field_defs:
             try:
                 session_info[fd['field']]['types'].append(fd['type'])
@@ -129,7 +129,7 @@ def session_admin():
                                             }
                 session_info[fd['field']]['children'] = []
     if dedupe_session.settings_file:
-        dd = dedupe.StaticDedupe(StringIO(dedupe_session.settings_file))
+        dd = dedupe.StaticDedupe(BytesIO(dedupe_session.settings_file))
         for field in dd.data_model.primary_fields:
             name, ftype = field.field, field.type
             if ftype in ['Categorical', 'Address', 'Set']:
@@ -143,7 +143,7 @@ def session_admin():
                 session_info[name] = {'learned_weight': field.weight}
         predicates = dd.predicates
     if dedupe_session.training_data:
-        td = json.loads(dedupe_session.training_data)
+        td = json.loads(dedupe_session.training_data.decode('utf-8'))
         training_data = {'distinct': [], 'match': []}
         for left, right in td['distinct']:
             keys = left.keys()
@@ -205,7 +205,7 @@ def settings_file():
 def field_definitions():
     session_id = flask_session['session_id']
     data = db_session.query(DedupeSession).get(session_id)
-    field_defs = data.field_defs
+    field_defs = data.field_defs.decode('utf-8')
     
     resp = make_response(field_defs, 200)
     resp.headers['Content-Type'] = 'application/json'
@@ -315,11 +315,12 @@ def review():
             d.review_count,
             d.processing,
             d.field_defs,
-            w.value AS last_work_status
+            w.return_value AS last_work_status
         FROM dedupe_session AS d
         LEFT JOIN (
-            SELECT value, session_id
+            SELECT return_value, session_id
             FROM work_table
+            WHERE claimed = TRUE
             ORDER BY updated DESC
             LIMIT 1
         ) AS w
@@ -343,11 +344,11 @@ def review():
         if row.date_updated:
             d['date_updated'] = row.date_added.isoformat()
         if row.field_defs:
-            d['field_defs'] = json.loads(unicode(row.field_defs))
+            d['field_defs'] = json.loads(row.field_defs.tobytes().decode('utf-8'))
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
         if row.last_work_status:
-            d['last_work_status'] = unicode(row.last_work_status)
+            d['last_work_status'] = row.last_work_status
         all_sessions.append(d)
 
     resp['objects'] = all_sessions
@@ -406,7 +407,6 @@ def rewind():
 
 @admin.route('/clear-error/')
 @login_required
-@check_sessions()
 def clear_error():
     work_id = request.args['work_id']
     work = db_session.query(WorkTable).get(work_id)
@@ -424,13 +424,14 @@ def add_bulk_training():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     replace = request.form.get('replace', False)
-    td = json.load(request.files['input_file'])
+    inp = request.files['input_file'].read().decode('utf-8')
+    td = json.loads(inp)
     if dedupe_session.training_data:
-        if not replace:
-            old_training = json.loads(dedupe_session.training_data)
+        if not replace: # pragma: no cover
+            old_training = json.loads(dedupe_session.training_data.decode('utf-8'))
             td['distinct'].extend([pair for pair in old_training['distinct']])
             td['match'].extend([pair for pair in old_training['match']])
-    dedupe_session.training_data = json.dumps(td)
+    dedupe_session.training_data = bytes(json.dumps(td).encode('utf-8'))
     db_session.add(dedupe_session)
     db_session.commit()
     r = {
@@ -447,7 +448,7 @@ def add_bulk_training():
 def get_entity_records():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
+    field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])
     fields = ', '.join(['r.{0}'.format(f) for f in field_names])
     entity_id = request.args.get('entity_id')
     sel = ''' 
@@ -470,7 +471,7 @@ def get_entity_records():
 def entity_browser():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs)])
+    field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])
     sel = ''' 
         SELECT * FROM "browser_{0}" LIMIT 100
     '''.format(session_id)
@@ -494,7 +495,7 @@ def entity_detail():
     session_id = flask_session['session_id']
     entity_id = request.args.get('entity_id')
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    model_fields = [f['field'] for f in json.loads(dedupe_session.field_defs)]
+    model_fields = [f['field'] for f in json.loads(dedupe_session.field_defs.decode('utf-8'))]
     sel = ''' 
       SELECT 
         e.entity_id,
@@ -579,6 +580,6 @@ def edit_model():
         return redirect(url_for('admin.index'))
     return render_template('edit-model.html',
                            dedupe_session=dedupe_session,
-                           model=json.loads(dedupe_session.field_defs),
+                           model=json.loads(dedupe_session.field_defs.decode('utf-8')),
                            field_types=field_types)
 

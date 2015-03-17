@@ -9,6 +9,9 @@ from api.utils.helpers import STATUS_LIST
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
+
 class DelayedTest(DedupeAPITestCase):
     ''' 
     Test the matching module

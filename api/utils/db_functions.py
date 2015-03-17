@@ -1,14 +1,14 @@
 import os
 import json
 import dedupe
-from cStringIO import StringIO
+import csv
+from io import StringIO, BytesIO
 from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
 from api.utils.helpers import preProcess, slugify, updateEntityCount
 from api.app_config import TIME_ZONE
 from csvkit import convert
-from csvkit.unicsv import UnicodeCSVDictReader
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
     create_engine, Float, Boolean, BigInteger, distinct, text, select, \
     Text, func, Index
@@ -16,7 +16,7 @@ from sqlalchemy.sql import label
 from sqlalchemy.exc import ProgrammingError
 from unidecode import unidecode
 from uuid import uuid4
-from csvkit.unicsv import UnicodeCSVWriter
+import csv
 from datetime import datetime
 from operator import itemgetter
 from itertools import groupby
@@ -32,7 +32,7 @@ except KeyError: #pragma: no cover
 
 def addRowHash(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs)
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fields = sorted(list(set([f['field'] for f in field_defs])))
     engine = worker_session.bind
     fields = ["COALESCE(r.{0}, '')".format(f) for f in fields]
@@ -58,8 +58,9 @@ def writeRawTable(session_id=None,
     """ 
     Create a table from incoming tabular data
     """
-    file_obj = open(file_path, 'rb')
-    fieldnames = [slugify(unicode(f)) for f in file_obj.next().strip('\r\n').split(',')]
+    file_obj = open(file_path, 'r')
+    reader = csv.reader(file_obj)
+    fieldnames = [slugify(str(f)) for f in next(reader)]
     file_obj.seek(0)
     cols = []
     for field in fieldnames:
@@ -85,8 +86,7 @@ def writeRawTable(session_id=None,
         cur.copy_expert(copy_st, file_obj)
         conn.commit()
         os.remove(file_path)
-    except Exception, e:
-        print e
+    except Exception as e:
         conn.rollback()
         raise e
     return fieldnames
@@ -95,7 +95,7 @@ def writeProcessedTable(session_id,
                         raw_table_format='raw_{0}', 
                         proc_table_format='processed_{0}'):
     dd = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(dd.field_defs)
+    field_defs = json.loads(dd.field_defs.decode('utf-8'))
     fds = {}
     for fd in field_defs:
         try:
@@ -164,7 +164,7 @@ def initializeEntityMap(session_id, fields):
         conn.execute('DROP TABLE IF EXISTS "entity_{0}" CASCADE'.format(session_id))
     entity_table.create(engine)
     s = StringIO()
-    writer = UnicodeCSVWriter(s)
+    writer = csv.writer(s)
     now = datetime.now().replace(tzinfo=TIME_ZONE).isoformat()
     rows = sorted(rows, key=itemgetter(0))
     grouped = {}
@@ -172,9 +172,9 @@ def initializeEntityMap(session_id, fields):
         rs = [r[1] for r in g]
         grouped[k] = rs
     for king,serfs in grouped.items():
-        entity_id = unicode(uuid4())
+        entity_id = str(uuid4())
         writer.writerow([
-            king, 
+            int(king), 
             None, 
             entity_id, 
             1.0,
@@ -186,8 +186,8 @@ def initializeEntityMap(session_id, fields):
         ])
         for serf in serfs:
             writer.writerow([
-                serf,
-                king,
+                int(serf),
+                int(king),
                 entity_id,
                 1.0,
                 'raw_{0}'.format(session_id),
@@ -217,7 +217,7 @@ def initializeEntityMap(session_id, fields):
 
 def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
     sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs)
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fds = {}
     for fd in field_defs:
         try:
@@ -263,11 +263,11 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                 conn.execute(text(proc_ins), record_id=record_id)
 
         # Add to entity map
-        hash_me = ';'.join([preProcess(unicode(new_entity[i])) for i in fds.keys()])
-        md5_hash = md5(unidecode(hash_me)).hexdigest()
+        hash_me = ';'.join([preProcess(str(new_entity[i])) for i in fds.keys()])
+        md5_hash = md5(hash_me.encode('utf-8')).hexdigest()
         last_update = datetime.now().replace(tzinfo=TIME_ZONE)
         entity = {
-            'entity_id': unicode(uuid4()),
+            'entity_id': str(uuid4()),
             'record_id': new_entity['record_id'],
             'source_hash': md5_hash,
             'clustered': True,
@@ -320,7 +320,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
             conn.execute(ins, **entity)
 
         # Update block table
-        deduper = dedupe.StaticGazetteer(StringIO(sess.gaz_settings_file))
+        deduper = dedupe.StaticGazetteer(BytesIO(sess.gaz_settings_file))
         field_types = {}
         for field in field_defs:
             if field_types.get(field['field']):
@@ -335,7 +335,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                     else:
                         new_entity[k] = 0
                 else:
-                    new_entity[k] = preProcess(unicode(v))
+                    new_entity[k] = preProcess(str(v))
         block_keys = [{'record_id': b[1], 'block_key': b[0]} \
                 for b in list(deduper.blocker([(new_entity['record_id'], new_entity)]))]
         if block_keys:
@@ -371,10 +371,10 @@ def updateEntityMap(clustered_dupes,
     Add to entity map table after training
     """
     fname = '/tmp/clusters_{0}.csv'.format(session_id)
-    with open(fname, 'wb') as f:
-        writer = UnicodeCSVWriter(f)
+    with open(fname, 'w') as f:
+        writer = csv.writer(f)
         for ids, scores in clustered_dupes:
-            new_ent = unicode(uuid4())
+            new_ent = str(uuid4())
             writer.writerow([
                 new_ent,
                 ids[0],
@@ -475,15 +475,15 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
         .filter(entity.c.record_id == proc_table.c.record_id)\
         .group_by(entity.c.entity_id)
     names = cr.columns.keys()
-    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'wb') as f:
-        writer = UnicodeCSVWriter(f)
+    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'w') as f:
+        writer = csv.writer(f)
         writer.writerow(names)
         for row in rows:
             r = [row.entity_id]
             dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
             for idx, dct in enumerate(dicts):
                 for name in col_names:
-                    dicts[idx][name] = unicode(getattr(row, name)[idx])
+                    dicts[idx][name] = str(getattr(row, name)[idx])
             canon_form = dedupe.canonicalize(dicts)
             r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])
             writer.writerow(r)
@@ -515,8 +515,8 @@ def writeBlockingMap(session_id, block_data, canonical=False):
     )
     bkm.drop(engine, checkfirst=True)
     bkm.create(engine)
-    with open('/tmp/{0}.csv'.format(session_id), 'wb') as s:
-        writer = UnicodeCSVWriter(s)
+    with open('/tmp/{0}.csv'.format(session_id), 'w') as s:
+        writer = csv.writer(s)
         writer.writerows(block_data)
     conn = engine.raw_connection()
     cur = conn.cursor()

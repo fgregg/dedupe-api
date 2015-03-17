@@ -10,7 +10,7 @@ from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters, \
     dedupeCanon, getMatchingReady
 from api.app_config import TIME_ZONE
 from sqlalchemy import text, Table
-from cPickle import loads, dumps
+from pickle import loads, dumps
 
 review = Blueprint('review', __name__)
 

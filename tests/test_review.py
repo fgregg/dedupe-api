@@ -6,6 +6,9 @@ from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, bulkMarkClusters, bulkMarkCanonClusters
 from tests import DedupeAPITestCase
 
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
+
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
 class ReviewTest(DedupeAPITestCase):
@@ -17,9 +20,9 @@ class ReviewTest(DedupeAPITestCase):
             self.login()
             with self.client as c:
                 rv = c.get('/session-review/?session_id=' + self.dd_sess.id)
-                assert "var mark_cluster_url = '/mark-cluster/?session_id=' + session_id;" in rv.data
+                assert "var mark_cluster_url = '/mark-cluster/?session_id=' + session_id;" in rv.data.decode('utf-8')
                 rv = c.get('/session-review/?session_id=' + self.dd_sess.id + '&second_review=true')
-                assert "var mark_cluster_url = '/mark-canon-cluster/?session_id=' + session_id;" in rv.data
+                assert "var mark_cluster_url = '/mark-canon-cluster/?session_id=' + session_id;" in rv.data.decode('utf-8')
     
     def review_wrapper(self, canonical=False):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
@@ -47,7 +50,7 @@ class ReviewTest(DedupeAPITestCase):
             with self.client as c:
                 rv = c.get(endpoints['get'])
                 self.session.refresh(self.dd_sess)
-                json_resp = json.loads(rv.data)
+                json_resp = json.loads(rv.data.decode('utf-8'))
                 assert json_resp['total_clusters'] == \
                         self.dd_sess.entity_count
                 assert json_resp['review_remainder'] == \
@@ -63,10 +66,10 @@ class ReviewTest(DedupeAPITestCase):
                 assert rows[0][0] == True
 
                 rv = c.get(endpoints['get'])
-                json_resp_2 = json.loads(rv.data)
+                json_resp_2 = json.loads(rv.data.decode('utf-8'))
                 assert json_resp_2['entity_id'] != json_resp['entity_id']
 
-                matches = ','.join([unicode(r['record_id']) for r in \
+                matches = ','.join([str(r['record_id']) for r in \
                                     json_resp['objects']])
                 params = '&match_ids={0}&entity_id={1}'\
                     .format(matches, json_resp['entity_id'])
@@ -82,7 +85,7 @@ class ReviewTest(DedupeAPITestCase):
                                 entity_id=json_resp['entity_id']))
                 assert list(set([r[0] for r in rows])) == [True]
 
-                distinct = ','.join([unicode(r['record_id']) for r in \
+                distinct = ','.join([str(r['record_id']) for r in \
                                      json_resp_2['objects']])
                 params = '&distinct_ids={0}&entity_id={1}'\
                     .format(distinct, json_resp_2['entity_id'])

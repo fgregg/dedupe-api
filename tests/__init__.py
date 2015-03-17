@@ -4,7 +4,7 @@ from api.database import init_db, app_session, worker_session, \
     init_engine, DEFAULT_USER
 from api.models import User, Group, Role, DedupeSession
 from api.utils.helpers import STATUS_LIST
-from test_config import DB_CONFIG, DB_CONN
+from .test_config import DB_CONFIG, DB_CONN
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine
@@ -45,19 +45,19 @@ class DedupeAPITestCase(unittest.TestCase):
         cls.user_pw = DEFAULT_USER['user']['password']
 
     def setUp(self):
-        self.field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
+        self.field_defs = open(join(fixtures_path, 'field_defs.json'), 'r').read()
         settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
-        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
+        training = open(join(fixtures_path, 'training_data.json'), 'r').read()
         self.dd_sess = DedupeSession(
-                        id=unicode(uuid4()), 
+                        id=str(uuid4()), 
                         filename='test_filename.csv',
                         name='Test Session',
                         description='Test Session description',
                         group=self.group,
                         status=STATUS_LIST[0]['machine_name'],
                         settings_file=settings,
-                        field_defs=self.field_defs,
-                        training_data=training
+                        field_defs=bytes(self.field_defs.encode('utf-8')),
+                        training_data=bytes(training.encode('utf-8'))
                       )
         self.session.add(self.dd_sess)
         self.session.commit()

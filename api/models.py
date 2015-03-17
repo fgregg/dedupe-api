@@ -43,7 +43,7 @@ def block_map_table(name, metadata, pk_type=Integer):
     return table
 
 def get_uuid():
-    return unicode(uuid4())
+    return str(uuid4())
 
 class DedupeSession(Base):
     __tablename__ = 'dedupe_session'
@@ -93,7 +93,7 @@ class DedupeSession(Base):
         if self.date_updated:
             d['date_updated'] = self.date_updated.isoformat()
         if self.field_defs:
-            d['field_defs'] = json.loads(self.field_defs)
+            d['field_defs'] = json.loads(self.field_defs.decode('utf-8'))
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == self.status][0]
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(self.id)
         return d
@@ -111,7 +111,8 @@ groups_users = Table('group_users', Base.metadata,
 class WorkTable(Base):
     __tablename__ = 'work_table'
     key = Column(String(36), default=get_uuid, primary_key=True)
-    value = Column(LargeBinary)
+    return_value = Column(String)
+    work_value = Column(LargeBinary)
     traceback = Column(Text)
     session_id = Column(String(36))
     updated = Column(DateTime(timezone=True))
@@ -121,7 +122,7 @@ class WorkTable(Base):
                 server_default=text('TRUE'))
 
     def __repr__(self):
-        return '<WorkTable {0}>'.format(unicode(self.key))
+        return '<WorkTable {0}>'.format(str(self.key))
 
 class Role(Base):
     __tablename__ = 'dedupe_role'

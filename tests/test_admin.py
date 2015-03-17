@@ -1,19 +1,28 @@
 import unittest
 import json
-import cPickle
+import sys
 from os.path import join, abspath, dirname
 from uuid import uuid4
 from flask import request, session
 from api.models import User, Group
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
-    dedupeRaw
+    dedupeRaw, bulkMarkClusters, reDedupeRaw, reDedupeCanon
+from api.queue import processMessage
 from sqlalchemy import text
-from cStringIO import StringIO
-from csvkit.unicsv import UnicodeCSVReader
+from io import StringIO
+import csv
 from tests import DedupeAPITestCase
-from test_config import DEFAULT_USER
+from .test_config import DEFAULT_USER
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
+
+import logging
+logging.getLogger('dedupe').setLevel(logging.WARNING)
+
+if sys.version_info[:2] == (2,7):
+    import cPickle as pickle
+else:
+    import pickle
 
 class AdminTest(DedupeAPITestCase):
     ''' 
@@ -33,7 +42,7 @@ class AdminTest(DedupeAPITestCase):
                             'password': 'harryspw',
                             'roles': [1],
                             'groups': [self.group.id],}) 
-        assert 'User harry added' in rv.data
+        assert 'User harry added' in rv.data.decode('utf-8')
 
     def test_duplicate_name(self):
         rv = self.add_user({'name': DEFAULT_USER['user']['name'],
@@ -41,7 +50,7 @@ class AdminTest(DedupeAPITestCase):
                             'password': 'harryspw',
                             'roles': [1],
                             'groups': [self.group.id],})
-        assert 'Name is already registered' in rv.data
+        assert 'Name is already registered' in rv.data.decode('utf-8')
     
     def test_duplicate_email(self):
         rv = self.add_user({'name': 'joe',
@@ -49,7 +58,7 @@ class AdminTest(DedupeAPITestCase):
                             'password': 'harryspw',
                             'roles': [1],
                             'groups': [self.group.id],})
-        assert 'Email address is already registered' in rv.data
+        assert 'Email address is already registered' in rv.data.decode('utf-8')
 
     def test_session_admin(self):
         with self.client as c:
@@ -57,8 +66,8 @@ class AdminTest(DedupeAPITestCase):
                 sess['user_id'] = self.user.id
             rv = c.open('/session-admin/?session_id=' + self.dd_sess.id, follow_redirects=True)
             assert 'session-admin' in request.path
-            assert self.dd_sess.name in rv.data
-            assert self.dd_sess.description in rv.data
+            assert self.dd_sess.name in rv.data.decode('utf-8')
+            assert self.dd_sess.description in rv.data.decode('utf-8')
 
     def no_access(self, path):
         dummy_group = self.session.query(Group)\
@@ -83,11 +92,12 @@ class AdminTest(DedupeAPITestCase):
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
                 rv = c.open('/training-data/?session_id=' + self.dd_sess.id)
-                assert json.loads(rv.data).keys() == ['distinct', 'match']
+                td = json.loads(rv.data.decode('utf-8'))
+                assert set(td.keys()) == set(['distinct', 'match'])
 
     def test_td_no_access(self):
         rv = self.no_access('/training-data/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don't have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data.decode('utf-8')
     
     def test_settings_file(self):
         with self.app.test_request_context():
@@ -96,11 +106,12 @@ class AdminTest(DedupeAPITestCase):
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
                 rv = c.open('/settings-file/?session_id=' + self.dd_sess.id)
-                assert str(type(cPickle.loads(rv.data))) == "<class 'dedupe.datamodel.DataModel'>"
+                assert str(type(pickle.loads(rv.data))) == \
+                        "<class 'dedupe.datamodel.DataModel'>"
     
     def test_sf_no_access(self):
         rv = self.no_access('/settings-file/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don't have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data.decode('utf-8')
     
     def test_field_defs(self):
         with self.app.test_request_context():
@@ -109,13 +120,14 @@ class AdminTest(DedupeAPITestCase):
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
                 rv = c.open('/field-definitions/?session_id=' + self.dd_sess.id)
-                fds = set([f['field'] for f in json.loads(rv.data)])
-                expected = set([f['field'] for f in json.loads(self.field_defs)])
+                fds = set([f['field'] for f in json.loads(rv.data.decode('utf-8'))])
+                expected = set([f['field'] for f in \
+                        json.loads(self.field_defs)])
                 assert fds == expected
     
     def test_fd_no_access(self):
         rv = self.no_access('/field-definitions/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don't have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data.decode('utf-8')
 
     def test_delete_model(self):
         with self.app.test_request_context():
@@ -141,7 +153,7 @@ class AdminTest(DedupeAPITestCase):
     
     def test_delete_no_access(self):
         rv = self.no_access('/delete-data-model/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don't have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data.decode('utf-8')
 
     def test_delete_session(self):
         with self.app.test_request_context():
@@ -156,7 +168,7 @@ class AdminTest(DedupeAPITestCase):
     
     def test_delete_sess_no_access(self):
         rv = self.no_access('/delete-session/?session_id=' + self.dd_sess.id)
-        assert "Sorry, you don't have access to that session" in rv.data
+        assert "Sorry, you don't have access to that session" in rv.data.decode('utf-8')
 
     def test_session_list(self):
         with self.app.test_request_context():
@@ -165,7 +177,7 @@ class AdminTest(DedupeAPITestCase):
                 with c.session_transaction() as sess:
                     sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.open('/session-list/')
-                assert json.loads(rv.data)['status'] == 'ok'
+                assert json.loads(rv.data.decode('utf-8'))['status'] == 'ok'
     
     def test_session_list_with_param(self):
         with self.app.test_request_context():
@@ -174,8 +186,8 @@ class AdminTest(DedupeAPITestCase):
                 with c.session_transaction() as sess:
                     sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.open('/session-list/?session_id=' + self.dd_sess.id)
-                assert json.loads(rv.data)['status'] == 'ok'
-                assert len(json.loads(rv.data)['objects']) == 1
+                assert json.loads(rv.data.decode('utf-8'))['status'] == 'ok'
+                assert len(json.loads(rv.data.decode('utf-8'))['objects']) == 1
     
     def test_dump_entity_map(self):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
@@ -199,7 +211,49 @@ class AdminTest(DedupeAPITestCase):
                 with self.engine.begin() as conn:
                     row_count = list(conn.execute(row_count))
                 row_count = row_count[0][0]
-                s = StringIO(rv.data)
-                reader = UnicodeCSVReader(s)
-                reader.next()
+                s = StringIO(rv.data.decode('utf-8'))
+                reader = csv.reader(s)
+                next(reader)
                 assert len([r for r in list(reader) if r[0]]) == row_count
+
+    def test_rewind(self):
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'wb') as outp:
+                outp.write(inp.read())
+        initializeSession(self.dd_sess.id)
+        initializeModel(self.dd_sess.id)
+        dedupeRaw(self.dd_sess.id)
+
+        self.session.refresh(self.dd_sess)
+        assert self.dd_sess.status == 'entity map updated'
+        
+        bulkMarkClusters(self.dd_sess.id)
+        self.session.refresh(self.dd_sess)
+        assert self.dd_sess.status == 'canon clustered'
+        
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                self.engine.execute('delete from work_table')
+                c.get('/rewind/?session_id={0}&step=first&threshold=0.75'.format(self.dd_sess.id))
+                reDedupeRaw(self.dd_sess.id, threshold=0.75)
+                self.session.refresh(self.dd_sess)
+                assert self.dd_sess.status == 'entity map updated'
+
+    def test_bulk_training(self):
+        self.dd_sess.training_data = None
+        self.session.add(self.dd_sess)
+        self.session.commit()
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                    sess['session_id'] = self.dd_sess.id
+                rv = c.post('/add-bulk-training/', data={
+                            'input_file': (open(join(fixtures_path, 
+                                'training_data.json'),'rb'), 
+                                'training_data.json')}, follow_redirects=True)
+                self.session.refresh(self.dd_sess)
+                assert self.dd_sess.training_data is not None
+
