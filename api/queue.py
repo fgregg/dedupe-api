@@ -11,7 +11,6 @@ from sqlalchemy.exc import ProgrammingError, InternalError
 from sqlalchemy import text
 import time
 
-engine = init_engine(DB_CONN)
 
 try:
     from raven import Client
@@ -25,6 +24,7 @@ def queuefunc(f):
     def delay(*args, **kwargs):
         s = dumps((f, args, kwargs))
         key = str(uuid4())
+        engine = init_engine(DB_CONN)
         with engine.begin() as conn:
             conn.execute(text(''' 
                 INSERT INTO work_table(key, work_value) 
@@ -35,12 +35,15 @@ def queuefunc(f):
     return f
 
 def processMessage(db_conn=DB_CONN):
-    global engine
     engine = init_engine(db_conn)
-    sel = "SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1"
-    work = engine.execute(sel).first()
+    conn = engine.connect()
+    trans = conn.begin()
+    sel = "SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1 FOR UPDATE"
+    work = conn.execute(sel).first()
     if not work:
         time.sleep(1)
+        trans.rollback()
+        conn.close()
     else:
         func, args, kwargs = loads(work.work_value)
         sess = None
@@ -56,8 +59,8 @@ def processMessage(db_conn=DB_CONN):
             upd = '{0}, session_id = :session_id'.format(upd)
             upd_args['session_id'] = sess.id
         upd = '{0} WHERE key = :key'.format(upd)
-        with engine.begin() as conn:
-            conn.execute(text(upd), **upd_args)
+        conn.execute(text(upd), **upd_args)
+        trans.commit()
         
         upd_args = {
             'tb': None,
