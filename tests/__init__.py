@@ -105,7 +105,7 @@ def setUpPackage():
         with psycopg2.connect(cstr) as conn:
             with conn.cursor() as curs:
                 curs.execute('''
-                                DROP TABLE 
+                                DROP TABLE IF EXISTS
                                   dedupe_user, 
                                   dedupe_group, 
                                   group_users, 
