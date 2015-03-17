@@ -1,12 +1,13 @@
 import unittest
 import json
-import pickle
+import sys
 from os.path import join, abspath, dirname
 from uuid import uuid4
 from flask import request, session
 from api.models import User, Group
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
-    dedupeRaw
+    dedupeRaw, bulkMarkClusters, reDedupeRaw, reDedupeCanon
+from api.queue import processMessage
 from sqlalchemy import text
 from io import StringIO
 import csv
@@ -17,6 +18,11 @@ fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
 import logging
 logging.getLogger('dedupe').setLevel(logging.WARNING)
+
+if sys.version_info[:2] == (2,7):
+    import cPickle as pickle
+else:
+    import pickle
 
 class AdminTest(DedupeAPITestCase):
     ''' 
@@ -209,3 +215,45 @@ class AdminTest(DedupeAPITestCase):
                 reader = csv.reader(s)
                 next(reader)
                 assert len([r for r in list(reader) if r[0]]) == row_count
+
+    def test_rewind(self):
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'wb') as outp:
+                outp.write(inp.read())
+        initializeSession(self.dd_sess.id)
+        initializeModel(self.dd_sess.id)
+        dedupeRaw(self.dd_sess.id)
+
+        self.session.refresh(self.dd_sess)
+        assert self.dd_sess.status == 'entity map updated'
+        
+        bulkMarkClusters(self.dd_sess.id)
+        self.session.refresh(self.dd_sess)
+        assert self.dd_sess.status == 'canon clustered'
+        
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                self.engine.execute('delete from work_table')
+                c.get('/rewind/?session_id={0}&step=first&threshold=0.75'.format(self.dd_sess.id))
+                reDedupeRaw(self.dd_sess.id, threshold=0.75)
+                self.session.refresh(self.dd_sess)
+                assert self.dd_sess.status == 'entity map updated'
+
+    def test_bulk_training(self):
+        self.dd_sess.training_data = None
+        self.session.add(self.dd_sess)
+        self.session.commit()
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_sessions'] = [self.dd_sess.id]
+                    sess['session_id'] = self.dd_sess.id
+                rv = c.post('/add-bulk-training/', data={
+                            'input_file': (open(join(fixtures_path, 
+                                'training_data.json'),'rb'), 
+                                'training_data.json')}, follow_redirects=True)
+                self.session.refresh(self.dd_sess)
+                assert self.dd_sess.training_data is not None
+

@@ -1,7 +1,9 @@
+from __future__ import unicode_literals
 from flask import current_app
 import re
 import os
 import json
+import sys
 from dedupe.core import frozendict
 from dedupe import canonicalize
 import dedupe
@@ -14,9 +16,13 @@ from itertools import count
 from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
 from datetime import datetime, timedelta
-import pickle
 from itertools import combinations
 from io import StringIO, BytesIO
+
+if sys.version_info[:2] == (2,7):
+    import cPickle as pickle
+else:
+    import pickle
 
 STATUS_LIST = [
     {
@@ -401,7 +407,7 @@ def getDistinct(field_name, session_id):
         WHERE {0} IS NOT NULL
             AND {0}::varchar != ''
     '''.format(field_name, session_id)
-    distinct_values = list(set([str(v[0]) for v in engine.execute(sel)]))
+    distinct_values = list(set([u'{0}'.format(v[0]) for v in engine.execute(sel)]))
     return distinct_values
 
 def checkinSessions():

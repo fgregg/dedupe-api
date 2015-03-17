@@ -402,7 +402,6 @@ def rewind():
 
 @admin.route('/clear-error/')
 @login_required
-@check_sessions()
 def clear_error():
     work_id = request.args['work_id']
     work = db_session.query(WorkTable).get(work_id)
@@ -420,13 +419,14 @@ def add_bulk_training():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     replace = request.form.get('replace', False)
-    td = json.load(request.files['input_file'])
+    inp = request.files['input_file'].read().decode('utf-8')
+    td = json.loads(inp)
     if dedupe_session.training_data:
-        if not replace:
-            old_training = json.loads(dedupe_session.training_data)
+        if not replace: # pragma: no cover
+            old_training = json.loads(dedupe_session.training_data.decode('utf-8'))
             td['distinct'].extend([pair for pair in old_training['distinct']])
             td['match'].extend([pair for pair in old_training['match']])
-    dedupe_session.training_data = json.dumps(td)
+    dedupe_session.training_data = bytes(json.dumps(td).encode('utf-8'))
     db_session.add(dedupe_session)
     db_session.commit()
     r = {
