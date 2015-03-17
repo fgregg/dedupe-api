@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Help {% endblock %}
+{% block content %}
+
+<div class='col-md-3'>
+  <p><a href='/'>&laquo; back to Home</a></p>
+  
+  <div class='well'>
+    <h3>Help</h3>
+    <ol>
+      <li><a href='#field-types'>Field types</a></li>
+    </ol>
+  </div>
+</div>
+<div class="col-md-9">
+
+  <h3 id='field-types'>Field types</h3>
+  
+  <p>Dedupe can compare your fields in different ways depending on the makeup of the data. For more details, see the dedupe library <a href='http://dedupe.readthedocs.org/en/latest/Variable-definition.html'>documentation on field definitions</a>.</p>
+  <table class='table table-bordered'>
+    <thead>
+      <tr>
+        <th>Field type</th>
+        <th>Description</th>
+        <th>Good for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Text</td>
+        <td><strong>Default field type</strong>. Fields will be compared based on how similar they are to each other, character by character.</td>
+        <td>Person or company names</td>
+      </tr>
+      <tr>
+        <td>Short text</td>
+        <td>If the data in this field is shorter than 10 characters, using short text can be used to speed up the matching performance.</td>
+        <td>Zip codes and city names</td>
+      </tr>
+      <tr>
+        <td>Long text</td>
+        <td>Compares entire words. Useful for longer text fields.</td>
+        <td>Product descriptions or article abstracts</td>
+      </tr>
+      <tr>
+        <td>Exact match?</td>
+        <td>Checks to see if the fields exaclty match or not.</td>
+        <td>Cleaned and consistent data</td>
+      </tr>
+      <tr>
+        <td>Exists?</td>
+        <td>Measures whether both, one, or neither of the fields are defined.</td>
+        <td>Sparsely populated data (when presence is significant)</td>
+      </tr>
+      <tr>
+        <td>Address</td>
+        <td>Splits addresses in to separate components using <a href='http://parserator.datamade.us/usaddress'>usaddress</a>.</td>
+        <td>Addresses in the United States</td>
+      </tr>
+      <tr>
+        <td>Price</td>
+        <td>Measures the difference between two prices in the same currency.</td>
+        <td>Price amounts in the same currency</td>
+      </tr>
+      <tr>
+        <td>Latitude/Longitude</td>
+        <td>Compares fields based on geographic proximity via the <a href='http://en.wikipedia.org/wiki/Haversine_formula'>Haversine Formula</a>.</td>
+        <td>Latitude and Longitude pairs</td>
+      </tr>
+      <tr>
+        <td>Set (advanced)</td>
+        <td>Used for comparing short lists of pre-defined elements.</td>
+        <td>Keywords or categories</td>
+      </tr>
+      <tr>
+        <td>Categories (advanced)</td>
+        <td>Used for comparing long lists of pre-defined elements.</td>
+        <td>Keywords or categories</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
