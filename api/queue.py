@@ -36,14 +36,17 @@ def queuefunc(f):
 
 def processMessage(db_conn=DB_CONN):
     engine = init_engine(db_conn)
-    conn = engine.connect()
-    trans = conn.begin()
-    sel = "SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1 FOR UPDATE"
-    work = conn.execute(sel).first()
+    with engine.begin() as conn:
+        upd = '''
+            UPDATE work_table set claimed = FALSE FROM (
+                SELECT * FROM work_table WHERE claimed = FALSE LIMIT 1
+            ) AS s
+            WHERE work_table.key = s.key
+            RETURNING work_table.*
+        '''
+        work = conn.execute(upd).first()
     if not work:
         time.sleep(1)
-        trans.rollback()
-        conn.close()
     else:
         func, args, kwargs = loads(work.work_value)
         sess = None
@@ -59,8 +62,8 @@ def processMessage(db_conn=DB_CONN):
             upd = '{0}, session_id = :session_id'.format(upd)
             upd_args['session_id'] = sess.id
         upd = '{0} WHERE key = :key'.format(upd)
-        conn.execute(text(upd), **upd_args)
-        trans.commit()
+        with engine.begin() as conn:
+            conn.execute(text(upd), **upd_args)
         
         upd_args = {
             'tb': None,
