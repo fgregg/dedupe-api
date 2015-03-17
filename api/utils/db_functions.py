@@ -58,7 +58,7 @@ def writeRawTable(session_id=None,
     """ 
     Create a table from incoming tabular data
     """
-    file_obj = open(file_path, 'rb')
+    file_obj = open(file_path, 'r')
     reader = csv.reader(file_obj)
     fieldnames = [slugify(str(f)) for f in next(reader)]
     file_obj.seek(0)
