@@ -9,12 +9,10 @@
                 <div id='start-session' style='display: none;'>
                     <div class='jumbotron'>
                         <h1>
-                            <i class='fa fa-copy'></i>
-                            <i class='fa fa-long-arrow-right'></i>
-                            <i class='fa fa-file-o'></i>
+                            <i class='fa fa-share-alt fa-rotate-180'></i>
                         </h1>
                         <h2>Welcome to Dedupe!</h2>
-                        <p>Let's get started on your first dedupe session.</p>
+                        <p>We will guide you through de-duplicating and linking your data.</p>
                         <p><a role="button" href="{{url_for('trainer.new_session')}}" class="btn btn-info btn-lg">Let's get started &raquo;</a></p>
                     </div>
                 </div>
@@ -50,13 +48,13 @@
                     <thead>
                         <tr id="review-header">
                             {% if status == 'canonical' %}
-                                <th>Name</th>
+                                <th style='width: 40%;'>Name</th>
                                 <th>Unique entities</th>
                                 <th>Updated</th>
                                 <th></th>
                             {% else %}
-                                <th>Name</th>
-                                <th>Progress</th>
+                                <th style='width: 40%;'>Name</th>
+                                <th style='width: 25%;'>Progress</th>
                                 <th>To review</th>
                                 <th>Updated</th>
                                 <th></th>

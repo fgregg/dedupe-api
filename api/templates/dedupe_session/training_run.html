@@ -194,7 +194,7 @@
 
         $('.btn').on('click', function(e){
             e.preventDefault();
-            $('#labeler').spin('large');
+            $('#labeler').spin({'top': 50});
             var action = $(this).attr('id').split('-')[0];
             $.when(mark_training_pair(action)).then(
                 function(data){
@@ -209,6 +209,7 @@
             )
         });
 
+        $('#labeler').spin({'top': 50});
         render_training_pair();
 
         var init_counter = {{session.counter|tojson|safe}}
