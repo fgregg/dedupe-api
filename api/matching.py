@@ -1,5 +1,6 @@
 import os
 import json
+import math
 from uuid import uuid4
 from flask import Flask, make_response, request, Blueprint, \
     session as flask_session, make_response, render_template, jsonify, \
@@ -207,7 +208,7 @@ def get_unmatched():
     fields.add('record_id')
     match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f) for f in fields])
     raw_fields = ','.join(['MAX(raw.{0}) AS raw_{0}'.format(f) for f in fields])
-    sel = '''
+    matches = '''
         SELECT 
           {0}, 
           {1}, 
@@ -240,39 +241,44 @@ def get_unmatched():
         GROUP BY ent.entity_id
         ORDER BY MAX(ent.confidence) DESC
     '''.format(match_fields, raw_fields, session_id)
-    count = '''
-        SELECT (
-          SELECT 
-            COUNT(*)::double precision 
-          FROM "match_review_{0}" 
-          WHERE reviewed = FALSE
-          ) * (((
-            SELECT COUNT(*)::double precision 
-              FROM "match_review_{0}" 
-            WHERE reviewed = TRUE 
-              AND reviewer != 'machine'
-          ) + 0.00001 ) / ((
-            SELECT COUNT(*)::double precision 
-            FROM "match_review_{0}" 
-            WHERE reviewed = TRUE
-          ) + 0.00001 ) 
-        ) AS review_count
-        '''.format(session_id)
+    total_count = '''
+        SELECT 
+          COUNT(*)::double precision AS total_count
+        FROM "match_review_{0}"
+        WHERE reviewed = FALSE
+    '''.format(session_id)
+    numerator = ''' 
+        SELECT 
+          COUNT(*)::double precision AS numerator
+        FROM "match_review_{0}" 
+        WHERE sent_for_review = TRUE
+          AND ( reviewer != :reviewer OR reviewer IS NULL )
+    '''.format(session_id)
+    denominator = ''' 
+        SELECT 
+          COUNT(*)::double precision AS denominator
+        FROM "match_review_{0}" 
+        WHERE sent_for_review = TRUE
+    '''.format(session_id)
     queue_count = ''' 
-        SELECT count(record_id) AS queue_count 
-          FROM "match_review_{0}" 
+        SELECT COUNT(record_id) AS queue_count
+        FROM "match_review_{0}"
         WHERE array_upper(entities, 1) IS NOT NULL
           AND reviewed = FALSE
     '''.format(session_id)
     engine = db_session.bind
-    records = list(engine.execute(sel))
-    count = engine.execute(count).first().review_count
+    match_records = list(engine.execute(matches))
+    total_count = engine.execute(total_count).first().total_count
+    numerator = engine.execute(text(numerator), 
+                               reviewer='machine').first().numerator
+    denominator = engine.execute(denominator).first().denominator
     queue_count = engine.execute(queue_count).first().queue_count
-    if queue_count <= 10:
+    db_session.refresh(dedupe_session)
+    if queue_count <= 10 and not dedupe_session.processing:
         populateHumanReview.delay(session_id)
     matches = []
     raw_record = {}
-    for record in records:
+    for record in match_records:
         match = {}
         for key in record.keys():
             if key.startswith('raw_'):
@@ -288,7 +294,9 @@ def get_unmatched():
     resp['matches'] = matches
     if len(resp['matches']) == 0:
         dedupe_session.status = 'canonical'
-    dedupe_session.review_count = count
+    proportion = numerator / denominator
+    std_err = math.sqrt((proportion * ( 1 - proportion )) / denominator)
+    dedupe_session.review_count = total_count * ( proportion + ( std_err * 2 ) )
     db_session.add(dedupe_session)
     db_session.commit()
     response = make_response(json.dumps(resp, sort_keys=False), status_code)

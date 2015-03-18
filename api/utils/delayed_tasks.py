@@ -239,7 +239,8 @@ def getMatchingReady(session_id):
             ARRAY[]::varchar[] AS entities,
             FALSE AS reviewed, 
             ARRAY[]::double precision[] AS confidence,
-            NULL::varchar AS reviewer
+            NULL::varchar AS reviewer,
+            FALSE AS sent_for_review 
           FROM "raw_{0}" AS r
           LEFT JOIN "entity_{0}" AS e
             ON r.record_id = e.record_id
@@ -293,12 +294,14 @@ def populateHumanReview(session_id):
             break
         matches = getMatches(session_id, record)
         if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
+                # Means Auto adding match 
                 addToEntityMap(session_id, 
                                record, 
                                match_ids=[m['record_id'] for m in matches],
                                reviewer='machine')
                 cleared.append(record['record_id'])
         elif len(matches) == 0:
+            # Means Auto adding single record entity
             addToEntityMap(session_id, 
                            record, 
                            reviewer='machine')
@@ -311,6 +314,7 @@ def populateHumanReview(session_id):
                     matches.pop(idx)
             
             if len(matches):
+                # Send these to humans
                 r = {
                     'record_id': record['record_id'], 
                     'entities': [m['entity_id'] for m in matches],
@@ -319,13 +323,15 @@ def populateHumanReview(session_id):
                 upd = ''' 
                     UPDATE "match_review_{0}" SET
                       entities = :entities,
-                      confidence = :confidence
+                      confidence = :confidence,
+                      sent_for_review = TRUE
                     WHERE record_id = :record_id
                 '''.format(session_id)
                 with engine.begin() as conn:
                     conn.execute(text(upd), **r)
                 human_queue.append(record)
             else:
+                # If every match is low cnfidence, add single record entity
                 addToEntityMap(session_id, 
                                record, 
                                reviewer='machine')
@@ -334,7 +340,8 @@ def populateHumanReview(session_id):
     reviewed = ''' 
         UPDATE "match_review_{0}" SET 
         reviewed = TRUE,
-        reviewer = :reviewer
+        reviewer = :reviewer,
+        sent_for_review = TRUE
         WHERE record_id IN :ids
     '''.format(session_id)
     with engine.begin() as conn:
