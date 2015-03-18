@@ -54,14 +54,11 @@ def addRowHash(session_id):
         conn.execute(upd)
 
 def writeRawTable(session_id=None,
-              file_path=None):
+              file_path=None,
+              fieldnames=None):
     """ 
     Create a table from incoming tabular data
     """
-    file_obj = open(file_path, 'r')
-    reader = csv.reader(file_obj)
-    fieldnames = [slugify(str(f)) for f in next(reader)]
-    file_obj.seek(0)
     cols = []
     for field in fieldnames:
         cols.append(Column(field, String))
@@ -79,9 +76,9 @@ def writeRawTable(session_id=None,
             copy_st += '"%s")' % name
     else:
         copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',')"
-    file_obj.seek(0)
     conn = engine.raw_connection()
     cur = conn.cursor()
+    file_obj = open(file_path, 'rb')
     try:
         cur.copy_expert(copy_st, file_obj)
         conn.commit()

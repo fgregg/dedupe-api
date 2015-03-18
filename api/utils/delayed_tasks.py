@@ -391,12 +391,13 @@ def drawSample(session_id):
     del d
 
 @queuefunc
-def initializeSession(session_id):
+def initializeSession(session_id, fieldnames):
     sess = worker_session.query(DedupeSession).get(session_id)
     file_path = '/tmp/{0}_raw.csv'.format(session_id)
     kwargs = {
         'session_id':session_id,
-        'file_path':file_path
+        'file_path':file_path,
+        'fieldnames': fieldnames,
     }
     writeRawTable(**kwargs)
     engine = worker_session.bind

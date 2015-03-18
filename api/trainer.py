@@ -85,7 +85,7 @@ def upload():
     sess.processing = True
     db_session.add(sess)
     db_session.commit()
-    initializeSession.delay(session_id)
+    initializeSession.delay(session_id, fieldnames)
     flask_session['session_id'] = session_id
     return jsonify(ready=True, session_id=session_id)
 
