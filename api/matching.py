@@ -295,7 +295,7 @@ def get_unmatched():
     if len(resp['matches']) == 0:
         dedupe_session.status = 'canonical'
     proportion = numerator / denominator
-    std_err = math.sqrt((proportion * ( 1 - proportion )) / denominator)
+    std_err = math.sqrt((proportion * ( 1 - proportion )) / (denominator - 1 ))
     dedupe_session.review_count = total_count * ( proportion + ( std_err * 2 ) )
     db_session.add(dedupe_session)
     db_session.commit()
