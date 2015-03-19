@@ -9,7 +9,7 @@ from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, clusterGen, \
     makeSampleDict, windowed_query, getDistinct, getMatches, convertTraining, \
-    updateEntityCount, RetrainGazetteer
+    updateEntityCount, RetrainGazetteer, hasMissing
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash, addToEntityMap
@@ -442,7 +442,7 @@ def initializeModel(session_id, init=True):
                         field.update({'categories': distinct_vals})
                     else:
                         field['type'] = 'Exact'
-                if len(distinct_vals) < sess.record_count:
+                if hasMissing(field['field'], session_id):
                     field.update({'has_missing': True})
                 updated_fds.append(field)
             sess.field_defs = bytes(json.dumps(updated_fds).encode('utf-8'))

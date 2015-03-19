@@ -425,6 +425,23 @@ def getDistinct(field_name, session_id):
     distinct_values = list(set([u'{0}'.format(v[0]) for v in engine.execute(sel)]))
     return distinct_values
 
+def hasMissing(field_name, session_id):
+    engine = app_session.bind
+    sel = ''' 
+        SELECT (
+          SELECT COUNT(*)
+          FROM "raw_{0}"
+        ) - (
+          SELECT COUNT(*)
+          FROM "raw_{0}"
+          WHERE {1} IS NOT NULL
+        ) AS blank_count
+    '''.format(session_id, field_name)
+    blank_count = engine.execute(sel).first().blank_count
+    if blank_count == 0:
+        return False
+    return True
+
 def checkinSessions():
     now = datetime.now()
     all_sessions = [i.id for i in app_session.query(DedupeSession.id).all()]
