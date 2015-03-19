@@ -392,7 +392,7 @@ def clusterGen(result_set, fields):
             records = []
         smaller_ids = row['smaller_ids']
         if smaller_ids:
-            smaller_ids = lset(smaller_ids.split(','))
+            smaller_ids = lset(smaller_ids)
         else:
             smaller_ids = lset([])
         records.append((row['record_id'], row, smaller_ids))

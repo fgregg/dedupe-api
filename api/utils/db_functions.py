@@ -584,8 +584,8 @@ def writeBlockingMap(session_id, block_data, canonical=False):
     cov_bks_stmt = ''' 
         CREATE TABLE "covered_{0}" AS (
             SELECT record_id, 
-            string_agg(CAST(block_id AS TEXT), ',' ORDER BY block_id) 
-                AS sorted_ids
+            array_agg(block_id ORDER BY block_id) 
+                AS sorted_id
             FROM "plural_block_{0}"
             GROUP BY record_id
         )
@@ -604,13 +604,14 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         c.execute('DROP TABLE IF EXISTS "small_cov_{0}"'.format(session_id))
     small_cov = ''' 
         CREATE TABLE "small_cov_{0}" AS (
-            SELECT record_id, 
-                   block_id,
-                   TRIM(',' FROM split_part(sorted_ids, CAST(block_id AS TEXT), 1))
-                       AS smaller_ids
-            FROM "plural_block_{0}"
-            INNER JOIN "covered_{0}"
-            USING (record_id)
+          SELECT 
+            record_id, 
+            block_id,
+            sorted_id[1:(array_upper(sorted_id, 1) - 1)]
+              AS smaller_ids
+          FROM "plural_block_{0}"
+          INNER JOIN "covered_{0}"
+          USING (record_id)
         )
     '''.format(session_id)
     with engine.begin() as c:
