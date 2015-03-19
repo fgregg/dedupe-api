@@ -4,8 +4,10 @@ import re
 import os
 import json
 import sys
+import numpy
 from dedupe.core import frozendict
 from dedupe import canonicalize
+from dedupe.api import StaticGazetteer, Gazetteer
 import dedupe
 from api.database import app_session, worker_session, Base, init_engine
 from api.models import DedupeSession
@@ -18,6 +20,7 @@ from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 from itertools import combinations
 from io import StringIO, BytesIO
+from collections import OrderedDict
 
 if sys.version_info[:2] == (2,7):
     import cPickle as pickle
@@ -74,6 +77,18 @@ STATUS_LIST = [
         'next_step': None
     },
 ]
+
+class RetrainGazetteer(StaticGazetteer, Gazetteer):
+    
+    def __init__(self, *args, **kwargs):
+        super(RetrainGazetteer, self).__init__(*args, **kwargs)
+
+        training_dtype = [('label', 'S8'), 
+                         ('distances', 'f4', 
+                          (len(self.data_model['fields']), ))]
+
+        self.training_data = numpy.zeros(0, dtype=training_dtype)
+        self.training_pairs = OrderedDict({u'distinct': [], u'match': []}) 
 
 def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     ''' 
@@ -187,8 +202,8 @@ def getCluster(session_id, entity_pattern, raw_pattern):
     cluster_list = []
     prediction = None
     machine = pickle.loads(sess.review_machine)
-    entity_id = bytes(machine.get_next()).decode('utf-8')
-    if entity_id:
+    if machine.get_next() is not None:
+        entity_id = bytes(machine.get_next()).decode('utf-8')
         sess.review_machine = pickle.dumps(machine)
         app_session.add(sess)
         app_session.commit()
@@ -233,7 +248,7 @@ def getMatches(session_id, record):
     engine = worker_session.bind
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
     settings_file = BytesIO(dedupe_session.gaz_settings_file)
-    deduper = dedupe.StaticGazetteer(settings_file, num_cores=1)
+    deduper = RetrainGazetteer(settings_file, num_cores=1)
     field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))

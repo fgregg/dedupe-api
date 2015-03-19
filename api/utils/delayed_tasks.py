@@ -9,7 +9,7 @@ from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, clusterGen, \
     makeSampleDict, windowed_query, getDistinct, getMatches, convertTraining, \
-    updateEntityCount
+    updateEntityCount, RetrainGazetteer
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash, addToEntityMap
@@ -262,15 +262,7 @@ def populateHumanReview(session_id):
     worker_session.commit()
     
     engine = worker_session.bind
-    
 
-    queue_count = ''' 
-        SELECT count(*) FROM "match_review_{0}"  
-          WHERE array_upper(entities, 1) IS NOT NULL
-            AND reviewed = FALSE
-    '''.format(session_id)
-    queue_count = engine.execute(queue_count).first()[0]
-    
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
     raw_fields.append('record_id')
@@ -286,7 +278,7 @@ def populateHumanReview(session_id):
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel)))
     human_queue = []
     cleared = []
-    
+
     while len(human_queue) < 20:
         try:
             record = next(rows)
@@ -350,6 +342,19 @@ def populateHumanReview(session_id):
     
     updateEntityCount(session_id)
     
+    # Train classifier
+    # settings_file = BytesIO(dedupe_session.gaz_settings_file)
+    # deduper = RetrainGazetteer(settings_file, num_cores=1)
+    # training_data = json.loads(dedupe_session.training_data.decode('utf-8'))
+    # training_data = StringIO(json.dumps(training_data))
+    # deduper.readTraining(training_data)
+    # print('### PREDICATES: {0}'.format(deduper.predicates))
+    # print('### STOP WORDS: {0}'.format(deduper.stop_words))
+    # deduper._trainClassifier()
+    # fobj = BytesIO()
+    # deduper.writeSettings(fobj)
+    # dedupe_session.gaz_settings_file = fobj.getvalue()
+
     dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
