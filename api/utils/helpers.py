@@ -78,6 +78,16 @@ STATUS_LIST = [
     },
 ]
 
+def sklearner(labels, examples, alpha) :
+    from sklearn.linear_model import LogisticRegression
+    learner = LogisticRegression(penalty='l2', C=1/alpha)
+
+    learner.fit(examples, labels)
+
+    weight, bias = list(learner.coef_[0]), learner.intercept_[0]
+
+    return weight, bias
+
 class RetrainGazetteer(StaticGazetteer, Gazetteer):
     
     def __init__(self, *args, **kwargs):
@@ -89,6 +99,8 @@ class RetrainGazetteer(StaticGazetteer, Gazetteer):
 
         self.training_data = numpy.zeros(0, dtype=training_dtype)
         self.training_pairs = OrderedDict({u'distinct': [], u'match': []}) 
+        
+        self.learner = sklearner
 
 def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     ''' 
