@@ -207,6 +207,11 @@
                 // get session count
                 if (resp.objects.in_progress.length > 0)
                     $('#in-progress-nav a span').html(resp.objects.in_progress.length);
+                else {
+                    $('#in-progress-nav').hide();
+                    if (window.location.href.indexOf("status=canonical") == -1)
+                        window.location = '/?status=canonical'
+                }
 
                 if (resp.objects.canonical.length > 0)
                     $('#canonical-nav a span').html(resp.objects.canonical.length);
