@@ -660,7 +660,7 @@ def dedupeCanon(session_id, threshold=0.25):
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
-        with open(fname, 'w') as f:
+        with open(fname, 'w', encoding='utf-8') as f:
             writer = csv.writer(f)
             for ids, scores in clustered_dupes:
                 new_ent = str(uuid4())
@@ -681,7 +681,7 @@ def dedupeCanon(session_id, threshold=0.25):
                         False,
                         False,
                     ])
-        with open(fname, 'rb') as f:
+        with open(fname, 'r', encoding='utf-8') as f:
             conn = engine.raw_connection()
             cur = conn.cursor()
             try:

@@ -78,8 +78,8 @@ def upload():
         group=group,
         status=STATUS_LIST[0]['machine_name'])
     u.seek(0)
-    with open('/tmp/%s_raw.csv' % session_id, 'wb') as s:
-        s.write(bytes(u.getvalue(), 'utf-8'))
+    with open('/tmp/%s_raw.csv' % session_id, 'w', encoding='utf-8') as s:
+        s.write(u.getvalue())
     del u
     del reader
     sess.processing = True

@@ -78,7 +78,7 @@ def writeRawTable(session_id=None,
         copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',')"
     conn = engine.raw_connection()
     cur = conn.cursor()
-    file_obj = open(file_path, 'rb')
+    file_obj = open(file_path, 'r', encoding='utf-8')
     try:
         cur.copy_expert(copy_st, file_obj)
         conn.commit()
@@ -368,7 +368,7 @@ def updateEntityMap(clustered_dupes,
     Add to entity map table after training
     """
     fname = '/tmp/clusters_{0}.csv'.format(session_id)
-    with open(fname, 'w') as f:
+    with open(fname, 'w', encoding='utf-8') as f:
         writer = csv.writer(f)
         for ids, scores in clustered_dupes:
             new_ent = str(uuid4())
@@ -399,7 +399,7 @@ def updateEntityMap(clustered_dupes,
                        Column('confidence', Float))
     temp_table.drop(bind=engine, checkfirst=True)
     temp_table.create(bind=engine)
-    with open(fname, 'rb') as f:
+    with open(fname, 'r', encoding='utf-8') as f:
         conn = engine.raw_connection()
         cur = conn.cursor()
         cur.copy_expert(''' 
@@ -472,7 +472,7 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
         .filter(entity.c.record_id == proc_table.c.record_id)\
         .group_by(entity.c.entity_id)
     names = cr.columns.keys()
-    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'w') as f:
+    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'w', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(names)
         for row in rows:
@@ -495,7 +495,7 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
         copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',', NULL ' ')"
     conn = engine.raw_connection()
     cur = conn.cursor()
-    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'rb') as f:
+    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'r', encoding='utf-8') as f:
         cur.copy_expert(copy_st, f)
     conn.commit()
 
@@ -512,12 +512,12 @@ def writeBlockingMap(session_id, block_data, canonical=False):
     )
     bkm.drop(engine, checkfirst=True)
     bkm.create(engine)
-    with open('/tmp/{0}.csv'.format(session_id), 'w') as s:
+    with open('/tmp/{0}.csv'.format(session_id), 'w', encoding='utf-8') as s:
         writer = csv.writer(s)
         writer.writerows(block_data)
     conn = engine.raw_connection()
     cur = conn.cursor()
-    with open('/tmp/{0}.csv'.format(session_id), 'rb') as s:
+    with open('/tmp/{0}.csv'.format(session_id), 'r', encoding='utf-8') as s:
         cur.copy_expert('COPY "block_{0}" FROM STDIN CSV'.format(session_id), s)
     conn.commit()
     
