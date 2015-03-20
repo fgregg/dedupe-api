@@ -18,7 +18,7 @@
                 </div>
             {% endif %}
         {% endfor %}
-        <div class="row">
+        <div class="row" id='sessions-container'>
             <div class="col-md-12">
 
                 <p class='pull-right'><br /><br /><a class='btn btn-info' href="{{url_for('trainer.new_session')}}">
@@ -30,17 +30,17 @@
                     <p>These datasets have been de-duplicated and are ready to browse and match against.</p>
                 {% else %}
                     <h2>Dedupe sessions <small>In progress</small></h2>
-                    <p>These datasets are in the process of being de-duplicated. When finished, they will become <a href='/?status=canonical'>canonical</a> and ready to work with.</p>
+                    <p>These datasets are in the process of being de-duplicated. When finished, they will become canonical and ready to work with.</p>
                 {% endif %}
 
                 <ul class="nav nav-tabs">
-                  <li class="{% if status == 'in-progress' %}active{% endif %}" role="presentation"><a href="/?status=in-progress"><i class='fa fa-spinner'></i> In progress</a></li>
-                  <li class="{% if status == 'canonical' %}active{% endif %}" role="presentation"><a href="/?status=canonical"><i class='fa fa-share-alt fa-rotate-180'></i> Canonical</a></li>
+                  <li id='in-progress-nav' class="{% if status == 'in_progress' %}active{% endif %}" role="presentation"><a href="/?status=in_progress"><i class='fa fa-spinner'></i> In progress (<span>0</span>)</a></li>
+                  <li id='canonical-nav' class="{% if status == 'canonical' %}active{% endif %}" role="presentation"><a href="/?status=canonical"><i class='fa fa-share-alt fa-rotate-180'></i> Canonical (<span>0</span>)</a></li>
                 </ul>
-
+                <br />
                 <div id='processing-msg' class='alert alert-info alert-dismissible' role='alert' style="display: none;">
                     <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-                    <p>We need a few moments to process your data. When we're done, you will be able to proceed to the next step.</p>
+                    <p><i class='fa fa-refresh fa-spin'></i> We need a few moments to process your data. When we're done, you will be able to proceed to the next step.</p>
                 </div>
 
                 <div id='spinner'></div>
@@ -82,7 +82,7 @@
             <small><%= object.description %></small>
         </td>
         <td>
-            <a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search'></i> <%= object.entity_count %> Entities</a>
+            <%= Number(object.entity_count).toLocaleString('en') %> entities
         </td>
         <td>
             <% if (object.date_updated) { %>
@@ -91,7 +91,8 @@
                 </span>
             <% } %>
         </td>
-        <td>
+        <td class='nowrap'>
+            <a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search'></i> Entities</a><br />
             <a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a>
         </td>
     </tr>
@@ -122,9 +123,9 @@
         <td>
             <% if (object.review_count) { %>
                 <% if (object.status_info.next_step == 4 || object.status_info.next_step == 5) { %>
-                    <%= object.review_count %> entities
+                    <%= Number(object.review_count).toLocaleString('en') %> entities
                 <% } else if (object.status_info.next_step == 6) { %>
-                    <%= object.review_count %> records
+                    <%= Number(object.review_count).toLocaleString('en') %> records
                 <% } else { %>
                     None
                 <% } %>
@@ -139,11 +140,11 @@
                 </span>
             <% } %>
         </td>
-        <td>
-            <a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears'></i> Settings</a>
+        <td class='nowrap'>
             <% if (object.status_info.step > 2) { %>
-                <br /><a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search'></i> <%= object.entity_count %> Entities</a>
+                <a href="/entity-browser/?session_id=<%= object.id %>"><i class='fa fa-search fa-fw'></i> <%= Number(object.entity_count).toLocaleString('en') %> Entities</a><br />
             <% } %>
+            <a href="/session-admin/?session_id=<%= object.id %>"><i class='fa fa-gears fa-fw'></i> Settings</a>
         </td>
     </tr>
     {% endif %}
@@ -151,18 +152,18 @@
 
 
 <script type='text/javascript'>
-    var sessions_url = '/session-list/?status={{status}}';
+    var sessions_url = '/session-list/';
 
     function refresh_display(){
         setTimeout(function () {
 
             $.when($.getJSON(sessions_url)).then(
               function(resp){
-
+                // console.log(resp)
                 // update display of processing message
                 $("#processing-msg").hide();
-                if (resp.objects.length > 0) {
-                    $.each(resp.objects, function(i, object){
+                if (resp.objects.all_sessions.length > 0) {
+                    $.each(resp.objects.in_progress, function(i, object){
                         // console.log(object);
                         if (object.processing == true) {
                             $("#processing-msg").show();
@@ -181,29 +182,40 @@
 
 
             refresh_display();
-        }, 5000); //setTimeout - reloads every 10 seconds
+        }, 5000); //setTimeout - reloads every 5 seconds
     }
 
     function render_session_list() {
         $.when($.getJSON(sessions_url)).then(
           function(resp){
-            //console.log(resp);
+            // console.log(resp)
             $('#session-list').html("");
             $("#processing-msg").hide();
             var rows = ''
             var tpl = new EJS({'text': $('#sessionTemplate').html()});
-            if (resp.objects.length > 0) {
-                $.each(resp.objects, function(i, object){
+            if (resp.objects.all_sessions.length > 0) {
+                $.each(resp.objects.{{status}}, function(i, object){
                     // console.log(object);
                     rows += tpl.render({object: object});
                     if (object.processing == true)
                         $("#processing-msg").show();
                 });
+
                 $('#dedupe-sessions').show();
                 $('#session-list').html(rows);
+
+                // get session count
+                if (resp.objects.in_progress.length > 0)
+                    $('#in-progress-nav a span').html(resp.objects.in_progress.length);
+
+                if (resp.objects.canonical.length > 0)
+                    $('#canonical-nav a span').html(resp.objects.canonical.length);
+                else
+                    $('#canonical-nav').hide();
             }
             else {
                 $('#start-session').show();
+                $('#sessions-container').hide();
                 $('#start-session-btn').hide();
             }
             $('.delete-session').on('click', function(e){
@@ -265,12 +277,7 @@
     }
 
     $(document).ready(function(){
-        // wait one second to get updates from the server
-        $('#spinner').spin({'top': 100});
-        setTimeout(function () {
-            render_session_list();
-            $('#spinner').spin(false);
-        }, 1000);
+        render_session_list();
         refresh_display();
     })
 </script>

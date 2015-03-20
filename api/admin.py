@@ -70,7 +70,7 @@ class AddUserForm(Form):
 def index():
     status = request.args.get('status')
     if status is None:
-        status = 'in-progress'
+        status = 'in_progress'
     return render_template('index.html', status=status)
 
 @admin.route('/add-user/', methods=['GET', 'POST'])
@@ -294,7 +294,10 @@ def review():
         'message': ''
     }
     status_code = 200
+
     all_sessions = []
+    in_progress_sessions = []
+    canonical_sessions = []
     sessions = db_session.query(DedupeSession.id)\
         .filter(DedupeSession.group.has(
             Group.id.in_([i.id for i in current_user.groups])))\
@@ -349,9 +352,15 @@ def review():
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
         if row.last_work_status:
             d['last_work_status'] = row.last_work_status
+        
+        if d['status'] == 'canonical':
+            canonical_sessions.append(d) 
+        else:
+            in_progress_sessions.append(d) 
+
         all_sessions.append(d)
 
-    resp['objects'] = all_sessions
+    resp['objects'] = {'canonical': canonical_sessions, 'in_progress': in_progress_sessions, 'all_sessions': all_sessions}
     response = make_response(json.dumps(resp), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response

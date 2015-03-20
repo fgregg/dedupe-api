@@ -45,7 +45,7 @@
 <script type="text/EJS" id="reviewTemplate">
     <div class="row">
         <div id="counter" class="col-md-12">
-            <h4><strong><%= resp.review_remainder %></strong> left to review</h4>
+            <h4><strong><%= Number(resp.review_remainder).toLocaleString('en') %></strong> left to review</h4>
         </div>
     </div>
     <div class="row">
@@ -100,7 +100,7 @@
                 <div class="col-md-4">
                     <button class="btn btn-link" id="accept-confirm" data-toggle="modal" data-target="#confirm-modal">
                         <i class='fa fa-check'></i>
-                        Accept the remaining <%= resp.review_remainder %> entites (<%= resp.uncertain_records %> uncertain) &raquo;
+                        Accept the remaining <%= Number(resp.review_remainder).toLocaleString('en') %> entites (<%= Number(resp.uncertain_records).toLocaleString('en') %> uncertain) &raquo;
                     </button>
                 </div>
             </div>

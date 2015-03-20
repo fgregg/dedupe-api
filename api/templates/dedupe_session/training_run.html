@@ -114,7 +114,7 @@
           $.ajax({
               url: '/session-list/?session_id={{dedupe_session.id}}',
               success: function(data){
-                  if(!data.objects[0].processing){
+                  if(!data.objects.all_sessions[0].processing){
                       window.location.reload()
                   } else {
                       setTimeout(poll_worker, 3000);

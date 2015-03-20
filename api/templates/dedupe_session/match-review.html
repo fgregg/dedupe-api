@@ -23,8 +23,12 @@
     <div class='row'>
         <div class='col-md-4'>
         <h4 id='review-count' data-content="This is an estimate of the number of records we need you to review based on what you've matched so far. The more you review, the more accurate it will be." rel="popover" data-placement="top" data-trigger="hover">
-            Uncertain records: <strong><%= remaining %></strong>
-            | Confidence: <span class='label label-info'>low</span>
+            Uncertain records left: 
+            <% if (remaining < 5) { %>
+                <strong><5</strong>
+            <% } else { %>
+                <strong><%= Number(remaining).toLocaleString('en') %></strong>
+            <% } %>
         </h4>
         </div>
     </div>
@@ -72,7 +76,6 @@
     var api_key = "{{ current_user.id }}"
     var match_obj;
     var matches;
-    var est_remaining = 0;
     $(document).ready(function(){
         getAndMatch();
         $('#mark-match').on('click', function(e){
@@ -110,7 +113,7 @@
             $('#group-display').spin(false);
             match_obj = resp['object'];
             matches = resp['matches'];
-            remaining = resp['remaining']
+            remaining = parseInt(resp['remaining'])
             if (typeof match_obj !== 'undefined' && !$.isEmptyObject(match_obj)){
                 displayRecord(resp.matches, resp.object, remaining)
             } else {

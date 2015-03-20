@@ -188,7 +188,7 @@ class AdminTest(DedupeAPITestCase):
                     sess['user_sessions'] = [self.dd_sess.id]
                 rv = c.open('/session-list/?session_id=' + self.dd_sess.id)
                 assert json.loads(rv.data.decode('utf-8'))['status'] == 'ok'
-                assert len(json.loads(rv.data.decode('utf-8'))['objects']) == 1
+                assert len(json.loads(rv.data.decode('utf-8'))['objects']['all_sessions']) == 1
     
     def test_dump_entity_map(self):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:

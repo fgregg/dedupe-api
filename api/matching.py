@@ -4,7 +4,7 @@ import math
 from uuid import uuid4
 from flask import Flask, make_response, request, Blueprint, \
     session as flask_session, make_response, render_template, jsonify, \
-    current_app
+    current_app, flash
 from api.models import DedupeSession, User
 from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.database import app_session as db_session, init_engine, Base
@@ -294,6 +294,7 @@ def get_unmatched():
     resp['matches'] = matches
     if len(resp['matches']) == 0:
         dedupe_session.status = 'canonical'
+        flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
     proportion = numerator / denominator
     std_err = math.sqrt((proportion * ( 1 - proportion )) / (denominator - 1 ))
     dedupe_session.review_count = total_count * ( proportion + ( std_err * 2 ) )
