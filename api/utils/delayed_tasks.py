@@ -343,17 +343,15 @@ def populateHumanReview(session_id):
     updateEntityCount(session_id)
     
     # Train classifier
-    # settings_file = BytesIO(dedupe_session.gaz_settings_file)
-    # deduper = RetrainGazetteer(settings_file, num_cores=1)
-    # training_data = json.loads(dedupe_session.training_data.decode('utf-8'))
-    # training_data = StringIO(json.dumps(training_data))
-    # deduper.readTraining(training_data)
-    # print('### PREDICATES: {0}'.format(deduper.predicates))
-    # print('### STOP WORDS: {0}'.format(deduper.stop_words))
-    # deduper._trainClassifier()
-    # fobj = BytesIO()
-    # deduper.writeSettings(fobj)
-    # dedupe_session.gaz_settings_file = fobj.getvalue()
+    settings_file = BytesIO(dedupe_session.gaz_settings_file)
+    deduper = RetrainGazetteer(settings_file, num_cores=1)
+    training_data = json.loads(dedupe_session.training_data.decode('utf-8'))
+    training_data = StringIO(json.dumps(training_data))
+    deduper.readTraining(training_data)
+    deduper._trainClassifier()
+    fobj = BytesIO()
+    deduper.writeSettings(fobj)
+    dedupe_session.gaz_settings_file = fobj.getvalue()
 
     dedupe_session.processing = False
     worker_session.add(dedupe_session)

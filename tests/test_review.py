@@ -5,6 +5,7 @@ from sqlalchemy import text
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, bulkMarkClusters, bulkMarkCanonClusters
 from tests import DedupeAPITestCase
+from api.utils.helpers import slugify
 
 import logging
 logging.getLogger('dedupe').setLevel(logging.WARNING)
@@ -25,10 +26,13 @@ class ReviewTest(DedupeAPITestCase):
                 assert "var mark_cluster_url = '/mark-canon-cluster/?session_id=' + session_id;" in rv.data.decode('utf-8')
     
     def review_wrapper(self, canonical=False):
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
-            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'wb') as outp:
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'w') as outp:
+                raw_fieldnames = next(inp)
+                inp.seek(0)
                 outp.write(inp.read())
-        initializeSession(self.dd_sess.id)
+        fieldnames = [slugify(c).strip('\n') for c in raw_fieldnames.split(',')]
+        initializeSession(self.dd_sess.id, fieldnames)
         initializeModel(self.dd_sess.id)
         dedupeRaw(self.dd_sess.id)
         endpoints = {

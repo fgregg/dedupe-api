@@ -5,7 +5,6 @@ import csv
 from os.path import join, abspath, dirname, exists
 from flask import request, session
 from api.utils.helpers import slugify
-from api.utils.delayed_tasks import initializeSession
 from api.utils.db_functions import writeRawTable, writeProcessedTable
 from csvkit.unicsv import UnicodeCSVReader, UnicodeCSVWriter
 from tests import DedupeAPITestCase
@@ -21,6 +20,14 @@ class TrainerTest(DedupeAPITestCase):
     Test the training module
     '''
     
+    @property
+    def fieldnames(self):
+        with open(join(fixtures_path, 
+            'csv_example_messy_input.csv'),'r') as inp:
+            reader = csv.reader(inp)
+            fieldnames = [slugify(f) for f in next(reader)]
+        return fieldnames
+
     def test_upload(self):
         with self.app.test_request_context():
             self.login()
@@ -32,12 +39,8 @@ class TrainerTest(DedupeAPITestCase):
                             'name': 'Test Session'})
                 sess_id = json.loads(rv.data.decode('utf-8'))['session_id']
                 assert exists('/tmp/{0}_raw.csv'.format(sess_id))
-                with open(join(fixtures_path, 
-                    'csv_example_messy_input.csv'),'r') as inp:
-                    reader = csv.reader(inp)
-                    fieldnames = [slugify(f) for f in next(reader)]
                 rv = c.get('/select-fields/')
-                assert set(session['fieldnames']) == set(fieldnames)
+                assert set(session['fieldnames']) == set(self.fieldnames)
 
     def test_clear_session(self):
         with self.app.test_request_context():
@@ -57,8 +60,9 @@ class TrainerTest(DedupeAPITestCase):
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
             with open('/tmp/example.csv', 'wb') as outp:
                 outp.write(inp.read())
-        fieldnames = writeRawTable(session_id=self.dd_sess.id, file_path='/tmp/example.csv')
-        return fieldnames
+        writeRawTable(session_id=self.dd_sess.id, 
+                      file_path='/tmp/example.csv', 
+                      fieldnames=self.fieldnames)
 
     def test_select_fields_no_sid(self):
         with self.app.test_request_context():
@@ -68,22 +72,22 @@ class TrainerTest(DedupeAPITestCase):
                 assert rv.location == 'http://localhost/'
 
     def test_select_fields_sid(self):
-        fieldnames = self.init_session()
+        self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
                     del sess['fieldnames']
                 rv = c.get('/select-fields/?session_id=' + self.dd_sess.id)
-                assert set(session['fieldnames']) == set(fieldnames)
+                assert set(session['fieldnames']) == set(self.fieldnames)
     
     def test_select_fields_post(self):
-        fieldnames = self.init_session()
+        self.init_session()
         with self.app.test_request_context():
             self.login()
             with self.client as c:
                 with c.session_transaction() as sess:
-                    sess['fieldnames'] = fieldnames
+                    sess['fieldnames'] = self.fieldnames
                     sess['session_id'] = self.dd_sess.id
                 post_data = {
                       'phone': ['on'],

@@ -3,6 +3,7 @@ from flask import request, session
 from api import create_app
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, getMatchingReady
+from api.utils.helpers import slugify
 from sqlalchemy import text
 from tests import DedupeAPITestCase
 from api.utils.helpers import STATUS_LIST
@@ -32,10 +33,13 @@ class DelayedTest(DedupeAPITestCase):
         self.table_names = [t[0] for t in table_names]
 
     def test_full_run(self):
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
-            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'wb') as outp:
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'w') as outp:
+                raw_fieldnames = next(inp)
+                inp.seek(0)
                 outp.write(inp.read())
-        initializeSession(self.dd_sess.id)
+        fieldnames = [slugify(c).strip('\n') for c in raw_fieldnames.split(',')]
+        initializeSession(self.dd_sess.id, fieldnames)
         self.session.refresh(self.dd_sess)
         rows = []
         with self.engine.begin() as conn:

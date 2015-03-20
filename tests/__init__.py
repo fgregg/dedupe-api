@@ -33,9 +33,9 @@ class DedupeAPITestCase(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
+        cls.engine = init_engine(DB_CONN)
         cls.app = create_app(config='tests.test_config')
         cls.client = cls.app.test_client()
-        cls.engine = init_engine(cls.app.config['DB_CONN'])
    
         cls.session = scoped_session(sessionmaker(bind=cls.engine, 
                                               autocommit=False, 

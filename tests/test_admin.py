@@ -8,6 +8,7 @@ from api.models import User, Group
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, bulkMarkClusters, reDedupeRaw, reDedupeCanon
 from api.queue import processMessage
+from api.utils.helpers import slugify
 from sqlalchemy import text
 from io import StringIO
 import csv
@@ -190,10 +191,13 @@ class AdminTest(DedupeAPITestCase):
                 assert len(json.loads(rv.data.decode('utf-8'))['objects']) == 1
     
     def test_dump_entity_map(self):
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
-            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'wb') as outp:
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'w') as outp:
+                raw_fieldnames = next(inp)
+                inp.seek(0)
                 outp.write(inp.read())
-        initializeSession(self.dd_sess.id)
+        fieldnames = [slugify(c).strip('\n') for c in raw_fieldnames.split(',')]
+        initializeSession(self.dd_sess.id, fieldnames)
         initializeModel(self.dd_sess.id)
         dedupeRaw(self.dd_sess.id)
         with self.app.test_request_context():
@@ -217,10 +221,13 @@ class AdminTest(DedupeAPITestCase):
                 assert len([r for r in list(reader) if r[0]]) == row_count
 
     def test_rewind(self):
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
-            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'wb') as outp:
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(self.dd_sess.id)), 'w') as outp:
+                raw_fieldnames = next(inp)
+                inp.seek(0)
                 outp.write(inp.read())
-        initializeSession(self.dd_sess.id)
+        fieldnames = [slugify(c).strip('\n') for c in raw_fieldnames.split(',')]
+        initializeSession(self.dd_sess.id, fieldnames)
         initializeModel(self.dd_sess.id)
         dedupeRaw(self.dd_sess.id)
 

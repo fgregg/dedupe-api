@@ -9,7 +9,7 @@ from api.database import init_engine, app_session, worker_session
 from .test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
-from api.utils.helpers import STATUS_LIST
+from api.utils.helpers import STATUS_LIST, slugify
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
 
@@ -51,10 +51,13 @@ class TrackUsageTest(unittest.TestCase):
         cls.session.commit()
         
         # Go through dedupe process
-        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'rb') as inp:
-            with open(join('/tmp/{0}_raw.csv'.format(cls.dd_sess.id)), 'wb') as outp:
+        with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:
+            with open(join('/tmp/{0}_raw.csv'.format(cls.dd_sess.id)), 'w') as outp:
+                raw_fieldnames = next(inp)
+                inp.seek(0)
                 outp.write(inp.read())
-        initializeSession(cls.dd_sess.id)
+        fieldnames = [slugify(c).strip('\n') for c in raw_fieldnames.split(',')]
+        initializeSession(cls.dd_sess.id, fieldnames)
         initializeModel(cls.dd_sess.id)
         dedupeRaw(cls.dd_sess.id)
         bulkMarkClusters(cls.dd_sess.id, user=cls.user.name)
