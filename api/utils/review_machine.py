@@ -29,8 +29,9 @@ class ReviewMachine(object):
             yield (row[0], (len(row[1]), cluster_score, max(row[1]), min(row[1])), numpy.nan, numpy.nan, 0,)
 
     def label(self, entity_id, label):
+        byte_eid = entity_id.encode('utf-8')
 
-        self.examples['label'][self.examples['id'] == entity_id] = label
+        self.examples['label'][self.examples['id'] == byte_eid] = label
 
         labels = self.examples['label'][~numpy.isnan(self.examples['label'])][-30:].astype('i4')
         
