@@ -8,7 +8,7 @@ from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import preProcess, clusterGen, \
-    makeSampleDict, windowed_query, getDistinct, getMatches, convertTraining, \
+    makeSampleDict, windowed_query, getDistinct, getMatches, \
     updateEntityCount, RetrainGazetteer, hasMissing
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
@@ -90,7 +90,6 @@ def bulkMarkClusters(session_id, user=None):
           '''), entity_count=count, id=session_id)
     updateEntityCount(session_id)
     dedupeCanon(session_id)
-    return None
 
 @queuefunc
 def bulkMarkCanonClusters(session_id, user=None):
@@ -460,7 +459,6 @@ def trainDedupe(session_id):
     data_sample = pickle.loads(dd_session.sample)
     field_defs = json.loads(dd_session.field_defs.decode('utf-8'))
     training_data = json.loads(dd_session.training_data.decode('utf-8'))
-    training_data = convertTraining(field_defs, training_data)
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
     training_data = StringIO(json.dumps(training_data))
     deduper.readTraining(training_data)
@@ -558,7 +556,6 @@ def reDedupeRaw(session_id, threshold=0.75):
     sess.status = 'entity map updated'
     worker_session.add(sess)
     worker_session.commit()
-    return 'ok'
 
 @queuefunc
 def reDedupeCanon(session_id, threshold=0.25):
@@ -600,7 +597,6 @@ def reDedupeCanon(session_id, threshold=0.25):
     sess.status = 'canon clustered'
     worker_session.add(sess)
     worker_session.commit()
-    return 'ok'
 
 @queuefunc
 def dedupeRaw(session_id, threshold=0.75):
@@ -635,7 +631,6 @@ def dedupeRaw(session_id, threshold=0.75):
     dd.status = 'entity map updated'
     worker_session.add(dd)
     worker_session.commit()
-    return 'ok'
 
 @queuefunc
 def dedupeCanon(session_id, threshold=0.25):
@@ -701,6 +696,7 @@ def dedupeCanon(session_id, threshold=0.25):
                 conn.rollback()
                 raise e
     else: # pragma: no cover
+        print('did not find clusters')
         getMatchingReady(session_id)
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .filter(entity_table.c.clustered == False)\
@@ -720,4 +716,3 @@ def dedupeCanon(session_id, threshold=0.25):
     dd.status = 'canon clustered'
     worker_session.add(dd)
     worker_session.commit()
-    return 'ok'

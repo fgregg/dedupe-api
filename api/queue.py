@@ -110,7 +110,8 @@ def processMessage(db_conn=DB_CONN):
 
 def queue_daemon(db_conn=DB_CONN): # pragma: no cover
     # import logging
-    # logging.getLogger().setLevel(logging.DEBUG)
+    # logging.getLogger().setLevel(logging.WARNING)
+
     from api.database import init_engine
     
     engine = init_engine(DB_CONN)

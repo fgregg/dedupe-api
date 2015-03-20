@@ -178,33 +178,6 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
         worker_session.commit()
     return None
 
-def convertTraining(field_defs, training_data):
-    fields_by_type = {}
-    for field in field_defs:
-        try:
-            fields_by_type[field['field']].append(field['type'])
-        except KeyError:
-            fields_by_type[field['field']] = [field['type']]
-    td = {'distinct': [], 'match': []}
-    for types, records in training_data.items():
-        for pair in records:
-            p = []
-            for member in pair:
-                r = {}
-                for key, value in member.items():
-                    r[key] = value
-                    if fields_by_type.get(key):
-                        if 'Price' in fields_by_type[key]:
-                            try:
-                                r[key] = float(value)
-                            except ValueError:
-                                r[key] = 0
-                p.append(r)
-            td[types].append(p)
-    training_data['distinct'] = td['distinct'][:150]
-    training_data['match'] = td['match'][:150]
-    return training_data
-
 def getCluster(session_id, entity_pattern, raw_pattern):
     ent_name = entity_pattern.format(session_id)
     raw_name = raw_pattern.format(session_id)
