@@ -1,5 +1,5 @@
 import numpy
-import rlr
+from .helpers import sklearner
 
 class ReviewMachine(object):
     def __init__(self, clusters):
@@ -12,6 +12,7 @@ class ReviewMachine(object):
         self.examples = numpy.fromiter(self.row_generator(clusters), 
                                        dtype=self.example_dtype)
         self.weight = numpy.array([0] * n_attributes), 0
+        self.labels = []
         self.labeled_count = 0
        
     def scoreCluster(self, scores):
@@ -29,14 +30,17 @@ class ReviewMachine(object):
             yield (row[0], (len(row[1]), cluster_score, max(row[1]), min(row[1])), numpy.nan, numpy.nan, 0,)
 
     def label(self, entity_id, label):
+        byte_eid = entity_id.encode('utf-8')
 
-        self.examples['label'][self.examples['id'] == entity_id] = label
+        self.examples['label'][self.examples['id'] == byte_eid] = label
+        self.labels.append((byte_eid, label))
 
-        labels = self.examples['label'][~numpy.isnan(self.examples['label'])][-30:].astype('i4')
-        
-        attributes = self.examples['attributes'][~numpy.isnan(self.examples['label'])][-30:]
+        ids, labels = list(zip(*self.labels[-60:]))
 
-        self.weight = rlr.lr(labels, attributes, 11)
+        attributes = self.examples['attributes'][numpy.in1d(self.examples['id'],
+                                                            ids)]
+        if 1 in labels and 0 in labels :
+            self.weight = sklearner(labels, attributes, 1)
         self.labeled_count += 1
         self._score()
         return self.weight
@@ -67,9 +71,9 @@ class ReviewMachine(object):
         weights, bias = self.weight
         unlabeled = numpy.isnan(self.examples['label'])
         score = numpy.dot(self.examples['attributes'][unlabeled], weights)
-        score = numpy.exp(score + bias) / ( 1 + numpy.exp(score + bias) )
-        accepted = score[score > threshold]
-        rejected = score[score <= threshold]
+        score = 1 / ( 1 + numpy.exp(-(score + bias)))
+        accepted = score[score >= threshold]
+        rejected = score[score < threshold]
         if len(accepted):
             false_pos = numpy.mean(1 - accepted) * len(accepted)
         else:

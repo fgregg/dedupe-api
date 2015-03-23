@@ -160,9 +160,10 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
             combo = tuple([int(c) for c in combo])
             records = [all_records[combo[0]], all_records[combo[1]]]
             distinct_records.append(records)
+
         training['distinct'].extend(distinct_records)
-        if len(training['distinct']) > 150:
-            training['distinct'] = training['distinct'][-150:]
+        if len(training['distinct']) > 300:
+            training['distinct'] = training['distinct'][-300:]
 
         match_records = []
         for combo in match_combos:
@@ -170,8 +171,8 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
             records = [all_records[combo[0]], all_records[combo[1]]]
             match_records.append(records)
         training['match'].extend(match_records)
-        if len(training['match']) > 150:
-            training['match'] = training['match'][-150:]
+        if len(training['match']) > 300:
+            training['match'] = training['match'][-300:]
 
         sess.training_data = bytes(json.dumps(training).encode('utf-8'))
         worker_session.add(sess)
@@ -211,7 +212,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
  
         if records:
             raw_fields = ['confidence'] + model_fields + ['record_id']
-            false_pos, false_neg = machine.predict_remainder()
+            false_pos, false_neg = machine.predict_remainder(threshold=0.0)
             for thing in records:
                 d = {}
                 for k,v in zip(raw_fields, thing):
