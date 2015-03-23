@@ -210,6 +210,8 @@ def get_unmatched():
     # Update metadata about session
     if len(matched_records) == 0 and not filling_queue :
         dedupe_session.status = 'canonical'
+        flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
+
     dedupe_session.review_count = estimateRemainingReview(session_id)
     db_session.add(dedupe_session)
     db_session.commit()
@@ -325,33 +327,7 @@ def estimateRemainingReview(session_id) :
     numerator = engine.execute(text(numerator), 
                                reviewer='machine').first().numerator
     denominator = engine.execute(denominator).first().denominator
-<<<<<<< HEAD
-    queue_count = engine.execute(queue_count).first().queue_count
-    db_session.refresh(dedupe_session)
-    if queue_count <= 10 and not dedupe_session.processing:
-        populateHumanReview.delay(session_id)
-    matches = []
-    raw_record = {}
-    for record in match_records:
-        match = {}
-        for key in record.keys():
-            if key.startswith('raw_'):
-                raw_record[key.replace('raw_', '')] = getattr(record, key)
-            elif key.startswith('match_'):
-                match[key.replace('match_', '')] = getattr(record, key)
-        match = OrderedDict(sorted(match.items()))
-        raw_record = OrderedDict(sorted(raw_record.items()))
-        match['entity_id'] = record.entity_id
-        match['confidence'] = record.confidence
-        matches.append(match)
-    resp['object'] = raw_record
-    resp['matches'] = matches
-    if len(resp['matches']) == 0:
-        dedupe_session.status = 'canonical'
-        flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
-=======
 
->>>>>>> factor get_unmatched into smaller functions, relates to #149
     proportion = numerator / denominator
     std_err = math.sqrt((proportion * ( 1 - proportion )) / (denominator - 1 ))
 
