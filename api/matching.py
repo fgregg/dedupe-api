@@ -212,7 +212,8 @@ def get_unmatched():
         dedupe_session.status = 'canonical'
         flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
 
-    dedupe_session.review_count = estimateRemainingReview(session_id)
+    left_to_review = estimateRemainingReview(session_id)
+    dedupe_session.review_count = left_to_review
     db_session.add(dedupe_session)
     db_session.commit()
 
@@ -222,6 +223,7 @@ def get_unmatched():
     }
     resp['object'] = raw_record
     resp['matches'] = matched_records
+    resp['remaining'] = left_to_review
 
     if len(matched_records) == 0 and filling_queue :
         resp['message'] = 'filling queue'
