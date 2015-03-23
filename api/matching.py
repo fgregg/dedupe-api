@@ -205,10 +205,10 @@ def get_unmatched():
     fields.add('record_id')
 
     raw_record, matched_records = pollHumanReviewQueue(session_id, fields)
-
     filling_queue = dedupe_session.processing
-    # Update metadata about session
-    if len(matched_records) == 0 and not filling_queue :
+
+    # There is a race condition here. 
+    if len(matched_records) == 0 and not filling_queue : 
         dedupe_session.status = 'canonical'
         flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
 
