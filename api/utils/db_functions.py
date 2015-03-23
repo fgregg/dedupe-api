@@ -115,6 +115,8 @@ def writeProcessedTable(session_id,
         # TODO: Need to figure out how to parse a LatLong field type
         if 'Price' in field_types:
             col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
+        elif 'Address' in field_types:
+            col_def = 'CAST(TRIM(COALESCE("{0}", \'\')) AS VARCHAR) AS {0}'.format(field)
         else:
             col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
         if idx < len(raw_fields) - 1:
