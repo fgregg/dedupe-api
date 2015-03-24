@@ -132,7 +132,7 @@ def session_admin():
         dd = dedupe.StaticDedupe(BytesIO(dedupe_session.settings_file))
         for field in dd.data_model.primary_fields:
             name, ftype = field.field, field.type
-            if ftype in ['Categorical', 'Address', 'Set']:
+            if ftype in ['Categorical', 'Address']:
                 children = []
                 for f in field.higher_vars:
                     children.append((f.name, f.type, f.has_missing, f.weight,) )
