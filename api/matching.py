@@ -204,13 +204,20 @@ def get_unmatched():
               json.loads(dedupe_session.field_defs.decode('utf-8'))}
     fields.add('record_id')
 
-    raw_record, matched_records = pollHumanReviewQueue(session_id, fields)
-    filling_queue = dedupe_session.processing
+    # We have to check if there are any unseen records BEFORE polling
+    # records for review in order to avoid a race condition
+    unseen_records = unseenRecords(session_id)
+    raw_record, matched_records = pollHumanReview(session_id, fields)
 
-    # There is a race condition here. 
-    if len(matched_records) == 0 and not filling_queue : 
-        dedupe_session.status = 'canonical'
-        flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
+    if not matched_records :
+        if unseen_records :
+            response_message = 'filling human review'
+        else :
+            dedupe_session.status = 'canonical'
+            flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
+            response_message = 'canonical'
+    else :
+        response_message = 'reviewing'
 
     left_to_review = estimateRemainingReview(session_id)
     dedupe_session.review_count = left_to_review
@@ -219,15 +226,12 @@ def get_unmatched():
 
     resp = {
         'status': 'ok',
-        'message': '',
+        'message': response_message,
     }
     resp['object'] = raw_record
     resp['matches'] = matched_records
     resp['remaining'] = left_to_review
 
-    if len(matched_records) == 0 and filling_queue :
-        resp['message'] = 'filling queue'
-        
     return jsonResponse(resp)
 
 def matchRowsToDict(match_records) :
@@ -250,7 +254,7 @@ def matchRowsToDict(match_records) :
     return raw_record, matches
 
 
-def pollHumanReviewQueue(session_id, fields) :
+def pollHumanReview(session_id, fields) :
     match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f) for f in fields])
     raw_fields = ','.join(['MAX(raw.{0}) AS raw_{0}'.format(f) for f in fields])
 
@@ -294,9 +298,7 @@ def pollHumanReviewQueue(session_id, fields) :
     raw_record, matches = matchRowsToDict(matched_records)
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    queue_count = queueCount(session_id)
-
-    if queue_count <= 10 and not dedupe_session.processing:
+    if queueCount(session_id) <= 10 and not dedupe_session.processing:
         populateHumanReview.delay(session_id)
 
     return raw_record, matches
@@ -330,10 +332,31 @@ def estimateRemainingReview(session_id) :
                                reviewer='machine').first().numerator
     denominator = engine.execute(denominator).first().denominator
 
+    if denominator == 0 :
+        return 0
+
     proportion = numerator / denominator
     std_err = math.sqrt((proportion * ( 1 - proportion )) / (denominator - 1 ))
 
-    return total_count * ( proportion + ( std_err * 2 ) )
+    remaining_count = total_count * ( proportion + ( std_err * 2 ) )
+
+    print(remaining_count, total_count, proportion, std_err)
+
+    return remaining_count
+
+def unseenRecords(session_id) :
+    engine = db_session.bind
+
+    unseen_count = ''' 
+        SELECT 
+          COUNT(*)::double precision AS unseen_count
+        FROM "match_review_{0}" 
+        WHERE sent_for_review = FALSE
+    '''.format(session_id)
+
+    unseen_count = engine.execute(unseen_count).first().unseen_count
+
+    return unseen_count
 
 def queueCount(session_id) :
     engine = db_session.bind
