@@ -30,18 +30,97 @@ import csv
 from uuid import uuid4
 from api.app_config import TIME_ZONE
 
+### Bulk acceptance tasks ###
+
 @queuefunc
 def bulkMarkClusters(session_id, user=None):
-    dd = worker_session.query(DedupeSession).get(session_id)
     engine = worker_session.bind
     now =  datetime.now().replace(tzinfo=TIME_ZONE)
+    
     upd_vals = {
         'user_name': user, 
         'clustered': True,
         'match_type': 'bulk accepted',
         'last_update': now,
     }
-    upd = text(''' 
+    
+    update_children = updateChildren(session_id)
+    with engine.begin() as c:
+        child_entities = c.execute(update_children, **upd_vals)
+    
+    update_parents = updateParents(session_id)
+    with engine.begin() as c:
+        parent_entities = c.execute(update_parents, **upd_vals)
+    
+    child_entities = set([c.entity_id for c in child_entities])
+    parent_entities = set([p.entity_id for p in parent_entities])
+    count = len(child_entities.union(parent_entities))
+    
+    updateEntityCount(session_id)
+    dedupeCanon(session_id)
+
+@queuefunc
+def bulkMarkCanonClusters(session_id, user=None):
+    engine = worker_session.bind
+    upd_vals = {
+        'user_name': user, 
+        'clustered': True,
+        'match_type': 'bulk accepted - canon',
+        'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+    }
+    update_entity_map = updateFromCanon(session_id)
+    with engine.begin() as c:
+        updated = c.execute(update_entity_map, **upd_vals)
+        for row in updated:
+            c.execute(text(''' 
+                    UPDATE "entity_{0}_cr" SET
+                        target_record_id = :target,
+                        clustered = TRUE
+                    WHERE record_id = :record_id
+                '''.format(session_id)),
+                target=row[0], record_id=row[1])
+    updateEntityCount(session_id)
+    getMatchingReady(session_id)
+
+def updateFromCanon(session_id):
+    return text(''' 
+        UPDATE "entity_{0}" SET 
+            entity_id=subq.entity_id,
+            clustered= :clustered,
+            reviewer = :user_name,
+            match_type = :match_type,
+            last_update = :last_update
+        FROM (
+            SELECT 
+                c.record_id as canon_record_id,
+                c.entity_id, 
+                e.record_id 
+            FROM "entity_{0}" as e
+            JOIN "entity_{0}_cr" as c 
+                ON e.entity_id = c.record_id 
+            LEFT JOIN (
+                SELECT record_id, target_record_id FROM "entity_{0}"
+                ) AS s 
+                ON e.record_id = s.target_record_id
+            ) as subq 
+        WHERE "entity_{0}".record_id=subq.record_id
+        RETURNING "entity_{0}".entity_id, subq.canon_record_id
+        '''.format(session_id))
+
+def updateParents(session_id):
+    return text(''' 
+        UPDATE "entity_{0}" SET
+            clustered = :clustered,
+            reviewer = :user_name,
+            last_update = :last_update,
+            match_type = :match_type
+        WHERE target_record_id IS NULL
+            AND clustered=FALSE
+        RETURNING entity_id
+    '''.format(session_id))
+
+def updateChildren(session_id):
+    return text(''' 
         UPDATE "entity_{0}" SET 
             entity_id=subq.entity_id,
             clustered= :clustered,
@@ -66,78 +145,8 @@ def bulkMarkClusters(session_id, user=None):
                   OR "entity_{0}".match_type != 'clerical review' )
         RETURNING "entity_{0}".entity_id
         '''.format(session_id))
-    with engine.begin() as c:
-        child_entities = c.execute(upd, **upd_vals)
-    upd = text(''' 
-        UPDATE "entity_{0}" SET
-            clustered = :clustered,
-            reviewer = :user_name,
-            last_update = :last_update,
-            match_type = :match_type
-        WHERE target_record_id IS NULL
-            AND clustered=FALSE
-        RETURNING entity_id
-    '''.format(session_id))
-    with engine.begin() as c:
-        parent_entities = c.execute(upd, **upd_vals)
-    child_entities = set([c.entity_id for c in child_entities])
-    parent_entities = set([p.entity_id for p in parent_entities])
-    count = len(child_entities.union(parent_entities))
-    with engine.begin() as conn:
-        conn.execute(text('''
-          UPDATE dedupe_session SET 
-            review_count = 0,
-            entity_count = :entity_count
-          WHERE id = :id
-          '''), entity_count=count, id=session_id)
-    updateEntityCount(session_id)
-    dedupeCanon(session_id)
 
-@queuefunc
-def bulkMarkCanonClusters(session_id, user=None):
-    sess = worker_session.query(DedupeSession).get(session_id)
-    engine = worker_session.bind
-    upd_vals = {
-        'user_name': user, 
-        'clustered': True,
-        'match_type': 'bulk accepted - canon',
-        'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
-    }
-    upd = text(''' 
-        UPDATE "entity_{0}" SET 
-            entity_id=subq.entity_id,
-            clustered= :clustered,
-            reviewer = :user_name,
-            match_type = :match_type,
-            last_update = :last_update
-        FROM (
-            SELECT 
-                c.record_id as canon_record_id,
-                c.entity_id, 
-                e.record_id 
-            FROM "entity_{0}" as e
-            JOIN "entity_{0}_cr" as c 
-                ON e.entity_id = c.record_id 
-            LEFT JOIN (
-                SELECT record_id, target_record_id FROM "entity_{0}"
-                ) AS s 
-                ON e.record_id = s.target_record_id
-            ) as subq 
-        WHERE "entity_{0}".record_id=subq.record_id
-        RETURNING "entity_{0}".entity_id, subq.canon_record_id
-        '''.format(session_id))
-    with engine.begin() as c:
-        updated = c.execute(upd,**upd_vals)
-        for row in updated:
-            c.execute(text(''' 
-                    UPDATE "entity_{0}_cr" SET
-                        target_record_id = :target,
-                        clustered = TRUE
-                    WHERE record_id = :record_id
-                '''.format(session_id)),
-                target=row[0], record_id=row[1])
-    updateEntityCount(session_id)
-    getMatchingReady(session_id)
+### Prepare session to match records ###
 
 @queuefunc
 def getMatchingReady(session_id):
@@ -640,7 +649,6 @@ def dedupeCanon(session_id, threshold=0.25):
         entity_table_name='entity_{0}_cr'.format(session_id), 
         canonical=True)
     writeBlockingMap(session_id, block_gen, canonical=True)
-    del block_gen
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
     if clustered_dupes:
         fname = '/tmp/clusters_{0}.csv'.format(session_id)
