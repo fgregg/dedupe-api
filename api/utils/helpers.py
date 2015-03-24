@@ -8,11 +8,14 @@ import numpy
 from dedupe.core import frozendict
 from dedupe import canonicalize
 from dedupe.api import StaticGazetteer, Gazetteer
+from dedupe.serializer import _to_json
 import dedupe
 from api.database import app_session, worker_session, Base, init_engine
 from api.models import DedupeSession
-from sqlalchemy import Table, MetaData, distinct, and_, func, Column, text
+from sqlalchemy import Table, MetaData, distinct, and_, func, \
+    Column, text, String, select, Integer
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
+from sqlalchemy.dialects.postgresql.base import ARRAY
 from unicodedata import normalize
 from itertools import count
 from csvkit.unicsv import UnicodeCSVDictWriter
@@ -101,6 +104,22 @@ class RetrainGazetteer(StaticGazetteer, Gazetteer):
         self.training_pairs = OrderedDict({u'distinct': [], u'match': []}) 
         
         self.learner = sklearner
+
+def tupleizeTraining(training):
+    distinct = []
+    match = []
+    td = {'distinct': [], 'match': []}
+    for match_type, pairs in training.items():
+        for pair in pairs:
+            p = []
+            for item in pair:
+                for k,v in item.items():
+                    if isinstance(v, list):
+                        item[k] = tuple(v)
+                p.append(item)
+            td[match_type].append(p)
+    return td
+
 
 def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     ''' 
@@ -249,29 +268,27 @@ def getMatches(session_id, record):
     matches = []
     for k,v in record.items():
         if field_types.get(k):
-            if 'Price' in field_types[k]:
-                if v:
-                    record[k] = float(v)
-                else:
-                    record[k] = 0
-            else:
-                record[k] = preProcess(str(v))
+            record[k] = preProcess(v, field_types[k])
     block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', record)]))])
 
     # Sometimes the blocker does not find blocks. In this case we can't match
     if block_keys:
-        sel = text('''
-              SELECT r.record_id, {1}
-              FROM "processed_{0}" as r
-              JOIN (
-                SELECT DISTINCT record_id
-                FROM "match_blocks_{0}"
-                WHERE block_key IN :block_keys
-              ) AS s
-              ON r.record_id = s.record_id
-            '''.format(session_id, fields))
+        m = MetaData()
+        proc = Table('processed_{0}'.format(session_id), m, 
+            autoload=True, autoload_with=engine)
+        cols = getTupleColumns(proc)
+        proc_cols = [Column('record_id', Integer)] + [c for c in cols if c.name in raw_fields]
+        
+        del m
+        m = MetaData()
+        proc = Table('processed_{0}'.format(session_id), m, *proc_cols)
+        match_table = Table('match_blocks_{0}'.format(session_id), m, 
+            autoload=True, autoload_with=engine)
+        
+        sq = select([match_table]).where(match_table.c.block_key.in_(block_keys)).alias('s')
+        sel = select([proc]).select_from(proc.join(sq, proc.c.record_id == sq.c.record_id))
         canonical_records = [
-                (int(i[0]), dict(zip(raw_fields, i[1:])), set([]),) \
+                (int(i[0]), dict(zip(i.keys()[1:], i.values()[1:])), set([]),) \
                     for i in list(engine.execute(sel, block_keys=block_keys))]
         if canonical_records:
             incoming = (('blob', record, set([]),),)
@@ -354,16 +371,28 @@ def slugify(text, delim='_'):
     else: # pragma: no cover
         return text
 
-def preProcess(column):
-    if not column:
-        column = ''
-    if column == None:
-        column = ''
-    column = str(column)
-    column = re.sub('  +', ' ', column)
-    column = re.sub('\n', ' ', column)
-    column = column.strip().strip('"').strip("'").lower().strip()
-    return column
+def preProcess(column, field_types):
+    if 'Price' in field_types:
+        if column:
+            return float(column)
+        else:
+            return 0
+    else:
+        if not column:
+            column = ''
+        if column is None:
+            column = ''
+        column = str(column)
+        column = re.sub('  +', ' ', column)
+        if 'Address' not in field_types:
+            column = re.sub('\n', ' ', column)
+            column = column.strip().strip('"').strip("'").lower().strip()
+        if 'Set' in field_types:
+            if isinstance(column, list):
+                column = ','.join(column)
+            else:
+                column = tuple(column.split(','))
+        return column
 
 def clusterGen(result_set, fields):
     lset = set
@@ -385,16 +414,38 @@ def clusterGen(result_set, fields):
     if records:
         yield records
 
+def getTupleColumns(table):
+    new_cols = []
+    for col in table.columns:
+        if isinstance(col.type, ARRAY):
+            new_cols.append(Column(col.name, ARRAY(String, as_tuple=True)))
+        else:
+            new_cols.append(Column(col.name, col.type))
+    return new_cols
+
+def selectWithTuples(session_id, 
+                     proc_fmt='processed_{0}', 
+                     join_fmt='entity_{0}',
+                     isouter=True):
+    engine = worker_session.bind
+    m = MetaData()
+    proc = Table(proc_fmt.format(session_id), m, 
+                  autoload=True, autoload_with=engine)
+    new_cols = getTupleColumns(proc)
+    meta = MetaData()
+    new_proc = Table(proc_fmt.format(session_id), meta, *new_cols)
+    entity = Table(join_fmt.format(session_id), meta, 
+                  autoload=True, autoload_with=engine)
+    sel = select([new_proc])\
+            .select_from(new_proc.join(entity, 
+                             new_proc.c.record_id == entity.c.record_id,
+                             isouter=isouter))\
+            .where(entity.c.record_id == None)
+    return sel
+
 def makeSampleDict(session_id):
-    session = worker_session
-    engine = session.bind
-    sel = ''' 
-        SELECT p.*
-        FROM "processed_{0}" as p
-        LEFT JOIN "entity_{0}" as e
-            ON p.record_id = e.record_id
-        WHERE e.target_record_id IS NULL
-    '''.format(session_id)
+    engine = worker_session.bind
+    sel = selectWithTuples(session_id)
     curs = engine.execute(sel)
     result = dict((i, frozendict(zip(row.keys(), row.values()))) 
                             for i, row in enumerate(curs))
