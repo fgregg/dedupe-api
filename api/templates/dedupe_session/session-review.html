@@ -177,6 +177,8 @@
             resp.uncertain_records = parseInt(resp.false_negative) + parseInt(resp.false_positive);
             var template = new EJS({'text': $('#reviewTemplate').html()})
             $('#group-display').html(template.render({resp: resp}));
+            $('.mark-entity').off('click', markEntity);
+            $('#accept-all').off('click', acceptAll);
             $('.mark-entity').on('click', markEntity);
             $('#accept-all').on('click', acceptAll);
             $('.check_record, #check_toggle_all').popover({trigger: "hover", placement: "right"});
@@ -203,7 +205,7 @@
               var none_checked = true;
               $.each($('.check_record input, #check_toggle_all input'), function(i,el){
                 var checkbox = $(this);
-                if (checkbox.prop("checked")) 
+                if (checkbox.prop("checked"))
                   none_checked = false;
               });
 

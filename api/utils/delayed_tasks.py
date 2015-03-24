@@ -52,10 +52,6 @@ def bulkMarkClusters(session_id, user=None):
     with engine.begin() as c:
         parent_entities = c.execute(update_parents, **upd_vals)
     
-    child_entities = set([c.entity_id for c in child_entities])
-    parent_entities = set([p.entity_id for p in parent_entities])
-    count = len(child_entities.union(parent_entities))
-    
     updateEntityCount(session_id)
     dedupeCanon(session_id)
 
@@ -116,7 +112,6 @@ def updateParents(session_id):
             match_type = :match_type
         WHERE target_record_id IS NULL
             AND clustered=FALSE
-        RETURNING entity_id
     '''.format(session_id))
 
 def updateChildren(session_id):
@@ -143,7 +138,6 @@ def updateChildren(session_id):
         WHERE "entity_{0}".record_id=subq.record_id 
             AND ( "entity_{0}".clustered=FALSE 
                   OR "entity_{0}".match_type != 'clerical review' )
-        RETURNING "entity_{0}".entity_id
         '''.format(session_id))
 
 ### Prepare session to match records ###

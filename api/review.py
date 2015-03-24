@@ -122,6 +122,7 @@ def mark_all_clusters():
     dedupe_session.processing = True
     db_session.add(dedupe_session)
     db_session.commit()
+
     bulkMarkClusters.delay(session_id, user=user.name)
 
     response = make_response(json.dumps(resp), status_code)
