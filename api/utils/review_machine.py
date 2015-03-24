@@ -1,4 +1,5 @@
 import numpy
+from collections import OrderedDict
 from .helpers import sklearner
 
 class ReviewMachine(object):
@@ -12,8 +13,8 @@ class ReviewMachine(object):
         self.examples = numpy.fromiter(self.row_generator(clusters), 
                                        dtype=self.example_dtype)
         self.weight = numpy.array([0] * n_attributes), 0
-        self.labels = []
-        self.labeled_count = 0
+        self.labels = OrderedDict({self.examples['id'][0] : 1,
+                                   self.examples['id'][1] : 0})
        
     def scoreCluster(self, scores):
         scores = numpy.array(scores)**2
@@ -29,19 +30,20 @@ class ReviewMachine(object):
             cluster_score = self.scoreCluster(row[1])
             yield (row[0], (len(row[1]), cluster_score, max(row[1]), min(row[1])), numpy.nan, numpy.nan, 0,)
 
-    def label(self, entity_id, label):
+    def label(self, entity_id, cluster_label):
+
         byte_eid = entity_id.encode('utf-8')
 
-        self.examples['label'][self.examples['id'] == byte_eid] = label
-        self.labels.append((byte_eid, label))
+        self.examples['label'][self.examples['id'] == byte_eid] = cluster_label
+        self.labels[byte_eid] = cluster_label
 
-        ids, labels = list(zip(*self.labels[-60:]))
-
+        ids, labels = list(zip(*list(self.labels.items())[-60:]))
+    
         attributes = self.examples['attributes'][numpy.in1d(self.examples['id'],
                                                             ids)]
+
         if 1 in labels and 0 in labels :
-            self.weight = sklearner(labels, attributes, 1)
-        self.labeled_count += 1
+            self.weight = sklearner(labels, attributes, .1)
         self._score()
         return self.weight
     
