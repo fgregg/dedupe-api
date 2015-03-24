@@ -194,20 +194,70 @@ def train():
 @matching.route('/get-unmatched-record/')
 @check_sessions()
 def get_unmatched():
+    session_id = request.args['session_id']
+
+    # metadata for session
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+
+    fields = {f['field'] 
+              for f in 
+              json.loads(dedupe_session.field_defs.decode('utf-8'))}
+    fields.add('record_id')
+
+    # We have to check if there are any unseen records BEFORE polling
+    # records for review in order to avoid a race condition
+    unseen_records = unseenRecords(session_id)
+    raw_record, matched_records = pollHumanReview(session_id, fields)
+
+    if not matched_records :
+        if unseen_records :
+            response_message = 'filling human review'
+        else :
+            dedupe_session.status = 'canonical'
+            flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
+            response_message = 'canonical'
+    else :
+        response_message = 'reviewing'
+
+    left_to_review = estimateRemainingReview(session_id)
+    dedupe_session.review_count = left_to_review
+    db_session.add(dedupe_session)
+    db_session.commit()
+
     resp = {
         'status': 'ok',
-        'message': '',
-        'remaining': 0,
+        'message': response_message,
     }
-    status_code = 200
-    session_id = request.args['session_id']
-    dedupe_session = db_session.query(DedupeSession).get(session_id)
-    resp['remaining'] = dedupe_session.review_count
-    fields = set([f['field'] for f in \
-            json.loads(dedupe_session.field_defs.decode('utf-8'))])
-    fields.add('record_id')
+    resp['object'] = raw_record
+    resp['matches'] = matched_records
+    resp['remaining'] = left_to_review
+
+    return jsonResponse(resp)
+
+def matchRowsToDict(match_records) :
+    matches = []
+    raw_record = {}
+
+    for record in match_records:
+        match = {}
+        for key in record.keys():
+            if key.startswith('raw_'):
+                raw_record[key.replace('raw_', '')] = getattr(record, key)
+            elif key.startswith('match_'):
+                match[key.replace('match_', '')] = getattr(record, key)
+        match = OrderedDict(sorted(match.items()))
+        raw_record = OrderedDict(sorted(raw_record.items()))
+        match['entity_id'] = record.entity_id
+        match['confidence'] = record.confidence
+        matches.append(match)
+
+    return raw_record, matches
+
+
+def pollHumanReview(session_id, fields) :
     match_fields = ','.join(['MAX(match.{0}) AS match_{0}'.format(f) for f in fields])
     raw_fields = ','.join(['MAX(raw.{0}) AS raw_{0}'.format(f) for f in fields])
+
     matches = '''
         SELECT 
           {0}, 
@@ -241,6 +291,20 @@ def get_unmatched():
         GROUP BY ent.entity_id
         ORDER BY MAX(ent.confidence) DESC
     '''.format(match_fields, raw_fields, session_id)
+
+    engine = db_session.bind
+    matched_records = list(engine.execute(matches))
+
+    raw_record, matches = matchRowsToDict(matched_records)
+
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    if queueCount(session_id) <= 10 and not dedupe_session.processing:
+        populateHumanReview.delay(session_id)
+
+    return raw_record, matches
+
+def estimateRemainingReview(session_id) :
+    
     total_count = '''
         SELECT 
           COUNT(*)::double precision AS total_count
@@ -260,47 +324,58 @@ def get_unmatched():
         FROM "match_review_{0}" 
         WHERE sent_for_review = TRUE
     '''.format(session_id)
+    
+    engine = db_session.bind
+
+    total_count = engine.execute(total_count).first().total_count
+    numerator = engine.execute(text(numerator), 
+                               reviewer='machine').first().numerator
+    denominator = engine.execute(denominator).first().denominator
+
+    if denominator == 0 :
+        return 0
+
+    proportion = numerator / denominator
+    std_err = math.sqrt((proportion * ( 1 - proportion )) / (denominator - 1 ))
+
+    remaining_count = total_count * ( proportion + ( std_err * 2 ) )
+
+    print(remaining_count, total_count, proportion, std_err)
+
+    return remaining_count
+
+def unseenRecords(session_id) :
+    engine = db_session.bind
+
+    unseen_count = ''' 
+        SELECT 
+          COUNT(*)::double precision AS unseen_count
+        FROM "match_review_{0}" 
+        WHERE sent_for_review = FALSE
+    '''.format(session_id)
+
+    unseen_count = engine.execute(unseen_count).first().unseen_count
+
+    return unseen_count
+
+def queueCount(session_id) :
+    engine = db_session.bind
+
     queue_count = ''' 
         SELECT COUNT(record_id) AS queue_count
         FROM "match_review_{0}"
         WHERE array_upper(entities, 1) IS NOT NULL
           AND reviewed = FALSE
     '''.format(session_id)
-    engine = db_session.bind
-    match_records = list(engine.execute(matches))
-    total_count = engine.execute(total_count).first().total_count
-    numerator = engine.execute(text(numerator), 
-                               reviewer='machine').first().numerator
-    denominator = engine.execute(denominator).first().denominator
+
     queue_count = engine.execute(queue_count).first().queue_count
-    db_session.refresh(dedupe_session)
-    if queue_count <= 10 and not dedupe_session.processing:
-        populateHumanReview.delay(session_id)
-    matches = []
-    raw_record = {}
-    for record in match_records:
-        match = {}
-        for key in record.keys():
-            if key.startswith('raw_'):
-                raw_record[key.replace('raw_', '')] = getattr(record, key)
-            elif key.startswith('match_'):
-                match[key.replace('match_', '')] = getattr(record, key)
-        match = OrderedDict(sorted(match.items()))
-        raw_record = OrderedDict(sorted(raw_record.items()))
-        match['entity_id'] = record.entity_id
-        match['confidence'] = record.confidence
-        matches.append(match)
-    resp['object'] = raw_record
-    resp['matches'] = matches
-    if len(resp['matches']) == 0:
-        dedupe_session.status = 'canonical'
-        flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
-    proportion = numerator / denominator
-    std_err = math.sqrt((proportion * ( 1 - proportion )) / (denominator - 1 ))
-    dedupe_session.review_count = total_count * ( proportion + ( std_err * 2 ) )
-    db_session.add(dedupe_session)
-    db_session.commit()
+
+    return queue_count 
+
+def jsonResponse(resp, status_code = 200) :
     response = make_response(json.dumps(resp, sort_keys=False), status_code)
     response.headers['Content-Type'] = 'application/json'
+
     return response
+
 
