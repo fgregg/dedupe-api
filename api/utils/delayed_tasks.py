@@ -485,22 +485,47 @@ def blockDedupe(session_id,
                 entity_table_name=None, 
                 canonical=False):
 
-    if not table_name:
-        table_name = 'processed_{0}'.format(session_id)
-    if not entity_table_name:
-        entity_table_name = 'entity_{0}'.format(session_id)
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     deduper = dedupe.StaticDedupe(BytesIO(dd_session.settings_file))
     engine = worker_session.bind
+    
+    if table_name is None:
+        table_name = 'processed_{0}'.format(session_id)
+    if entity_table_name is None:
+        entity_table_name = 'entity_{0}'.format(session_id)
+    
     for field in deduper.blocker.index_fields:
         fd = (str(f[0]) for f in \
                 engine.execute('select distinct {0} from "{1}"'.format(field, table_name)))
         deduper.blocker.index(fd, field)
-    sel = selectWithTuples(session_id)
+
+    select_block_records = selectBlockRecords(session_id, 
+                                              table_name, 
+                                              entity_table_name)
+    
     full_data = ((getattr(row, 'record_id'), dict(zip(row.keys(), row.values()))) \
-        for row in engine.execute(sel))
+        for row in engine.execute(select_block_records))
+
     return deduper.blocker(full_data)
+
+def selectBlockRecords(session_id, table_name, entity_table_name):
+    engine = worker_session.bind
+    m = MetaData()
+    proc = Table(table_name, m, 
+                  autoload=True, autoload_with=engine)
+    new_cols = getTupleColumns(proc)
+    meta = MetaData()
+    new_proc = Table(table_name, meta, *new_cols).alias(name='p')
+    entity = Table(entity_table_name, meta, 
+                  autoload=True, autoload_with=engine).alias(name='e')
+    sel = select([new_proc])\
+            .select_from(new_proc.join(entity, 
+                             new_proc.c.record_id == entity.c.record_id,
+                             isouter=True))\
+            .where(entity.c.target_record_id == None)
+    return sel
+
 
 def clusterDedupe(session_id, canonical=False, threshold=0.75):
     dd_session = worker_session.query(DedupeSession)\
