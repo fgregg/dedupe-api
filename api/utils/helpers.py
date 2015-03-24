@@ -273,17 +273,6 @@ def getMatches(session_id, record):
 
     # Sometimes the blocker does not find blocks. In this case we can't match
     if block_keys:
-       # sel = text('''
-       #       SELECT r.record_id, {1}
-       #       FROM "processed_{0}" as r
-       #       JOIN (
-       #         SELECT DISTINCT record_id
-       #         FROM "match_blocks_{0}"
-       #         WHERE block_key IN :block_keys
-       #       ) AS s
-       #       ON r.record_id = s.record_id
-       #     '''.format(session_id, fields))
-        
         m = MetaData()
         proc = Table('processed_{0}'.format(session_id), m, 
             autoload=True, autoload_with=engine)
