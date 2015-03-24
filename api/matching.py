@@ -173,9 +173,6 @@ def train():
             else:
                 if match.get('record_id'):
                     distinct_ids.append(match['record_id'])
-            for k,v in match.items():
-                match[k] = preProcess(str(v))
-            del match['match']
 
         # Assuming for the time being that all of the incoming training pairs 
         # already exist in the raw data table. This will need to be updated

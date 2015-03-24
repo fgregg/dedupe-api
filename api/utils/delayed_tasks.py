@@ -7,14 +7,16 @@ from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
-from api.utils.helpers import preProcess, clusterGen, \
+from api.utils.helpers import clusterGen, \
     makeSampleDict, windowed_query, getDistinct, getMatches, \
-    updateEntityCount, RetrainGazetteer, hasMissing
+    updateEntityCount, RetrainGazetteer, hasMissing, selectWithTuples, \
+    getTupleColumns
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash, addToEntityMap
 from api.utils.review_machine import ReviewMachine
-from sqlalchemy import Table, MetaData, Column, String, func, text
+from sqlalchemy import Table, MetaData, Column, String, func, text, \
+    Integer, select
 from sqlalchemy.sql import label
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
@@ -174,20 +176,24 @@ def getMatchingReady(session_id):
     
     # Write match_block table
     model_fields = list(set([f['field'] for f in field_defs]))
-    fields = ', '.join(['p.{0}'.format(f) for f in model_fields])
-    sel = ''' 
-        SELECT 
-          p.record_id, 
-          {0}
-        FROM "processed_{1}" AS p 
-        LEFT JOIN "exact_match_{1}" AS e 
-          ON p.record_id = e.match 
-        WHERE e.record_id IS NULL;
-        '''.format(fields, session_id)
-    conn = engine.connect()
-    rows = conn.execute(sel)
-    data = ((getattr(row, 'record_id'), dict(zip(model_fields, row[1:]))) \
-        for row in rows)
+    
+    m = MetaData()
+    proc = Table('processed_{0}'.format(session_id), m, 
+        autoload=True, autoload_with=engine)
+    cols = getTupleColumns(proc)
+    proc_cols = [Column('record_id', Integer)] + [c for c in cols if c.name in model_fields]
+    
+    meta = MetaData()
+    proc = Table('processed_{0}'.format(session_id), meta, *proc_cols)
+    exact = Table('exact_match_{0}'.format(session_id), meta, 
+        autoload=True, autoload_with=engine)
+    sel = select([proc]).select_from(proc.outerjoin(exact, 
+                                     proc.c.record_id == exact.c.record_id))\
+                        .where(exact.c.record_id == None)
+    rows = engine.execute(sel)
+    data = ((getattr(row, 'record_id'), 
+                 dict(zip(row.keys()[1:], row.values()[1:]))) \
+             for row in rows)
     block_gen = d.blocker(data)
     s = StringIO()
     writer = csv.writer(s)
@@ -334,8 +340,7 @@ def populateHumanReview(session_id):
     # Train classifier
     settings_file = BytesIO(dedupe_session.gaz_settings_file)
     deduper = RetrainGazetteer(settings_file, num_cores=1)
-    training_data = json.loads(dedupe_session.training_data.decode('utf-8'))
-    training_data = StringIO(json.dumps(training_data))
+    training_data = BytesIO(dedupe_session.training_data)
     deduper.readTraining(training_data)
     deduper._trainClassifier()
     fobj = BytesIO()
@@ -476,28 +481,13 @@ def blockDedupe(session_id,
         .get(session_id)
     deduper = dedupe.StaticDedupe(BytesIO(dd_session.settings_file))
     engine = worker_session.bind
-    metadata = MetaData()
-    proc_table = Table(table_name, metadata,
-        autoload=True, autoload_with=engine)
-    entity_table = Table(entity_table_name, metadata,
-        autoload=True, autoload_with=engine)
     for field in deduper.blocker.index_fields:
         fd = (str(f[0]) for f in \
                 engine.execute('select distinct {0} from "{1}"'.format(field, table_name)))
         deduper.blocker.index(fd, field)
-    """ 
-    SELECT p.* <-- need the fields that we trained on at least
-        FROM processed as p
-        LEFT OUTER JOIN entity_map as e
-           ON p.record_id = e.record_id
-        WHERE e.target_record_id IS NULL
-    """
-    proc_records = worker_session.query(proc_table)\
-        .outerjoin(entity_table, proc_table.c.record_id == entity_table.c.record_id)\
-        .filter(entity_table.c.target_record_id == None)
-    fields = proc_table.columns.keys()
-    full_data = ((getattr(row, 'record_id'), dict(zip(fields, row))) \
-        for row in proc_records.yield_per(50000))
+    sel = selectWithTuples(session_id)
+    full_data = ((getattr(row, 'record_id'), dict(zip(row.keys(), row.values()))) \
+        for row in engine.execute(sel))
     return deduper.blocker(full_data)
 
 def clusterDedupe(session_id, canonical=False, threshold=0.75):
@@ -506,18 +496,24 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
     worker_session.refresh(dd_session)
     deduper = dedupe.StaticDedupe(BytesIO(dd_session.settings_file))
     engine = worker_session.bind
-    metadata = MetaData()
     sc_format = 'small_cov_{0}'
     proc_format = 'processed_{0}'
     if canonical:
         sc_format = 'small_cov_{0}_cr'
         proc_format = 'cr_{0}'
-    small_cov = Table(sc_format.format(session_id), metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-    proc = Table(proc_format.format(session_id), metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
-    trained_fields = list(set([f['field'] for f in json.loads(dd_session.field_defs.decode('utf-8'))]))
+    metadata = MetaData()
+    p = Table(proc_format.format(session_id), metadata,
+        autoload=True, autoload_with=engine)
+    proc_cols = getTupleColumns(p)
+    trained_fields = list(set([f['field'] for f in \
+        json.loads(dd_session.field_defs.decode('utf-8'))]))
+    
+    m = MetaData()
+    proc = Table(proc_format.format(session_id), m, *proc_cols)
     proc_cols = [getattr(proc.c, f) for f in trained_fields]
+    small_cov = Table(sc_format.format(session_id), m,
+            autoload=True, autoload_with=engine)
+    
     cols = [c for c in small_cov.columns] + proc_cols
     rows = worker_session.query(*cols)\
         .join(proc, small_cov.c.record_id == proc.c.record_id)
@@ -532,8 +528,8 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
         if threshold <= 0.1:
             break
     del rows
-    worker_session.expire_all()
     del deduper
+    worker_session.close()
     return clustered_dupes
 
 @queuefunc

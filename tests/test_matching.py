@@ -190,12 +190,11 @@ class MatchingTest(unittest.TestCase):
                 self.session.refresh(self.dd_sess)
                 td = json.loads(self.dd_sess.training_data.decode('utf-8'))
                 del matches[0]['match']
-                matched = {k:preProcess(str(v)) for k,v in matches[0].items()}
                 record_ids = set()
                 for left, right in td['match']:
                     record_ids.add(left['record_id'])
                     record_ids.add(right['record_id'])
-                assert set([matched['record_id'], obj['record_id']]).intersection(record_ids)
+                assert set([matches[0]['record_id'], obj['record_id']]).intersection(record_ids)
                 for match in matches[1:]:
                     m = {k:preProcess(str(v)) for k,v in match.items()}
                     del m['match']

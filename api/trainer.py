@@ -18,7 +18,7 @@ from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import getDistinct, slugify, STATUS_LIST, \
-    updateTraining
+    updateTraining, tupleizeTraining
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
@@ -316,7 +316,8 @@ def mark_pair():
     left, right = current_pair
     record_ids = [left['record_id'], right['record_id']]
     if sess.training_data:
-        labels = json.loads(sess.training_data.decode('utf-8'))
+        training = json.loads(sess.training_data.decode('utf-8'))
+        labels = tupleizeTraining(training)
     else:
         labels = {'distinct' : [], 'match' : []}
     if action == 'yes':
@@ -339,7 +340,8 @@ def mark_pair():
         flask_session['counter'] = counter
         resp = {'counter': counter}
     db_session.refresh(sess, ['training_data'])
-    labels = json.loads(sess.training_data.decode('utf-8'))
+    training = json.loads(sess.training_data.decode('utf-8'))
+    labels = tupleizeTraining(training)
     deduper.markPairs(labels)
     if resp.get('finished'):
         del flask_session['deduper']

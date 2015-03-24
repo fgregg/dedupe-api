@@ -5,7 +5,7 @@ from functools import wraps
 from api.database import app_session as db_session, Base
 from api.models import User, Role, DedupeSession, Group, WorkTable
 from api.auth import login_required, check_roles, check_sessions
-from api.utils.helpers import preProcess, STATUS_LIST
+from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, \
     reDedupeCanon, trainDedupe
 from flask_wtf import Form

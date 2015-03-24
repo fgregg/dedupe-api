@@ -14,6 +14,7 @@ from sqlalchemy import MetaData, Table, Column, Integer, String, \
     Text, func, Index
 from sqlalchemy.sql import label
 from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.dialects.postgresql.base import ARRAY
 from unidecode import unidecode
 from uuid import uuid4
 import csv
@@ -114,11 +115,13 @@ def writeProcessedTable(session_id,
             field_types = ['String']
         # TODO: Need to figure out how to parse a LatLong field type
         if 'Price' in field_types:
-            col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
+            col_def = 'COALESCE("{0}"::DOUBLE PRECISION, 0.0) AS {0}'.format(field)
         elif 'Address' in field_types:
-            col_def = 'CAST(TRIM(COALESCE("{0}", \'\')) AS VARCHAR) AS {0}'.format(field)
+            col_def = 'TRIM(COALESCE("{0}", \'\'))::VARCHAR AS {0}'.format(field)
+        elif 'Set' in field_types:
+            col_def = 'COALESCE(string_to_array("{0}"::VARCHAR, \',\'), ARRAY[]::VARCHAR[]) AS {0}'.format(field)
         else:
-            col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
+            col_def = 'TRIM(COALESCE(LOWER("{0}"), \'\'))::VARCHAR AS {0}'.format(field)
         if idx < len(raw_fields) - 1:
             create += '{0}, '.format(col_def)
         else:
@@ -245,9 +248,11 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                     field_types = ['String']
                 # TODO: Need to figure out how to parse a LatLong field type
                 if 'Price' in field_types:
-                    col_def = 'COALESCE(CAST("{0}" AS DOUBLE PRECISION), 0.0) AS {0}'.format(field)
+                    col_def = 'COALESCE("{0}"::DOUBLE PRECISION, 0.0) AS {0}'.format(field)
+                elif 'Set' in field_types:
+                    col_def = 'COALESCE(string_to_array("{0}"::VARCHAR, \',\'), ARRAY[]::VARCHAR[]) AS {0}'.format(field)
                 else:
-                    col_def = 'CAST(TRIM(COALESCE(LOWER("{0}"), \'\')) AS VARCHAR) AS {0}'.format(field)
+                    col_def = 'TRIM(COALESCE(LOWER("{0}"), \'\')::VARCHAR) AS {0}'.format(field)
                 if idx < len(fds.keys()) - 1:
                     proc_ins += '{0}, '.format(col_def)
                 else:
@@ -262,7 +267,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                 conn.execute(text(proc_ins), record_id=record_id)
 
         # Add to entity map
-        hash_me = ';'.join([preProcess(str(new_entity[i])) for i in fds.keys()])
+        hash_me = ';'.join([preProcess(str(new_entity[i]), ['String']) for i in fds.keys()])
         md5_hash = md5(hash_me.encode('utf-8')).hexdigest()
         last_update = datetime.now().replace(tzinfo=TIME_ZONE)
         entity = {
@@ -328,13 +333,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                 field_types[field['field']] = [field['type']]
         for k,v in new_entity.items():
             if field_types.get(k):
-                if 'Price' in field_types[k]:
-                    if v:
-                        new_entity[k] = float(v)
-                    else:
-                        new_entity[k] = 0
-                else:
-                    new_entity[k] = preProcess(str(v))
+                new_entity[k] = preProcess(v, field_types[k])
         block_keys = [{'record_id': b[1], 'block_key': b[0]} \
                 for b in list(deduper.blocker([(new_entity['record_id'], new_entity)]))]
         if block_keys:
@@ -468,8 +467,14 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
 
     cols = [entity.c.entity_id]
     col_names = [c for c in proc_table.columns.keys() if c != 'record_id']
+    array_cols = []
     for name in col_names:
-        cols.append(label(name, func.array_agg(getattr(proc_table.c, name))))
+        col = getattr(proc_table.c, name)
+        if isinstance(col.type, ARRAY):
+            array_cols.append(name)
+            cols.append(label(name, func.array_agg(func.array_to_string(col, ',', ''))))
+        else:
+            cols.append(label(name, func.array_agg(getattr(proc_table.c, name))))
     rows = worker_session.query(*cols)\
         .filter(entity.c.record_id == proc_table.c.record_id)\
         .group_by(entity.c.entity_id)
@@ -482,7 +487,12 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
             dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
             for idx, dct in enumerate(dicts):
                 for name in col_names:
-                    dicts[idx][name] = str(getattr(row, name)[idx])
+                    if name in array_cols:
+                        s = str(getattr(row, name)[idx]).replace('{', '').replace('}', '')
+                        val = '{' + s + '}'
+                    else:
+                        val = str(getattr(row, name)[idx])
+                    dicts[idx][name] = val
             canon_form = dedupe.canonicalize(dicts)
             r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])
             writer.writerow(r)
