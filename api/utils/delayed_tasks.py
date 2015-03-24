@@ -428,12 +428,15 @@ def initializeModel(session_id, init=True):
                 writeProcessedTable(session_id)
             updated_fds = []
             for field in field_defs:
-                distinct_vals = getDistinct(field['field'], session_id)
                 if field['type'] == 'Categorical':
+                    distinct_vals = getDistinct(field['field'], session_id)
                     if len(distinct_vals) <= 6:
                         field.update({'categories': distinct_vals})
                     else:
                         field['type'] = 'Exact'
+                if field['type'] in ['Text', 'Set']:
+                    corpus = getDistinct(field['field'], session_id)
+                    field.update({'corpus': corpus})
                 if hasMissing(field['field'], session_id):
                     field.update({'has_missing': True})
                 updated_fds.append(field)
