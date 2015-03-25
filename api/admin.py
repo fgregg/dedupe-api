@@ -404,12 +404,14 @@ def rewind():
     threshold = request.args.get('threshold')
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     dedupe_session.processing = True
-    db_session.add(dedupe_session)
-    db_session.commit()
     if step == 'first':
+        dedupe_session.status = 'entity map updated'
         reDedupeRaw.delay(session_id, threshold=float(threshold))
     if step == 'second':
+        dedupe_session.status = 'canon clustered'
         reDedupeCanon.delay(session_id, threshold=float(threshold))
+    db_session.add(dedupe_session)
+    db_session.commit()
     response = make_response(json.dumps({'status': 'ok'}))
     response.headers['Content-Type'] = 'application/json'
     return response
