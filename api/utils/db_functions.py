@@ -6,7 +6,8 @@ from io import StringIO, BytesIO
 from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
-from api.utils.helpers import preProcess, slugify, updateEntityCount
+from api.utils.helpers import preProcess, slugify, updateEntityCount, \
+    RetrainGazetteer
 from api.app_config import TIME_ZONE
 from csvkit import convert
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
@@ -226,17 +227,20 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
             fds[fd['field']].append(fd['type'])
         except KeyError:
             fds[fd['field']] = [fd['type']]
-    else:
-        engine = worker_session.bind
-        sel = text(''' 
-            SELECT * from "processed_{0}" 
-            WHERE record_id = :record_id 
-            LIMIT 1
-        '''.format(session_id))
-        row = engine.execute(sel, record_id=new_entity['record_id'])
-
+    engine = worker_session.bind
+    sel = text(''' 
+        SELECT 
+          p.*,
+          e.entity_id
+        FROM "processed_{0}" AS p
+        LEFT JOIN "entity_{0}" AS e
+          ON p.record_id = e.record_id
+        WHERE p.record_id = :record_id 
+    '''.format(session_id))
+    row = engine.execute(sel, record_id=new_entity['record_id']).first()
+    if row.entity_id is None: # Record does not exist in entity map
         # If this is an entirely new record, we need to add it to the processed table
-        if not row: # pragma: no cover
+        if row is None: # pragma: no cover
             raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
                 autoload=True, autoload_with=engine, keep_existing=True)
             proc_ins = 'INSERT INTO "processed_{0}" (SELECT record_id, '\
@@ -260,12 +264,12 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
             else:
                 proc_ins += 'FROM "raw_{0}" WHERE record_id = :record_id)'\
                     .format(session_id)
-
+     
             with engine.begin() as conn:
                 record_id = conn.execute(raw_table.insert()\
                     .returning(raw_table.c.record_id) , **new_entity)
                 conn.execute(text(proc_ins), record_id=record_id)
-
+     
         # Add to entity map
         hash_me = ';'.join([preProcess(str(new_entity[i]), ['String']) for i in fds.keys()])
         md5_hash = md5(hash_me.encode('utf-8')).hexdigest()
@@ -287,7 +291,9 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                 WHERE record_id = :record_id
                 LIMIT 1
             '''.format(session_id))
-            entity_id = list(engine.execute(sel, record_id=match_ids[0]))[0].entity_id
+            entity_id = engine.execute(sel, record_id=match_ids[0])\
+                        .first()\
+                        .entity_id
             entity['entity_id'] = entity_id
             if len(match_ids) > 1:
                 upd_args = {
@@ -322,9 +328,9 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                    ','.join([':{0}'.format(f) for f in entity.keys()])))
         with engine.begin() as conn:
             conn.execute(ins, **entity)
-
+     
         # Update block table
-        deduper = dedupe.StaticGazetteer(BytesIO(sess.gaz_settings_file))
+        deduper = RetrainGazetteer(BytesIO(sess.gaz_settings_file))
         field_types = {}
         for field in field_defs:
             if field_types.get(field['field']):
@@ -347,7 +353,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
         else:
             if sentry:
                 sentry.captureMessage('Unable to block record', extra=new_entity)
-
+     
         # Update match_review table
         upd = ''' 
             UPDATE "match_review_{0}" SET
