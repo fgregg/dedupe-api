@@ -440,6 +440,8 @@ def initializeModel(session_id, init=True):
                 if field['type'] in ['Text', 'Set']:
                     corpus = getDistinct(field['field'], session_id)
                     field.update({'corpus': corpus})
+                if field['type'] == 'Address':
+                    field.update({'log file': '/tmp/addresses.csv'})
                 if hasMissing(field['field'], session_id):
                     field.update({'has_missing': True})
                 updated_fds.append(field)
