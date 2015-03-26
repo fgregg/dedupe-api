@@ -76,22 +76,4 @@ class QueueTest(unittest.TestCase):
         work = self.engine.execute(
                 text('SELECT * FROM work_table where key = :key'), 
                 key=key).first()
-        assert work.return_value == 'Test Exception'
-
-    def test_clear_error(self):
-        key = error.delay()
-        processMessage(db_conn=self.app.config['DB_CONN'])
-        time.sleep(1)
-        with self.app.test_request_context():
-            self.login()
-            with self.client as c:
-                with c.session_transaction() as sess:
-                    sess['user_sessions'] = ['poo']
-                rv = c.get('/clear-error/?work_id=' + key, follow_redirects=True)
-                mess = ''' 
-                    SELECT cleared 
-                    FROM work_table 
-                    WHERE key = :key
-                '''
-                cleared = self.engine.execute(text(mess), key=key).first()
-                assert cleared.cleared == True
+        assert work.return_value == 'We encountered a problem while importing your data.'
