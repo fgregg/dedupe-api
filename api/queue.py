@@ -82,7 +82,7 @@ def processMessage(db_conn=DB_CONN):
             if client: # pragma: no cover
                 client.captureException()
             upd_args['tb'] = traceback.format_exc()
-            upd_args['return_value'] = str(e)
+            upd_args['return_value'] = "We encountered a problem while importing your data."
             upd_args['cleared'] = False
             print(upd_args['tb'])
         upd = ''' 
