@@ -1,6 +1,6 @@
 from flask import request, make_response, render_template, \
     session as flask_session, redirect, url_for, send_from_directory, jsonify,\
-    Blueprint, current_app
+    Blueprint, current_app, flash
 from flask_login import current_user
 from werkzeug import secure_filename
 import time
@@ -113,8 +113,6 @@ def new_session():
 @check_roles(roles=['admin'])
 @check_sessions()
 def select_fields():
-    status_code = 200
-    errors = []
     dedupe_session = db_session.query(DedupeSession.name, DedupeSession.id)\
             .filter(DedupeSession.id == flask_session['session_id'])\
             .first()
@@ -160,21 +158,21 @@ def select_fields():
             flask_session['fieldnames'] = fields
         except NoSuchTableError:
             return redirect(url_for('admin.index'))
-    errors = db_session.query(WorkTable)\
+    error = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
             .filter(WorkTable.cleared == False)\
-            .all()
+            .first()
+    if error:
+        flash(error.return_value, 'error')
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         flask_session['field_list'] = field_list
         if field_list:
             return redirect(url_for('trainer.select_field_types'))
         else:
-            errors = ['You must select at least one field to compare on.']
-            status_code = 400
+            flash('You must select at least one field to compare on.', 'error')
 
-    return render_template('dedupe_session/select_fields.html', 
-                            errors=errors, 
+    return render_template('dedupe_session/select_fields.html',
                             fields=fields, 
                             sample_values=sample_values,
                             dedupe_session=dedupe_session)
@@ -184,11 +182,12 @@ def select_fields():
 @check_roles(roles=['admin'])
 def select_field_types():
     dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
-    errors = db_session.query(WorkTable)\
+    error = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
             .filter(WorkTable.cleared == False)\
-            .all()
-    errors = [e.value for e in errors]
+            .first()
+    if error:
+        flash(error.return_value, 'error')
     field_list = flask_session['field_list']
     if request.method == 'POST':
         field_defs = []
@@ -211,7 +210,7 @@ def select_field_types():
                     field_defs = :field_defs
                 WHERE id = :id
             '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
-        if not errors:
+        if not error:
             dedupe_session.processing = True
             db_session.add(dedupe_session)
             db_session.commit()
@@ -219,13 +218,13 @@ def select_field_types():
         return redirect(url_for('trainer.processing'))
     return render_template('dedupe_session/select_field_types.html', 
                            field_list=field_list, 
-                           dedupe_session=dedupe_session,
-                           errors=errors)
+                           dedupe_session=dedupe_session)
 
 @trainer.route('/processing/')
 @login_required
 @check_roles(roles=['admin'])
 @check_sessions()
+<<<<<<< HEAD
 def processing():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
@@ -321,7 +320,6 @@ def getTrainingPair(deduper, training_ids=None):
         training_pair = deduper.uncertainPairs()[0]
         training_ids = ','.join([str(r['record_id']) for r in training_pair])
     return training_pair, training_ids
-
 
 @trainer.route('/get-pair/')
 @login_required

@@ -36,9 +36,9 @@ def group_choices():
 class AddUserForm(Form):
     name = TextField('name', validators=[DataRequired()])
     email = TextField('email', validators=[DataRequired(), Email()])
-    roles = QuerySelectMultipleField('roles', query_factory=role_choices, 
+    roles = QuerySelectMultipleField('roles', query_factory=role_choices,
                                 validators=[DataRequired()])
-    groups = QuerySelectMultipleField('groups', query_factory=group_choices, 
+    groups = QuerySelectMultipleField('groups', query_factory=group_choices,
                                 validators=[DataRequired()])
     password = PasswordField('password', validators=[DataRequired()])
 
@@ -61,7 +61,7 @@ class AddUserForm(Form):
         if existing_email:
             self.email.errors.append('Email address is already registered')
             return False
-        
+
         return True
 
 @admin.route('/')
@@ -91,7 +91,7 @@ def add_user():
         user.groups = form.groups.data
         db_session.add(user)
         db_session.commit()
-        flash('User %s added' % user.name)
+        flash('User %s added' % user.name, 'success')
         return redirect(url_for('admin.user_list'))
     return render_template('add_user.html', form=form)
 
@@ -106,7 +106,7 @@ def user_list():
 @login_required
 @check_sessions()
 def session_admin():
-    
+
     session_id = flask_session['session_id']
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
@@ -167,9 +167,9 @@ def session_admin():
                 }
                 pair.append(d)
             training_data['match'].append(pair)
-    return render_template('session-admin.html', 
-                            dedupe_session=dedupe_session, 
-                            session_info=session_info, 
+    return render_template('session-admin.html',
+                            dedupe_session=dedupe_session,
+                            session_info=session_info,
                             predicates=predicates,
                             training_data=training_data,
                             status_info=status_info)
@@ -182,7 +182,7 @@ def training_data():
     session_id = flask_session['session_id']
     data = db_session.query(DedupeSession).get(session_id)
     training_data = data.training_data
-    
+
     resp = make_response(training_data, 200)
     resp.headers['Content-Type'] = 'text/plain'
     resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.id
@@ -206,7 +206,7 @@ def field_definitions():
     session_id = flask_session['session_id']
     data = db_session.query(DedupeSession).get(session_id)
     field_defs = data.field_defs.decode('utf-8')
-    
+
     resp = make_response(field_defs, 200)
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -285,7 +285,7 @@ def delete_session():
 @admin.route('/session-list/')
 @login_required
 def review():
-    
+
     sess_id = request.args.get('session_id')
     status = request.args.get('status')
 
@@ -304,8 +304,8 @@ def review():
         .order_by(DedupeSession.date_updated.desc())\
         .all()
     engine = db_session.bind
-    sel = ''' 
-        SELECT 
+    sel = '''
+        SELECT
             d.id,
             d.name,
             d.description,
@@ -352,11 +352,11 @@ def review():
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
         if row.last_work_status:
             d['last_work_status'] = row.last_work_status
-        
+
         if d['status'] == 'canonical':
-            canonical_sessions.append(d) 
+            canonical_sessions.append(d)
         else:
-            in_progress_sessions.append(d) 
+            in_progress_sessions.append(d)
 
         all_sessions.append(d)
 
@@ -372,11 +372,11 @@ def entity_map_dump():
 
     session_id = flask_session['session_id']
     outp = StringIO()
-    copy = """ 
+    copy = """
         COPY (
-          SELECT 
-            e.entity_id, 
-            r.* 
+          SELECT
+            e.entity_id,
+            r.*
           FROM \"raw_{0}\" AS r
           LEFT JOIN \"entity_{0}\" AS e
             ON r.record_id = e.record_id
@@ -416,18 +416,6 @@ def rewind():
     response.headers['Content-Type'] = 'application/json'
     return response
 
-@admin.route('/clear-error/')
-@login_required
-def clear_error():
-    work_id = request.args['work_id']
-    work = db_session.query(WorkTable).get(work_id)
-    work.cleared = True
-    db_session.add(work)
-    db_session.commit()
-    response = make_response(json.dumps({'status': 'ok'}))
-    response.headers['Content-Type'] = 'application/json'
-    return response
-
 @admin.route('/add-bulk-training/', methods=['POST'])
 @login_required
 @check_sessions()
@@ -446,7 +434,7 @@ def add_bulk_training():
     db_session.add(dedupe_session)
     db_session.commit()
     r = {
-        'status': 'ok', 
+        'status': 'ok',
         'message': 'Added {0} distinct and {1} matches'\
                 .format(len(td['distinct']), len(td['match']))
     }
@@ -462,7 +450,7 @@ def get_entity_records():
     field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])
     fields = ', '.join(['r.{0}'.format(f) for f in field_names])
     entity_id = request.args.get('entity_id')
-    sel = ''' 
+    sel = '''
         SELECT {0}
         FROM "raw_{1}" AS r
         JOIN "entity_{1}" AS e
@@ -483,7 +471,7 @@ def entity_browser():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     field_names = set([f['field'] for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])
-    sel = ''' 
+    sel = '''
         SELECT * FROM "browser_{0}" LIMIT 100
     '''.format(session_id)
     if request.args.get('page'):
@@ -493,10 +481,10 @@ def entity_browser():
     engine = db_session.bind
     entities = list(engine.execute(sel))
     page_count = int(round(dedupe_session.entity_count, -2) / 100)
-    return render_template('entity-browser.html', 
+    return render_template('entity-browser.html',
                            dedupe_session=dedupe_session,
-                           entities=entities, 
-                           fields=list(field_names), 
+                           entities=entities,
+                           fields=list(field_names),
                            page_count=page_count)
 
 @admin.route('/entity-detail/', methods=['POST', 'GET'])
@@ -507,8 +495,8 @@ def entity_detail():
     entity_id = request.args.get('entity_id')
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     model_fields = [f['field'] for f in json.loads(dedupe_session.field_defs.decode('utf-8'))]
-    sel = ''' 
-      SELECT 
+    sel = '''
+      SELECT
         e.entity_id,
         e.reviewer,
         e.date_added,
@@ -525,15 +513,15 @@ def entity_detail():
     engine = db_session.bind
     records = list(engine.execute(text(sel), entity_id=entity_id))
     meta = MetaData()
-    raw_table = Table('raw_{0}'.format(session_id), meta, 
+    raw_table = Table('raw_{0}'.format(session_id), meta,
         autoload=True, autoload_with=engine)
     raw_fields = raw_table.columns.keys()
     entity_fields = [
-        'reviewer', 
-        'date_added', 
-        'last_update', 
-        'match_type', 
-        'target_record_id', 
+        'reviewer',
+        'date_added',
+        'last_update',
+        'match_type',
+        'target_record_id',
         'confidence'
     ]
     return render_template('entity-detail.html',
@@ -578,12 +566,12 @@ def edit_model():
             field_defs.extend(fs)
         engine = db_session.bind
         with engine.begin() as conn:
-            conn.execute(text(''' 
+            conn.execute(text('''
                 UPDATE dedupe_session SET
                     field_defs = :field_defs
                 WHERE id = :id
             '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
-        flash('Model updated!')
+        flash('Model updated!', 'success')
         dedupe_session.processing = True
         db_session.add(dedupe_session)
         db_session.commit()

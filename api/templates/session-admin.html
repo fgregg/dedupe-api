@@ -140,6 +140,20 @@
             </ul>
         </div>
 
+        <div class='well'>
+            <h4 id='download'>Download</h4>
+            <p><a class='btn btn-success btn-sm' href="{{url_for('admin.entity_map_dump', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> All entities (CSV)</a></p>
+            {% if dedupe_session.field_defs %}
+                <p><a class='btn btn-info btn-sm' href="{{url_for('admin.field_definitions', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Data model (JSON)</a></p>
+            {% endif %}
+            {% if dedupe_session.training_data %}
+                <p><a class='btn btn-info btn-sm' href="{{url_for('admin.training_data', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Training data (JSON)</a></p>
+            {% endif %}
+            {% if dedupe_session.settings_file %}
+                <p><a  class='btn btn-info btn-sm' href="{{url_for('admin.settings_file', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Settings file (JSON)</a></p>
+            {% endif %}
+        </div>
+
         {% if dedupe_session.status not in ['dataset uploaded', 'model defined'] %}
         <div class='well'>
             <h4 id='rollback'>Rollback session</h4>
@@ -199,29 +213,14 @@
         {% endif %}
 
         <div class='well'>
-            <h4 id='download'>Download</h4>
-            <p>
-                {% if dedupe_session.field_defs %}
-                    <a class='btn btn-info btn-sm' href="{{url_for('admin.field_definitions', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Data model</a>
-                {% endif %}
-                {% if dedupe_session.settings_file %}
-                    <a  class='btn btn-info btn-sm' href="{{url_for('admin.settings_file', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Settings file</a>
-                {% endif %}
-                {% if dedupe_session.training_data %}
-                    <a class='btn btn-info btn-sm' href="{{url_for('admin.training_data', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Training data</a>
-                  </span>
-                {% endif %}
-                    <a class='btn btn-info btn-sm' href="{{url_for('admin.entity_map_dump', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Entity map</a>
-            </p>
-        </div>
-
-        <div class='well'>
             <h4 id='danger-zone'>Danger zone!</h4>
 
-            <button type="button" data-toggle="modal" data-target="#confirm-modal-session" class="btn btn-primary"><i class='fa fa-times'></i> Delete session</button>
+            <p><button type="button" data-toggle="modal" data-target="#confirm-modal-session" class="btn btn-sm btn-primary"><i class='fa fa-times'></i> Delete entire session</button></p>
 
             {% if session_info %}
-                <button type="button" data-toggle="modal" data-target="#confirm-modal-model" class="btn btn-primary"><i class='fa fa-times'></i> Delete data model</button>
+                <p>
+                    <button type="button" data-toggle="modal" data-target="#confirm-modal-model" class="btn btn-sm btn-primary"><i class='fa fa-times'></i> Delete data model</button>
+                </p>
             {% endif %}
         </div>
     </div>

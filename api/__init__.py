@@ -1,6 +1,6 @@
 import os
 import json
-from flask import Flask
+from flask import Flask, render_template
 from redis import Redis
 from api.auth import auth, login_manager, csrf
 from api.models import bcrypt
@@ -41,6 +41,14 @@ def create_app(config='api.app_config'):
     app.register_blueprint(auth)
     app.register_blueprint(trainer)
     app.register_blueprint(matching)
+
+    @app.errorhandler(404)
+    def page_not_found(e):
+        return render_template('404.html'), 404
+
+    @app.errorhandler(500)
+    def page_not_found(e):
+        return render_template('error.html'), 500
 
     @app.template_filter('format_number')
     def format_number(s): # pragma: no cover

@@ -3,8 +3,8 @@
 {% block title %}{{dedupe_session.name}} -  Train{% endblock %}
 {% block content %}
     <div class="col-md-12">
-    {{ dedupe_steps( dedupe_session ) }}
-    <h3>3. Train</h3>
+        {{ dedupe_steps( dedupe_session ) }}
+        <h3>3. Train</h3>
     </div>
     <div class='col-md-8'>
         <form action="{{url_for('trainer.training_run')}}" method="post">
