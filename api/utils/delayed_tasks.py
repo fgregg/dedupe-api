@@ -447,6 +447,8 @@ def initializeModel(session_id, init=True):
                     field.update({'corpus': corpus})
                 if field['type'] == 'Address':
                     field.update({'log file': '/tmp/addresses.csv'})
+                if field['type'] == 'Name':
+                    field.update({'log file': '/tmp/name.csv'})
                 if hasMissing(field['field'], session_id):
                     field.update({'has_missing': True})
                 updated_fds.append(field)
