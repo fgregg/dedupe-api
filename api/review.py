@@ -204,7 +204,8 @@ def mark_cluster():
     match_ids = [m for m in match_ids.split(',') if m]
     updateTraining(session_id, 
                    match_ids=match_ids, 
-                   distinct_ids=distinct_ids)
+                   distinct_ids=distinct_ids,
+                   trainer=user.name)
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     machine = loads(dedupe_session.review_machine)
     if distinct_ids:

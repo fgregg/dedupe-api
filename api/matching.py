@@ -21,7 +21,6 @@ from datetime import datetime
 from hashlib import md5
 from unidecode import unidecode
 from collections import OrderedDict
-from flask_login import current_user
 
 matching = Blueprint('matching', __name__)
 
@@ -178,11 +177,12 @@ def train():
         # already exist in the raw data table. This will need to be updated
         # to allow us to add new training that does not already exist in the
         # raw data
+        user = db_session.query(User).get(api_key)
         updateTraining(session_id, 
                        distinct_ids=distinct_ids, 
-                       match_ids=match_ids + [obj['record_id']])
+                       match_ids=match_ids + [obj['record_id']],
+                       trainer=user.name)
         if add_entity:
-            user = db_session.query(User).get(api_key)
             addToEntityMap(session_id, obj, match_ids=match_ids, reviewer=user.name)
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
