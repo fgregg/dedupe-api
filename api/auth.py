@@ -64,7 +64,7 @@ def check_roles(roles=[]):
             if user_roles.issubset(rs):
                 return f(*args, **kwargs)
             else:
-                flash('Sorry, you don\'t have access to that page')
+                flash('Sorry, you don\'t have access to that page', 'error')
                 return redirect(url_for('admin.index'))
         return decorated
     return decorator
@@ -114,10 +114,10 @@ def check_sessions():
                 elif flask_session.get('session_id'):
                     session_id = flask_session['session_id']
                 else:
-                    flash("Sorry, could not find a session id")
+                    flash("Sorry, could not find a session id", 'error')
                     return redirect(url_for('admin.index'))
                 if flask_session['session_id'] not in flask_session['user_sessions']:
-                    flash("Sorry, you don't have access to that session")
+                    flash("Sorry, you don't have access to that session", 'error')
                     return redirect(url_for('admin.index'))
                 
             return f(*args, **kwargs)

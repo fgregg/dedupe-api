@@ -91,7 +91,7 @@ def add_user():
         user.groups = form.groups.data
         db_session.add(user)
         db_session.commit()
-        flash('User %s added' % user.name)
+        flash('User %s added' % user.name, 'success')
         return redirect(url_for('admin.user_list'))
     return render_template('add_user.html', form=form)
 
@@ -416,18 +416,6 @@ def rewind():
     response.headers['Content-Type'] = 'application/json'
     return response
 
-@admin.route('/clear-error/')
-@login_required
-def clear_error():
-    work_id = request.args['work_id']
-    work = db_session.query(WorkTable).get(work_id)
-    work.cleared = True
-    db_session.add(work)
-    db_session.commit()
-    response = make_response(json.dumps({'status': 'ok'}))
-    response.headers['Content-Type'] = 'application/json'
-    return response
-
 @admin.route('/add-bulk-training/', methods=['POST'])
 @login_required
 @check_sessions()
@@ -583,7 +571,7 @@ def edit_model():
                     field_defs = :field_defs
                 WHERE id = :id
             '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
-        flash('Model updated!')
+        flash('Model updated!', 'success')
         dedupe_session.processing = True
         db_session.add(dedupe_session)
         db_session.commit()
