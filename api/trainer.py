@@ -18,7 +18,7 @@ from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable, updateTraining, \
     readTraining, saveTraining
-from api.utils.helpers import getDistinct, slugify, STATUS_LIST, tupleizeTraining
+from api.utils.helpers import getDistinct, slugify, STATUS_LIST, readFieldDefs
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions

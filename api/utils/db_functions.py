@@ -36,7 +36,6 @@ except KeyError: #pragma: no cover
 def updateTraining(session_id, 
                    distinct_ids=[], 
                    match_ids=[],
-                   unsure_ids=[],
                    trainer=None):
     ''' 
     Update the sessions training data with the given record_ids
