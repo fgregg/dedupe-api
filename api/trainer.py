@@ -1,6 +1,6 @@
 from flask import request, make_response, render_template, \
     session as flask_session, redirect, url_for, send_from_directory, jsonify,\
-    Blueprint, current_app, flash
+    Blueprint, current_app, flash, abort
 from flask_login import current_user
 from werkzeug import secure_filename
 import time
@@ -163,14 +163,15 @@ def select_fields():
             .filter(WorkTable.cleared == False)\
             .first()
     if error:
-        flash(error.return_value, 'error')
+        flash(error.return_value, 'danger')
+        abort(500)
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         flask_session['field_list'] = field_list
         if field_list:
             return redirect(url_for('trainer.select_field_types'))
         else:
-            flash('You must select at least one field to compare on.', 'error')
+            flash('You must select at least one field to compare on.', 'danger')
 
     return render_template('dedupe_session/select_fields.html',
                             fields=fields, 
@@ -187,7 +188,8 @@ def select_field_types():
             .filter(WorkTable.cleared == False)\
             .first()
     if error:
-        flash(error.return_value, 'error')
+        flash(error.return_value, 'danger')
+        abort(500)
     field_list = flask_session['field_list']
     if request.method == 'POST':
         field_defs = []
@@ -224,7 +226,6 @@ def select_field_types():
 @login_required
 @check_roles(roles=['admin'])
 @check_sessions()
-<<<<<<< HEAD
 def processing():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)

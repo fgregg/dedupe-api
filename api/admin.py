@@ -218,6 +218,7 @@ def delete_data_model():
 
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
+    session_name = dedupe_session.name
     dedupe_session.field_defs = None
     dedupe_session.settings_file = None
     dedupe_session.gaz_settings_file = None
@@ -243,6 +244,7 @@ def delete_data_model():
     }
     status_code = 200
 
+    flash("Data model for '{0}' has been deleted".format(session_name), 'success')
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -254,6 +256,7 @@ def delete_session():
 
     session_id = flask_session['session_id']
     data = db_session.query(DedupeSession).get(session_id)
+    session_name = data.name
     db_session.delete(data)
     db_session.commit()
     tables = [
@@ -278,6 +281,8 @@ def delete_session():
         'match_blocks_{0}',
     ]
     cleanupTables.delay(session_id, tables=tables)
+
+    flash("Deleted '{0}'".format(session_name), 'success')
     resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
     resp.headers['Content-Type'] = 'application/json'
     return resp
