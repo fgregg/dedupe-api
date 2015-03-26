@@ -12,7 +12,7 @@ import os
 import copy
 import time
 from itertools import groupby
-from dedupe.serializer import _to_json, dedupe_decoder
+from dedupe.serializer import _to_json, dedupe_decoder, _from_json
 import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
@@ -216,66 +216,118 @@ def select_field_types():
             db_session.add(dedupe_session)
             db_session.commit()
             initializeModel.delay(dedupe_session.id)
-        return redirect(url_for('trainer.training_run'))
+        return redirect(url_for('trainer.processing'))
     return render_template('dedupe_session/select_field_types.html', 
                            field_list=field_list, 
                            dedupe_session=dedupe_session,
                            errors=errors)
 
-@trainer.route('/training-run/')
+@trainer.route('/processing/')
 @login_required
 @check_roles(roles=['admin'])
 @check_sessions()
-def training_run():
+def processing():
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
-    training_data = readTraining(session_id)
-    if training_data:
-        flask_session['counter'] = {
-                'yes': len(training_data['match']),
-                'no': len(training_data['distinct']),
-                'unsure': 0
-            }
-    else:
-        flask_session['counter'] = {
-            'yes': 0,
-            'no': 0 ,
-            'unsure': 0,
-        }
     errors = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
             .filter(WorkTable.cleared == False)\
             .all()
     if not errors:
         status_code = 200
-        time.sleep(1)
         db_session.refresh(dedupe_session)
         field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
         if not dedupe_session.processing and dedupe_session.sample:
             sample = pickle.loads(dedupe_session.sample)
-            if sample[0][0].get('record_id'):
-                deduper = dedupe.Dedupe(field_defs, data_sample=sample)
-                flask_session['deduper'] = deduper
-            else:
-                dedupe_session.processing = True
-                db_session.add(dedupe_session)
-                db_session.commit()
-                initializeModel.delay(dedupe_session.id)
+            deduper = dedupe.Dedupe(field_defs, data_sample=sample)
+            flask_session['deduper'] = deduper
+            return redirect(url_for('trainer.training_run'))
+    return render_template('dedupe_session/processing.html',errors=errors)
+    
+
+@trainer.route('/training-run/', methods=['GET', 'POST'])
+@login_required
+@check_roles(roles=['admin'])
+@check_sessions()
+def training_run():
+    session_id = flask_session['session_id']
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    if flask_session.get('deduper') is None:
+        field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
+        if not dedupe_session.processing and dedupe_session.sample:
+            sample = pickle.loads(dedupe_session.sample)
+            deduper = dedupe.Dedupe(field_defs, data_sample=sample)
+            flask_session['deduper'] = deduper
+    if request.method == 'POST':
+        print(request.form)
+    training_ids = request.args.get('training_ids')
+    deduper = flask_session['deduper']
+    
+    training_pair, training_ids = getTrainingPair(deduper, training_ids=training_ids)
+    
+    formatted = []
+    left, right = training_pair
+    fields = list(set([f[0] for f in deduper.data_model.field_comparators]))
+    for field in fields:
+        d = {
+            'field': field,
+            'left': left[field],
+            'right': right[field],
+        }
+        formatted.append(d)
+    
+    training_data = readTraining(session_id)
+    if training_data:
+        counter = {
+                'yes': len(training_data['match']),
+                'no': len(training_data['distinct']),
+                'unsure': 0
+            }
     else:
-        status_code = 500
-    time.sleep(0.5)
-    db_session.refresh(dedupe_session)
-    return make_response(render_template(
-                            'dedupe_session/training_run.html', 
-                            errors=errors, 
-                            dedupe_session=dedupe_session), status_code)
+        counter = {
+            'yes': 0,
+            'no': 0 ,
+            'unsure': 0,
+        }
+    return render_template('dedupe_session/training_run.html', 
+                            dedupe_session=dedupe_session,
+                            counter=counter,
+                            training_pair=formatted,
+                            training_ids=training_ids)
+
+def getTrainingPair(deduper, training_ids=None):
+    if training_ids:
+        left_id, right_id = training_ids.split(',')
+        sel = ''' 
+          SELECT
+            json_build_array(left_record, right_record) AS training_pair
+          FROM dedupe_training_data
+          WHERE session_id = :session_id
+            AND left_record->>'record_id' = :left_id
+            AND right_record->>'record_id' = :right_id
+        '''
+        engine = db_session.bind
+        training_pair = engine.execute(text(sel), 
+                                     left_id=left_id, 
+                                     right_id=right_id, 
+                                     session_id=session_id).first()
+        if training_pair:
+            training_pair = json.loads(training_pair.training_pair, 
+                                     object_hook=_from_json)
+        else:
+            # We need an error or something here
+            print('not found')
+    else:
+        training_pair = deduper.uncertainPairs()[0]
+        training_ids = ','.join([str(r['record_id']) for r in training_pair])
+    return training_pair, training_ids
+
 
 @trainer.route('/get-pair/')
 @login_required
 @check_roles(roles=['admin'])
 def get_pair():
     deduper = flask_session['deduper']
-    flask_session['last_interaction'] = datetime.now()
     fields = list(set([f[0] for f in deduper.data_model.field_comparators]))
     record_pair = deduper.uncertainPairs()[0]
     flask_session['current_pair'] = record_pair
@@ -297,7 +349,6 @@ def get_pair():
 @check_roles(roles=['admin'])
 def mark_pair():
     action = request.args['action']
-    flask_session['last_interaction'] = datetime.now()
     counter = flask_session.get('counter')
     session_id = flask_session['session_id']
     deduper = flask_session['deduper']
@@ -331,7 +382,6 @@ def mark_pair():
         db_session.commit()
         dedupeRaw.delay(session_id)
         resp = {'finished': True}
-        flask_session['dedupe_start'] = time.time()
     else:
         counter['unsure'] += 1
         flask_session['counter'] = counter

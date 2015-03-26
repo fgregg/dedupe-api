@@ -6,14 +6,10 @@
     {{ dedupe_steps( dedupe_session ) }}
     <h3>3. Train</h3>
     </div>
-    {% if not errors %}
-        {% if dedupe_session.processing %}
-        <div class="col-md-12">
-            <h3>We're still working on finishing up processing your upload</h3>
-            <p>This should be done in a couple minutes... <span id="spinner"></span></p>
-        </div>
-        {% else %}
-        <div class='col-md-8'>
+    <div class='col-md-8'>
+        <form action="{{url_for('trainer.training_run')}}" method="post">
+            <input type="hidden" name="training_pair" value="{{training_ids}}" />
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses to proceed.</p>
             <table id='labeler' class='table table-bordered'>
                 <thead>
@@ -24,63 +20,75 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% for row in training_pair %}
+                        <tr>
+                            <td>{{row.field}}</td>
+                            <td>{{row.left}}</td>
+                            <td>{{row.right}}</td>
+                        </tr>
+                    {% endfor%}
                 </tbody>
             </table>
 
             <h4>Do these two records refer to the same thing?</h4>
             <p class='pull-left'>
-                <button class="btn btn-success" id="yes">
-                    <i class='fa fa-check'></i>
-                    Yes
-                </button>
-                <button class="btn btn-primary" id="no">
-                    <i class='fa fa-remove'></i>
-                    No
-                </button>
-                <button class="btn btn-default" id="unsure">
-                    Unsure
-                </button>
+                <input class="btn btn-success"
+                       id="id_yes"
+                       name="decision"
+                       type="submit"
+                       value="&#xf00c; Yes" />
+
+                <input class="btn btn-primary"
+                       id="id_no"
+                       name="decision"
+                       type="submit"
+                       value="&#xf00d; No" />
+
+                <input class="btn btn-default"
+                       id="id_unsure"
+                       name="decision"
+                       type="submit"
+                       value="Unsure" />
                 &nbsp;&nbsp;&nbsp;
                 <div id="show-next-step" style='display: none;'>
                     <div class='clearfix'></div>
                     <br />
                     <p>You've provided enough training to proceed to the next step.</p>
-                    <button class="btn btn-info" id="finish">
-                        Next &raquo;
-                    </button>
+                    <input class="btn btn-info"
+                           id="next"
+                           name="decision"
+                           type="submit"
+                           value="Next &raquo;" />
                 </div>
             </p>
+        </form>
+    </div>
+    <div class='col-md-4'>
+        <table id='your-training' class='table table-bordered' data-content="Try to label at least 10 'yes' and 10 'no' examples." rel="popover" data-placement="top" data-trigger="hover">
+            <tbody>
+                <tr>
+                    <td><i class='fa fa-check'></i> Yes</td>
+                    <td class='warning' id='num-yes'>
+                        <span></span> / 10
+                    </td>
+                </tr>
+                <tr>
+                    <td><i class='fa fa-times'></i> No</td>
+                    <td class='warning' id='num-no'>
+                        <span></span> / 10
+                    </td>
+                </tr>
+                <tr>
+                    <td>Unsure</td>
+                    <td id='num-unsure'><span>0</span></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class='alert alert-info'>
+            <p><i class='fa fa-info-circle'></i> By providing examples of what records are the same or not, dedupe will learn the best way to deduplicate your data. The more training you provide, the better the results will be.</p>
+            <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
         </div>
-        <div class='col-md-4'>
-            <table id='your-training' class='table table-bordered' data-content="Try to label at least 10 'yes' and 10 'no' examples." rel="popover" data-placement="top" data-trigger="hover">
-                <tbody>
-                    <tr>
-                        <td><i class='fa fa-check'></i> Yes</td>
-                        <td class='warning' id='num-yes'>
-                            <span></span> / 10
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><i class='fa fa-times'></i> No</td>
-                        <td class='warning' id='num-no'>
-                            <span></span> / 10
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Unsure</td>
-                        <td id='num-unsure'><span>0</span></td>
-                    </tr>
-                </tbody>
-            </table>
-            <div class='alert alert-info'>
-                <p><i class='fa fa-info-circle'></i> By providing examples of what records are the same or not, dedupe will learn the best way to deduplicate your data. The more training you provide, the better the results will be.</p>
-                <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
-            </div>
-        </div>
-    {% endif %}
-    {% else %}
-        {% include "partials/error.html" %}
-    {% endif %}
+    </div>
 
     <div class='clearfix'></div>
 
@@ -105,30 +113,6 @@
 
 {% endblock %}
 {% block extra_javascript %}
-<script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
-{% if not errors %}
-{% if dedupe_session.processing %}
-  <script type="text/javascript">
-      function poll_worker(){
-          $.ajax({
-              url: '/session-list/?session_id={{dedupe_session.id}}',
-              success: function(data){
-                  if(!data.objects.all_sessions[0].processing){
-                      window.location.reload()
-                  } else {
-                      setTimeout(poll_worker, 3000);
-                  }
-              },
-              dataType: 'json',
-          })
-      }
-      $('#spinner').spin({'top': 50});
-      $(document).ready(function(){
-          poll_worker();
-      })
-    </script>
-{% else %}
     <script type="text/javascript">
 
         $('#your-training').popover();
@@ -192,30 +176,28 @@
             $("#num-unsure span").html(counter.unsure);
         }
 
-        $('.btn').on('click', function(e){
-            e.preventDefault();
-            $('#labeler').spin({'top': 50});
-            var action = $(this).attr('id').split('-')[0];
-            $.when(mark_training_pair(action)).then(
-                function(data){
-                    $("#labeler tbody").html('');
-                    if (action !== 'finish'){
-                        update_your_training(data.counter);
-                        render_training_pair();
-                    } else {
-                        window.location = "{{ url_for('admin.index') }}";
-                    }
-                }
-            )
-        });
+        // $('.btn').on('click', function(e){
+        //     e.preventDefault();
+        //     $('#labeler').spin({'top': 50});
+        //     var action = $(this).attr('id').split('-')[0];
+        //     $.when(mark_training_pair(action)).then(
+        //         function(data){
+        //             $("#labeler tbody").html('');
+        //             if (action !== 'finish'){
+        //                 update_your_training(data.counter);
+        //                 render_training_pair();
+        //             } else {
+        //                 window.location = "{{ url_for('admin.index') }}";
+        //             }
+        //         }
+        //     )
+        // });
 
         $('#labeler').spin({'top': 50});
-        render_training_pair();
+        // render_training_pair();
 
-        var init_counter = {{session.counter|tojson|safe}}
+        var init_counter = {{counter|tojson|safe}}
         update_your_training(init_counter);
 
     </script>
-{% endif %}
-{% endif %}
 {% endblock %}
