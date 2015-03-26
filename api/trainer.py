@@ -289,6 +289,13 @@ def training_run():
             'no': 0 ,
             'unsure': 0,
         }
+    error = db_session.query(WorkTable)\
+            .filter(WorkTable.session_id == dedupe_session.id)\
+            .filter(WorkTable.cleared == False)\
+            .first()
+    if error:
+        flash(error.return_value, 'danger')
+        abort(500)
     return render_template('dedupe_session/training_run.html', 
                             dedupe_session=dedupe_session,
                             counter=counter,
