@@ -1,6 +1,7 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
     Column, Table, Float, DateTime, Text, BigInteger, text, func
 from sqlalchemy.orm import relationship, backref, synonym
+from sqlalchemy.dialects.postgresql import JSON
 from api.database import Base, app_session as session
 from flask_bcrypt import Bcrypt
 from uuid import uuid4
@@ -44,6 +45,20 @@ def block_map_table(name, metadata, pk_type=Integer):
 
 def get_uuid():
     return str(uuid4())
+
+class TrainingData(Base):
+    __tablename__ = "dedupe_training_data"
+    id = Column(Integer, primary_key=True)
+    date_added = Column(DateTime(timezone=True),
+                server_default=text('CURRENT_TIMESTAMP'))
+    trainer = Column(String)
+    pair_type = Column(String)
+    left_record = Column(JSON)
+    right_record = Column(JSON)
+    session_id = Column(String(36))
+    
+    def __repr__(self): # pragma: no cover
+        return '<TrainingData %r >' % (self.name)
 
 class DedupeSession(Base):
     __tablename__ = 'dedupe_session'

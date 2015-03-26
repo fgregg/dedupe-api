@@ -9,8 +9,8 @@ from api.models import DedupeSession, User
 from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
-from api.utils.helpers import preProcess, getMatches, updateTraining
-from api.utils.db_functions import addToEntityMap
+from api.utils.helpers import preProcess, getMatches
+from api.utils.db_functions import addToEntityMap, updateTraining
 from api.utils.delayed_tasks import populateHumanReview
 from api.track_usage import tracker
 import dedupe

@@ -4,6 +4,7 @@ from sqlalchemy.orm import create_session, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
 import uuid
+from dedupe.serializer import _from_json, _to_json
 
 from api.app_config import DEFAULT_USER
 
@@ -34,7 +35,9 @@ def init_engine(uri):
     global engine
     engine = create_engine(uri, 
                            convert_unicode=True, 
-                           server_side_cursors=True)
+                           server_side_cursors=True,
+                           json_serializer=_to_json,
+                           json_deserializer=_from_json)
     return engine
 
 def init_db(sess=None, eng=None):

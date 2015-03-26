@@ -5,7 +5,8 @@ from flask import Flask, make_response, request, Blueprint, \
 from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
-from api.utils.helpers import checkinSessions, getCluster, updateTraining
+from api.utils.helpers import checkinSessions, getCluster
+from api.utils.db_functions import updateTraining
 from api.utils.delayed_tasks import bulkMarkClusters, bulkMarkCanonClusters, \
     dedupeCanon, getMatchingReady
 from api.app_config import TIME_ZONE
