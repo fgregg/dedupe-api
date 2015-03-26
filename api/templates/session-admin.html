@@ -142,7 +142,15 @@
 
         <div class='well'>
             <h4 id='download'>Download</h4>
-            <p><a class='btn btn-success btn-sm' href="{{url_for('admin.entity_map_dump', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> All entities (CSV)</a></p>
+            <p>
+                <a class='btn btn-success btn-sm' href="{{url_for('admin.entity_map_dump', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> 
+                    {% if status_info.step == 6 %}
+                        All {{ dedupe_session.entity_count | format_number }} entities (CSV)
+                    {% else %}
+                        {{ dedupe_session.entity_count | format_number }} entities found so far (CSV)
+                    {% endif %}
+                </a>
+            </p>
             {% if dedupe_session.field_defs %}
                 <p><a class='btn btn-info btn-sm' href="{{url_for('admin.field_definitions', session_id=dedupe_session.id)}}"><i class='fa fa-download'></i> Data model (JSON)</a></p>
             {% endif %}
