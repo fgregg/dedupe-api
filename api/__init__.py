@@ -72,6 +72,5 @@ def create_app(config='api.app_config'):
         else:
             return '0'
 
-
     return app
 
