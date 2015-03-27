@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Error{% endblock %}
+{% block content %}
+<div class='col-md-8'>
+  <h1>Import Error!</h1>
+  <p>There was an error importing your data. If this issue persists, <a href='mailto:info+error@datamade.us'>contact DataMade</a>.</p>
+
+  <p>This likely happened because the CSV or spreadsheet you uploaded was mal-formed or had some encoding issues. <a href="{{ url_for('trainer.upload_formats') }}" target="_blank">Learn more about upload formats</a>.</p>
+
+    <p><a href="{{ url_for('trainer.upload_formats') }}" target="_blank">
+        <img src="/static/images/spreadsheet_format.jpg" id="format-example" class='img-responsive img-thumbnail'>
+    </a></p>
+
+  <p><br /><a class='btn btn-info' href="#" onclick="history.back();">&laquo; go back and try again</a></p>
+</div>
+{% endblock %}

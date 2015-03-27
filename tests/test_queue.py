@@ -76,4 +76,4 @@ class QueueTest(unittest.TestCase):
         work = self.engine.execute(
                 text('SELECT * FROM work_table where key = :key'), 
                 key=key).first()
-        assert work.return_value == 'We encountered a problem while importing your data.'
+        assert work.return_value == 'Test Exception'

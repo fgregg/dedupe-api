@@ -79,11 +79,14 @@ def processMessage(db_conn=DB_CONN):
         try:
             upd_args['return_value'] = func(*args, **kwargs)
         except Exception as e:
+            function_name = func.__name__
             if client: # pragma: no cover
                 client.captureException()
             upd_args['tb'] = traceback.format_exc()
-            upd_args['return_value'] = "We encountered a problem while importing your data."
-            upd_args['cleared'] = False
+            upd_args['return_value'] = str(e)
+
+            if function_name in ['initializeModel', 'initializeSession']:
+                upd_args['cleared'] = False
             print(upd_args['tb'])
         upd = ''' 
                 UPDATE work_table SET

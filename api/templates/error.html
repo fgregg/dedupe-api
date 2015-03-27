@@ -1,9 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Error{% endblock %}
 {% block content %}
+<div class='col-md-8'>
   <h1>Error</h1>
-  <p>Oops! There was an error.</p>
-  <p>If this issue persists, <a href='mailto:info+error@datamade.us'>contact DataMade</a>.</p>
+  <p>Oops! There was an error. If this issue persists, <a href='mailto:info+error@datamade.us'>contact DataMade</a>.</p>
 
-  <p><br /><a href="#" onclick="history.back();">&laquo; go back and try again</a></p>
+  <div class="alert alert-danger" role="alert">
+      Reason: {{ error|safe }}
+  </div>
+
+  <p><br /><a class='btn btn-info' href="#" onclick="history.back();">&laquo; go back and try again</a></p>
+</div>
 {% endblock %}

@@ -11,6 +11,7 @@ from api.review import review
 from api.redis_session import RedisSessionInterface
 from api.database import init_engine
 from api.track_usage import tracker, UserSQLStorage
+from api.exceptions import ImportFailed
 
 try: # pragma: no cover
     from raven.contrib.flask import Sentry
@@ -46,9 +47,13 @@ def create_app(config='api.app_config'):
     def page_not_found(e):
         return render_template('404.html'), 404
 
-    @app.errorhandler(500)
+    @app.errorhandler(ImportFailed)
     def page_not_found(e):
-        return render_template('error.html'), 500
+        return render_template('import_error.html', error=e), 400
+
+    @app.errorhandler(Exception)
+    def page_not_found(e):
+        return render_template('error.html', error=e), 500
 
     @app.template_filter('format_number')
     def format_number(s): # pragma: no cover
