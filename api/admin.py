@@ -91,7 +91,7 @@ def add_user():
         user.groups = form.groups.data
         db_session.add(user)
         db_session.commit()
-        flash('User %s added' % user.name)
+        flash('User %s added' % user.name, 'success')
         return redirect(url_for('admin.user_list'))
     return render_template('add_user.html', form=form)
 
@@ -218,6 +218,7 @@ def delete_data_model():
 
     session_id = flask_session['session_id']
     dedupe_session = db_session.query(DedupeSession).get(session_id)
+    session_name = dedupe_session.name
     dedupe_session.field_defs = None
     dedupe_session.settings_file = None
     dedupe_session.gaz_settings_file = None
@@ -243,6 +244,7 @@ def delete_data_model():
     }
     status_code = 200
 
+    flash("Data model for '{0}' has been deleted".format(session_name), 'success')
     resp = make_response(json.dumps(resp), status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -254,6 +256,7 @@ def delete_session():
 
     session_id = flask_session['session_id']
     data = db_session.query(DedupeSession).get(session_id)
+    session_name = data.name
     db_session.delete(data)
     db_session.commit()
     tables = [
@@ -278,6 +281,8 @@ def delete_session():
         'match_blocks_{0}',
     ]
     cleanupTables.delay(session_id, tables=tables)
+
+    flash("Deleted '{0}'".format(session_name), 'success')
     resp = make_response(json.dumps({'session_id': session_id, 'status': 'ok'}))
     resp.headers['Content-Type'] = 'application/json'
     return resp
@@ -411,18 +416,6 @@ def rewind():
         dedupe_session.status = 'canon clustered'
         reDedupeCanon.delay(session_id, threshold=float(threshold))
     db_session.add(dedupe_session)
-    db_session.commit()
-    response = make_response(json.dumps({'status': 'ok'}))
-    response.headers['Content-Type'] = 'application/json'
-    return response
-
-@admin.route('/clear-error/')
-@login_required
-def clear_error():
-    work_id = request.args['work_id']
-    work = db_session.query(WorkTable).get(work_id)
-    work.cleared = True
-    db_session.add(work)
     db_session.commit()
     response = make_response(json.dumps({'status': 'ok'}))
     response.headers['Content-Type'] = 'application/json'
@@ -583,7 +576,7 @@ def edit_model():
                     field_defs = :field_defs
                 WHERE id = :id
             '''), field_defs=json.dumps(field_defs), id=dedupe_session.id)
-        flash('Model updated!')
+        flash('Model updated!', 'success')
         dedupe_session.processing = True
         db_session.add(dedupe_session)
         db_session.commit()

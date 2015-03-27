@@ -3,16 +3,15 @@
 {% block title %}{{dedupe_session.name}} -  Train{% endblock %}
 {% block content %}
     <div class="col-md-12">
-    {{ dedupe_steps( dedupe_session ) }}
-    <h3>3. Train</h3>
+        {{ dedupe_steps( dedupe_session ) }}
+        <h3>3. Train</h3>
     </div>
-    {% if not errors %}
-        {% if dedupe_session.processing %}
+    {% if dedupe_session.processing %}
         <div class="col-md-12">
             <h3>We're still working on finishing up processing your upload</h3>
             <p>This should be done in a couple minutes... <span id="spinner"></span></p>
         </div>
-        {% else %}
+    {% else %}
         <div class='col-md-8'>
             <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses to proceed.</p>
             <table id='labeler' class='table table-bordered'>
@@ -78,9 +77,6 @@
             </div>
         </div>
     {% endif %}
-    {% else %}
-        {% include "partials/error.html" %}
-    {% endif %}
 
     <div class='clearfix'></div>
 
@@ -107,7 +103,6 @@
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/jquery.spin.js') }}"></script>
-{% if not errors %}
 {% if dedupe_session.processing %}
   <script type="text/javascript">
       function poll_worker(){
@@ -216,6 +211,5 @@
         update_your_training(init_counter);
 
     </script>
-{% endif %}
 {% endif %}
 {% endblock %}

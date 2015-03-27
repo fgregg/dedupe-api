@@ -211,7 +211,7 @@ def get_unmatched():
             response_message = 'filling human review'
         else :
             dedupe_session.status = 'canonical'
-            flash("Hooray! '%s' is now canonical!" % dedupe_session.name)
+            flash("Hooray! '%s' is now canonical!" % dedupe_session.name, 'success')
             response_message = 'canonical'
     else :
         response_message = 'reviewing'

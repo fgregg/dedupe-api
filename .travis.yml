@@ -14,7 +14,7 @@ install:
 after_success: coveralls
 sudo: false
 addons:
-  postgresql: "9.3"
+  postgresql: "9.4"
 services:
   - redis-server
 install: "pip install -r requirements.txt"

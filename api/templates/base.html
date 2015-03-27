@@ -54,21 +54,17 @@
         </div><!--/.nav-collapse -->
       </div>
       <div class="container" id="main-container">
-          {% with messages = get_flashed_messages() %}
-              {% if messages %}
-                  <div class="row">
-                  {% for message in messages %}
-                      <div class="alert alert-danger alert-dismissible" role="alert">
-                          <button type="button" class="close" data-dismiss="alert">
-                              <span aria-hidden="true">&times;</span>
-                              <span class="sr-only">Close</span>
-                          </button>
-                          {{ message|safe }}
-                      </div>
-                  {% endfor %}
+          {% for category, message in get_flashed_messages(with_categories=True) %}
+              <div class="row">
+                  <div class="alert alert-{{ category }} alert-dismissible" role="alert">
+                      <button type="button" class="close" data-dismiss="alert">
+                          <span aria-hidden="true">&times;</span>
+                          <span class="sr-only">Close</span>
+                      </button>
+                      {{ message|safe }}
                   </div>
-              {% endif %}
-          {% endwith %}
+              </div>
+          {% endfor %}
         <div class="row">
             {% block content %}{% endblock %}
         </div>
@@ -88,19 +84,5 @@
 
     <script src="{{ url_for('static', filename='js/moment.min.js') }}"></script>
     {% block extra_javascript %}{% endblock %}
-    {% if errors %}
-        <script type="text/javascript">
-            $(document).ready(function(){
-                {% for error in errors %}
-                    $('#{{error.key}}').on('closed.bs.alert', function(e){
-                        var params = {'work_id': "{{error.key}}"}
-                        $.getJSON("{{ url_for('admin.clear_error') }}", params, function(resp){
-                            window.location.reload();
-                        })
-                    })
-                {% endfor %}
-            })
-        </script>
-    {% endif %}
   </body>
 </html>
