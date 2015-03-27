@@ -15,6 +15,7 @@ Flask-Track-Usage==1.0.1
 
 dedupe
 dedupe-variable-address
+dedupe-variable-name
 nose
 coverage
 coveralls

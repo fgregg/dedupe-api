@@ -1,4 +1,4 @@
-import numpy
+import numpy as np
 from collections import OrderedDict
 from .helpers import sklearner
 
@@ -10,25 +10,38 @@ class ReviewMachine(object):
                               ('label', 'f4', 1),
                               ('score', 'f4', 1),
                               ('viewed', 'i4', 1)]
-        self.examples = numpy.fromiter(self.row_generator(clusters), 
+        self.examples = np.fromiter(self.row_generator(clusters), 
                                        dtype=self.example_dtype)
-        self.weight = numpy.array([0] * n_attributes), 0
-        self.labels = OrderedDict({self.examples['id'][0] : 1,
-                                   self.examples['id'][1] : 0})
+        self.weight = np.ones(n_attributes), 0
+
+        seed_positive, seed_negative = np.random.choice(self.examples['id'],
+                                                        2)
+        self.labels = OrderedDict(((seed_positive, 1),
+                                   (seed_negative, 0)))
+
+        
        
     def scoreCluster(self, scores):
-        scores = numpy.array(scores)**2
-        scores = 1 - scores
+        #http://stats.stackexchange.com/questions/20108/link-between-variance-and-pairwise-distances-within-a-variable
+
         N = len(scores)
+
+        scores = np.array(scores)
+        scores = 1 - scores
         scores *= (N - 1)
-        score = numpy.sum(scores) / float(2 * N)
-        score = (1 - numpy.sqrt(score))
+
+        score = (np.sum(scores)**2)/(2*N**2)
+        score = (1 - np.sqrt(score))
         return score
 
     def row_generator(self, clusters):
         for row in clusters:
             cluster_score = self.scoreCluster(row[1])
-            yield (row[0], (len(row[1]), cluster_score, max(row[1]), min(row[1])), numpy.nan, numpy.nan, 0,)
+            yield (row[0], 
+                   (len(row[1]), cluster_score, max(row[1]), min(row[1])), 
+                   np.nan, 
+                   np.nan, 
+                   0,)
 
     def label(self, entity_id, cluster_label):
 
@@ -39,23 +52,23 @@ class ReviewMachine(object):
 
         ids, labels = list(zip(*list(self.labels.items())[-60:]))
     
-        attributes = self.examples['attributes'][numpy.in1d(self.examples['id'],
+        attributes = self.examples['attributes'][np.in1d(self.examples['id'],
                                                             ids)]
 
         if 1 in labels and 0 in labels :
-            self.weight = sklearner(labels, attributes, .1)
+            self.weight = sklearner(labels, attributes, 1)
         self._score()
         return self.weight
     
     def _score(self):
         weights, bias = self.weight
-        self.examples['score'] = numpy.dot(self.examples['attributes'], weights)
+        self.examples['score'] = np.dot(self.examples['attributes'], weights)
 
     def predict(self, example):
         if self.weight is not None:
             weights, bias = self.weight
-            score = numpy.dot(example, weights)
-            score = numpy.exp(score + bias) / ( 1 + numpy.exp(score + bias) )
+            score = np.dot(example, weights)
+            score = np.exp(score + bias) / ( 1 + np.exp(score + bias) )
             return score
         return 0.0
 
@@ -63,7 +76,7 @@ class ReviewMachine(object):
         unlabeled_idx = self.examples['viewed'] == 0
         try:
             cluster_id = self.examples['id'][unlabeled_idx]\
-                    [numpy.argmin(self.examples['score'][unlabeled_idx])]
+                    [np.argmin(self.examples['score'][unlabeled_idx])]
             self.examples['viewed'][self.examples['id'] == cluster_id] = 1
             return cluster_id
         except ValueError:
@@ -71,17 +84,17 @@ class ReviewMachine(object):
 
     def predict_remainder(self, threshold=0.5):
         weights, bias = self.weight
-        unlabeled = numpy.isnan(self.examples['label'])
-        score = numpy.dot(self.examples['attributes'][unlabeled], weights)
-        score = 1 / ( 1 + numpy.exp(-(score + bias)))
+        unlabeled = np.isnan(self.examples['label'])
+        score = np.dot(self.examples['attributes'][unlabeled], weights)
+        score = 1 / ( 1 + np.exp(-(score + bias)))
         accepted = score[score >= threshold]
         rejected = score[score < threshold]
         if len(accepted):
-            false_pos = numpy.mean(1 - accepted) * len(accepted)
+            false_pos = np.mean(1 - accepted) * len(accepted)
         else:
             false_pos = 0
         if len(rejected):
-            false_neg = numpy.mean(rejected) * len(rejected)
+            false_neg = np.mean(rejected) * len(rejected)
         else:
             false_neg = 0
         return false_pos, false_neg
