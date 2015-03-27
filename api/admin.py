@@ -8,6 +8,7 @@ from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, \
     reDedupeCanon, trainDedupe
+from api.utils.db_functions import readTraining, saveTraining
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
 from wtforms.ext.sqlalchemy.fields import QuerySelectMultipleField
@@ -20,6 +21,7 @@ from operator import itemgetter
 import json
 from pickle import loads
 from dedupe.convenience import canonicalize
+from dedupe.serializer import _to_json, _from_json
 from csvkit.unicsv import UnicodeCSVReader
 import dedupe
 from io import StringIO, BytesIO
@@ -142,8 +144,8 @@ def session_admin():
             except KeyError: # pragma: no cover
                 session_info[name] = {'learned_weight': field.weight}
         predicates = dd.predicates
-    if dedupe_session.training_data:
-        td = json.loads(dedupe_session.training_data.decode('utf-8'))
+    td = readTraining(session_id)
+    if td:
         training_data = {'distinct': [], 'match': []}
         for left, right in td['distinct']:
             keys = left.keys()
@@ -180,12 +182,11 @@ def session_admin():
 def training_data():
 
     session_id = flask_session['session_id']
-    data = db_session.query(DedupeSession).get(session_id)
-    training_data = data.training_data
-
-    resp = make_response(training_data, 200)
+    training_data = readTraining(session_id)
+    
+    resp = make_response(json.dumps(training_data, default=_to_json), 200)
     resp.headers['Content-Type'] = 'text/plain'
-    resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % data.id
+    resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % session_id
     return resp
 
 @admin.route('/settings-file/')
@@ -426,18 +427,15 @@ def rewind():
 @check_sessions()
 def add_bulk_training():
     session_id = flask_session['session_id']
-    dedupe_session = db_session.query(DedupeSession).get(session_id)
     replace = request.form.get('replace', False)
     inp = request.files['input_file'].read().decode('utf-8')
-    td = json.loads(inp)
-    if dedupe_session.training_data:
-        if not replace: # pragma: no cover
-            old_training = json.loads(dedupe_session.training_data.decode('utf-8'))
-            td['distinct'].extend([pair for pair in old_training['distinct']])
-            td['match'].extend([pair for pair in old_training['match']])
-    dedupe_session.training_data = bytes(json.dumps(td).encode('utf-8'))
-    db_session.add(dedupe_session)
-    db_session.commit()
+    td = json.loads(inp, object_hook=_from_json)
+    engine = db_session.bind
+    if replace: # pragma: no cover
+        delete = ''' DELETE FROM dedupe_training_data WHERE session_id = :session_id'''
+        with engine.begin() as conn:
+            conn.execute(text(delete), session_id=session_id)
+    saveTraining(session_id, td, current_user.name)
     r = {
         'status': 'ok',
         'message': 'Added {0} distinct and {1} matches'\

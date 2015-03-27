@@ -261,8 +261,14 @@ def training_run():
             sample = pickle.loads(dedupe_session.sample)
             deduper = dedupe.Dedupe(field_defs, data_sample=sample)
             flask_session['deduper'] = deduper
+        else:
+            flash('Session not fully initialized', 'danger')
+            return redirect(url_for('admin.index'))
     
     training_ids = request.args.get('training_ids')
+
+    previous_ids, next_ids = getPrevNext(session_id, training_ids)
+    
     deduper = flask_session['deduper']
     
     if request.method == 'POST':
@@ -292,7 +298,7 @@ def training_run():
         training_data = readTraining(session_id)
         deduper.markPairs(training_data)
     
-    training_pair, training_ids = getTrainingPair(deduper, training_ids=training_ids)
+    training_pair, training_ids = getTrainingPair(session_id, deduper, training_ids=training_ids)
     flask_session['current_pair'] = training_pair
     
     formatted = []
@@ -324,7 +330,69 @@ def training_run():
                             dedupe_session=dedupe_session,
                             counter=counter,
                             training_pair=formatted,
-                            training_ids=training_ids)
+                            training_ids=training_ids,
+                            previous_ids=previous_ids,
+                            next_ids=next_ids)
+
+def getPrevNext(session_id, training_ids):
+    engine = db_session.bind
+    previous_ids = None
+    if training_ids is None:
+        next_ids = None
+        prev = ''' 
+            SELECT 
+              left_record->'record_id' AS left_record_id,
+              right_record->'record_id' AS right_record_id
+            FROM dedupe_training_data
+            WHERE session_id = :session_id
+            ORDER BY date_added DESC
+            LIMIT 1
+        '''
+        prev = engine.execute(text(prev), session_id=session_id).first()
+        if prev is not None:
+            previous_ids = ','.join([str(prev.left_record_id), str(prev.right_record_id)])
+        return previous_ids, next_ids
+    else:
+        left_id, right_id = training_ids.split(',')
+        records = '''
+          (SELECT 
+             d.left_record#>>'{record_id}' AS left_record_id, 
+             d.right_record#>>'{record_id}' AS right_record_id,
+             d.date_added
+           FROM dedupe_training_data AS d, (
+             SELECT date_added 
+             FROM dedupe_training_data 
+             WHERE left_record->>'record_id' = :left_id 
+               AND right_record->>'record_id' = :right_id
+            ) AS s 
+            WHERE d.date_added >= s.date_added 
+              AND d.session_id = :session_id
+            ORDER BY date_added ASC limit 2
+          ) UNION (
+            SELECT 
+              d.left_record#>>'{record_id}' AS left_record_id, 
+              d.right_record#>>'{record_id}' AS right_record_id,
+              d.date_added
+            FROM dedupe_training_data AS d, (
+              SELECT date_added 
+              FROM dedupe_training_data 
+              WHERE left_record->>'record_id' = :left_id 
+                AND right_record->>'record_id' = :right_id
+            ) AS s 
+            WHERE d.date_added < s.date_added 
+              AND d.session_id = :session_id
+            ORDER BY date_added DESC LIMIT 1) 
+          ORDER BY date_added
+        '''
+        records = list(engine.execute(text(records), 
+                                 session_id=session_id,
+                                 left_id=left_id, 
+                                 right_id=right_id))
+        first = records[0]
+        last = records[-1]
+        previous_ids = ','.join([str(first.left_record_id), str(first.right_record_id)])
+        next_ids = ','.join([str(last.left_record_id), str(last.right_record_id)])
+        return previous_ids, next_ids
 
 def getTrainingCounts(session_id):
     counts = ''' 
@@ -355,7 +423,7 @@ def getTrainingCounts(session_id):
 
     return counts.match_pairs, counts.distinct_pairs, counts.unsure_pairs
 
-def getTrainingPair(deduper, training_ids=None):
+def getTrainingPair(session_id, deduper, training_ids=None):
     if training_ids:
         left_id, right_id = training_ids.split(',')
         sel = ''' 

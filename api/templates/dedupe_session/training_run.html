@@ -98,6 +98,21 @@
                 </tr>
             </tbody>
         </table>
+        {% if ( counter.yes + counter.no + counter.unsure ) > 0 %}
+            <a class="btn btn-info"
+                   role="button"
+                   href="{{ url_for('trainer.training_run', training_ids=previous_ids)}}">
+              <i class="fa fa-step-backward"></i> Go Back
+            </a>
+            {% if next_ids %}
+                <a class="btn btn-info"
+                       role="button"
+                       href="{{ url_for('trainer.training_run', training_ids=next_ids)}}">
+                  Go Forward <i class="fa fa-step-forward"></i>
+                </a>
+
+            {% endif %}
+        {% endif %}
         <div class='alert alert-info'>
             <p><i class='fa fa-info-circle'></i> By providing examples of what records are the same or not, dedupe will learn the best way to deduplicate your data. The more training you provide, the better the results will be.</p>
             <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
@@ -130,88 +145,6 @@
     <script type="text/javascript">
 
         $('#your-training').popover();
-
-        var training_threshold = 10;
-        var modal_shown = false;
-
-        function render_training_pair(){
-            $.when( $.getJSON('{{ url_for("trainer.get_pair") }}') ).then(
-                function(data, textStatus, jqXHR ){
-
-                    $('#labeler').spin(false);
-                    $.each(data, function(i, json){
-
-                        var diff_class = 'danger';
-                        if (json.left == json.right && String(json.left).trim() != "")
-                            diff_class = 'success';
-                        var template = "\
-                        <tr>\
-                            <td class='field-name'>" + json.field + "</td>\
-                            <td class='" + diff_class + "'>" + json.left + "</td>\
-                            <td class='" + diff_class + "'>" + json.right + "</td>\
-                        </tr>"
-                        $("#labeler tbody").append(template);
-                    })
-                }
-            )
-        }
-
-        function mark_training_pair(action){
-            return $.ajax({
-                url: '{{ url_for("trainer.mark_pair") }}',
-                dataType: 'json',
-                data: {'action': action}
-            })
-        }
-
-        function update_your_training(counter){
-
-            var yes_class = 'warning';
-            if (counter.yes >= training_threshold) yes_class = 'success';
-
-            var no_class = 'warning';
-            if (counter.no >= training_threshold) no_class = 'success';
-
-            if (counter.no >= (training_threshold * 2) && counter.yes >= (training_threshold * 2)) {
-                if (!modal_shown) {
-                    $('#finished-modal').modal();
-                    modal_shown = true;
-                }
-            }
-
-            if (counter.no >= training_threshold && counter.yes >= training_threshold) {
-                $("#show-next-step").fadeIn();
-            }
-
-            $("#num-yes span").html(counter.yes);
-            $("#num-yes").attr('class', yes_class);
-            $("#num-no span").html(counter.no);
-            $("#num-no").attr('class', no_class);
-            $("#num-unsure span").html(counter.unsure);
-        }
-
-        // $('.btn').on('click', function(e){
-        //     e.preventDefault();
-        //     $('#labeler').spin({'top': 50});
-        //     var action = $(this).attr('id').split('-')[0];
-        //     $.when(mark_training_pair(action)).then(
-        //         function(data){
-        //             $("#labeler tbody").html('');
-        //             if (action !== 'finish'){
-        //                 update_your_training(data.counter);
-        //                 render_training_pair();
-        //             } else {
-        //                 window.location = "{{ url_for('admin.index') }}";
-        //             }
-        //         }
-        //     )
-        // });
-
-        $('#labeler').spin({'top': 50});
-        // render_training_pair();
-
-        var init_counter = {{counter|tojson|safe}}
-        update_your_training(init_counter);
 
     </script>
 {% endblock %}

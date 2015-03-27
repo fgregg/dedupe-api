@@ -1,7 +1,7 @@
 from sqlalchemy import String, Integer, LargeBinary, ForeignKey, Boolean, \
     Column, Table, Float, DateTime, Text, BigInteger, text, func
 from sqlalchemy.orm import relationship, backref, synonym
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from api.database import Base, app_session as session
 from flask_bcrypt import Bcrypt
 from uuid import uuid4
@@ -53,8 +53,8 @@ class TrainingData(Base):
                 server_default=text('CURRENT_TIMESTAMP'))
     trainer = Column(String)
     pair_type = Column(String)
-    left_record = Column(JSON)
-    right_record = Column(JSON)
+    left_record = Column(JSONB)
+    right_record = Column(JSONB)
     session_id = Column(String(36), index=True)
     
     def __repr__(self): # pragma: no cover

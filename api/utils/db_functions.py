@@ -63,10 +63,12 @@ def updateTraining(session_id,
     if all_ids:
         sel_clauses = set()
         for field in raw_fields:
-            sel_clauses.add('"{0}"'.format(field))
+            # Need to figure out set and other array fields
             if fields_by_type.get(field):
                 if 'Price' in fields_by_type[field]:
                     sel_clauses.add('"{0}"::double precision'.format(field))
+            else:
+                sel_clauses.add('"{0}"'.format(field))
         for field, types in fields_by_type.items():
             if 'Price' in types:
                 sel_clauses.add('{0}::double precision'.format(field))
@@ -94,21 +96,30 @@ def updateTraining(session_id,
 def saveTraining(session_id, training_data, trainer):
     engine = worker_session.bind
     ins = ''' 
+        WITH upsert AS (
+          UPDATE dedupe_training_data SET
+            pair_type = :pair_type,
+            date_added = NOW()
+          WHERE session_id = :session_id
+            AND left_record = :left_record
+            AND right_record = :right_record
+          RETURNING *
+        )
         INSERT INTO dedupe_training_data (
           trainer, 
           left_record,
           right_record,
           pair_type, 
           session_id
-        ) VALUES (
-          :trainer,
-          :left_record,
-          :right_record,
-          :pair_type,
-          :session_id
-        )
+        ) SELECT 
+            :trainer,
+            :left_record,
+            :right_record,
+            :pair_type,
+            :session_id
+          WHERE NOT EXISTS (SELECT * FROM upsert)
     '''
-    rows = []
+    
     for pair_type, pairs in training_data.items():
         for pair in pairs:
             row = {
@@ -118,10 +129,9 @@ def saveTraining(session_id, training_data, trainer):
                 'pair_type': pair_type,
                 'session_id': session_id
             }
-            rows.append(row)
- 
-    with engine.begin() as conn:
-        conn.execute(text(ins), *rows)
+            row_ins = ins.format(**row)
+            with engine.begin() as conn:
+                conn.execute(text(row_ins), **row)
 
 def makeTrainingCombos(ids, training_records):
     combos = []
