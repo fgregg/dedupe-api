@@ -243,7 +243,9 @@ def processing():
             deduper = dedupe.Dedupe(field_defs, data_sample=sample)
             flask_session['deduper'] = deduper
             return redirect(url_for('trainer.training_run'))
-    return render_template('dedupe_session/processing.html',errors=errors)
+    return render_template('dedupe_session/processing.html',
+                           errors=errors,
+                           dedupe_session=dedupe_session)
     
 
 @trainer.route('/training-run/', methods=['GET', 'POST'])
