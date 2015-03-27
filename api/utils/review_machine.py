@@ -16,8 +16,8 @@ class ReviewMachine(object):
 
         seed_positive, seed_negative = np.random.choice(self.examples['id'],
                                                         2)
-        self.labels = OrderedDict((seed_positive, 1),
-                                  (seed_negative, 0))
+        self.labels = OrderedDict(((seed_positive, 1),
+                                   (seed_negative, 0)))
 
         
        
