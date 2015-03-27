@@ -1,6 +1,6 @@
 from flask import request, make_response, render_template, \
     session as flask_session, redirect, url_for, send_from_directory, jsonify,\
-    Blueprint, current_app, flash, abort
+    Blueprint, current_app, flash
 from flask_login import current_user
 from werkzeug import secure_filename
 import time
@@ -22,6 +22,7 @@ from api.utils.helpers import getDistinct, slugify, STATUS_LIST, tupleizeTrainin
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
+from api.exceptions import ImportFailed
 from sqlalchemy.exc import OperationalError, NoSuchTableError
 from sqlalchemy import Table, MetaData, text
 from io import StringIO, BytesIO
@@ -164,8 +165,7 @@ def select_fields():
             .filter(WorkTable.cleared == False)\
             .first()
     if error:
-        flash(error.return_value, 'danger')
-        abort(500)
+        raise ImportFailed(error.return_value)
     if request.method == 'POST':
         field_list = [r for r in request.form if r != 'csrf_token']
         flask_session['field_list'] = field_list
@@ -189,8 +189,7 @@ def select_field_types():
             .filter(WorkTable.cleared == False)\
             .first()
     if error:
-        flash(error.return_value, 'danger')
-        abort(500)
+        raise ImportFailed(error.return_value)
     field_list = flask_session['field_list']
     if request.method == 'POST':
         field_defs = []
