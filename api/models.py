@@ -55,7 +55,7 @@ class TrainingData(Base):
     pair_type = Column(String)
     left_record = Column(JSON)
     right_record = Column(JSON)
-    session_id = Column(String(36))
+    session_id = Column(String(36), index=True)
     
     def __repr__(self): # pragma: no cover
         return '<TrainingData %r >' % (self.name)

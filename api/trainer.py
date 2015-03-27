@@ -16,7 +16,8 @@ from dedupe.serializer import _to_json, dedupe_decoder, _from_json
 import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
-from api.utils.db_functions import writeRawTable, updateTraining, readTraining
+from api.utils.db_functions import writeRawTable, updateTraining, \
+    readTraining, saveTraining
 from api.utils.helpers import getDistinct, slugify, STATUS_LIST, tupleizeTraining
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
@@ -258,17 +259,45 @@ def training_run():
             sample = pickle.loads(dedupe_session.sample)
             deduper = dedupe.Dedupe(field_defs, data_sample=sample)
             flask_session['deduper'] = deduper
-    if request.method == 'POST':
-        print(request.form)
+    
     training_ids = request.args.get('training_ids')
     deduper = flask_session['deduper']
     
+    if request.method == 'POST':
+        record_ids = request.form['training_ids'].split(',')
+        decision = request.form['decision']
+        if decision == 'yes':
+            updateTraining(session_id, 
+                           match_ids=record_ids,
+                           trainer=current_user.name)
+        
+        elif decision == 'no':
+            updateTraining(session_id, 
+                           distinct_ids=record_ids,
+                           trainer=current_user.name)
+        elif decision == 'unsure':
+            training = {'unsure': [flask_session['current_pair']]}
+            saveTraining(session_id,
+                         training,
+                         trainer=current_user.name)
+        elif decision == 'finished':
+            dedupe_session.processing = True
+            db_session.add(dedupe_session)
+            db_session.commit()
+            dedupeRaw.delay(session_id)
+            return redirect(url_for('admin.index'))
+
+        training_data = readTraining(session_id)
+        deduper.markPairs(training_data)
+    
     training_pair, training_ids = getTrainingPair(deduper, training_ids=training_ids)
+    flask_session['current_pair'] = training_pair
     
     formatted = []
     left, right = training_pair
     fields = list(set([f[0] for f in deduper.data_model.field_comparators]))
     for field in fields:
+        # Opportunity to calculate string distance here.
         d = {
             'field': field,
             'left': left[field],
@@ -276,18 +305,11 @@ def training_run():
         }
         formatted.append(d)
     
-    training_data = readTraining(session_id)
-    if training_data:
-        counter = {
-                'yes': len(training_data['match']),
-                'no': len(training_data['distinct']),
-                'unsure': 0
-            }
-    else:
-        counter = {
-            'yes': 0,
-            'no': 0 ,
-            'unsure': 0,
+    yes, no, unsure = getTrainingCounts(session_id)
+    counter = {
+            'yes': yes,
+            'no': no,
+            'unsure': unsure
         }
     error = db_session.query(WorkTable)\
             .filter(WorkTable.session_id == dedupe_session.id)\
@@ -301,6 +323,35 @@ def training_run():
                             counter=counter,
                             training_pair=formatted,
                             training_ids=training_ids)
+
+def getTrainingCounts(session_id):
+    counts = ''' 
+        SELECT (
+          SELECT count(*)
+          FROM dedupe_training_data
+          WHERE session_id = :session_id
+            AND pair_type = :dist
+        ) AS distinct_pairs, (
+          SELECT count(*)
+          FROM dedupe_training_data
+          WHERE session_id = :session_id
+            AND pair_type = :match
+        ) AS match_pairs, (
+          SELECT count(*)
+          FROM dedupe_training_data
+          WHERE session_id = :session_id
+            AND pair_type = :unsure
+        ) AS unsure_pairs
+    '''
+    
+    engine = db_session.bind
+    counts = engine.execute(text(counts), 
+                            session_id=session_id, 
+                            dist='distinct', 
+                            match='match',
+                            unsure='unsure').first()
+
+    return counts.match_pairs, counts.distinct_pairs, counts.unsure_pairs
 
 def getTrainingPair(deduper, training_ids=None):
     if training_ids:

@@ -8,7 +8,7 @@
     </div>
     <div class='col-md-8'>
         <form action="{{url_for('trainer.training_run')}}" method="post">
-            <input type="hidden" name="training_pair" value="{{training_ids}}" />
+            <input type="hidden" name="training_ids" value="{{training_ids}}" />
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <p>Below are two records, <strong>Record A</strong> and <strong>Record B</strong>, that we think are the same. Mark them as <strong>yes</strong>, <strong>no</strong> or <strong>unsure</strong>. We'll need at least 10 yes and 10 no responses to proceed.</p>
             <table id='labeler' class='table table-bordered'>
@@ -21,10 +21,14 @@
                 </thead>
                 <tbody>
                     {% for row in training_pair %}
+                        {% set diff_class = 'success' %}
+                        {% if row.left != row.right %}
+                            {% set diff_class = 'danger' %}
+                        {% endif %}
                         <tr>
                             <td>{{row.field}}</td>
-                            <td>{{row.left}}</td>
-                            <td>{{row.right}}</td>
+                            <td class="{{ diff_class }}">{{row.left}}</td>
+                            <td class="{{ diff_class }}">{{row.right}}</td>
                         </tr>
                     {% endfor%}
                 </tbody>
@@ -32,34 +36,44 @@
 
             <h4>Do these two records refer to the same thing?</h4>
             <p class='pull-left'>
-                <input class="btn btn-success"
+                <button class="btn btn-success"
                        id="id_yes"
                        name="decision"
-                       type="submit"
-                       value="&#xf00c; Yes" />
+                       value="yes"
+                       type="submit">
+                  <i class="fa fa-check"></i> Yes
+                </button>
 
-                <input class="btn btn-primary"
+                <button class="btn btn-primary"
                        id="id_no"
                        name="decision"
                        type="submit"
-                       value="&#xf00d; No" />
+                       value="no">
+                  <i class="fa fa-remove"></i> No
+                </button>
 
-                <input class="btn btn-default"
+                <button class="btn btn-default"
                        id="id_unsure"
                        name="decision"
                        type="submit"
-                       value="Unsure" />
+                       value="unsure">
+                  Unsure
+                </button>
                 &nbsp;&nbsp;&nbsp;
-                <div id="show-next-step" style='display: none;'>
+                {% if counter.yes >= 10 and counter.no >= 10 %}
+                <div id="show-next-step">
                     <div class='clearfix'></div>
                     <br />
                     <p>You've provided enough training to proceed to the next step.</p>
-                    <input class="btn btn-info"
-                           id="next"
+                    <button class="btn btn-info"
+                           id="id_next"
                            name="decision"
                            type="submit"
-                           value="Next &raquo;" />
+                           value="finished">
+                      Next &raquo;
+                    </button>
                 </div>
+                {% endif %}
             </p>
         </form>
     </div>
@@ -69,18 +83,18 @@
                 <tr>
                     <td><i class='fa fa-check'></i> Yes</td>
                     <td class='warning' id='num-yes'>
-                        <span></span> / 10
+                      <span>{{ counter.yes }}</span> / 10
                     </td>
                 </tr>
                 <tr>
                     <td><i class='fa fa-times'></i> No</td>
                     <td class='warning' id='num-no'>
-                        <span></span> / 10
+                      <span>{{ counter.no }}</span> / 10
                     </td>
                 </tr>
                 <tr>
                     <td>Unsure</td>
-                    <td id='num-unsure'><span>0</span></td>
+                    <td id='num-unsure'><span>{{counter.unsure}}</span></td>
                 </tr>
             </tbody>
         </table>
