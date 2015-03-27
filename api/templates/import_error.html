@@ -5,6 +5,11 @@
   <h1>Import Error!</h1>
   <p>There was an error importing your data. If this issue persists, <a href='mailto:info+error@datamade.us'>contact DataMade</a>.</p>
 
+  <div class="alert alert-danger" role="alert">
+      <strong>Error message</strong><br /> {{ error.message|safe }}
+  </div>
+
+
   <p>This likely happened because the CSV or spreadsheet you uploaded was mal-formed or had some encoding issues. <a href="{{ url_for('trainer.upload_formats') }}" target="_blank">Learn more about upload formats</a>.</p>
 
     <p><a href="{{ url_for('trainer.upload_formats') }}" target="_blank">
