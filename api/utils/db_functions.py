@@ -374,24 +374,6 @@ def updateEntityMap(clustered_dupes,
     """ 
     Add to entity map table after training
     """
-    fname = '/tmp/clusters_{0}.csv'.format(session_id)
-    with open(fname, 'w', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        for ids, scores in clustered_dupes:
-            new_ent = str(uuid4())
-            writer.writerow([
-                new_ent,
-                ids[0],
-                scores[0],
-                None,
-            ])
-            for id, score in zip(ids[1:], scores[1:]):
-                writer.writerow([
-                    new_ent,
-                    id,
-                    score,
-                    ids[0],
-                ])
     engine = worker_session.bind
     metadata = MetaData()
     if not entity_table:
@@ -399,6 +381,7 @@ def updateEntityMap(clustered_dupes,
     entity = Table(entity_table, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     record_id_type = entity.c.record_id.type
+    
     temp_table = Table('temp_{0}'.format(session_id), metadata,
                        Column('entity_id', String),
                        Column('record_id', record_id_type),
@@ -406,18 +389,40 @@ def updateEntityMap(clustered_dupes,
                        Column('confidence', Float))
     temp_table.drop(bind=engine, checkfirst=True)
     temp_table.create(bind=engine)
-    with open(fname, 'r', encoding='utf-8') as f:
-        conn = engine.raw_connection()
-        cur = conn.cursor()
-        cur.copy_expert(''' 
-            COPY "temp_{0}" (
-                entity_id,
-                record_id,
-                confidence,
-                target_record_id
-            ) 
-            FROM STDIN CSV'''.format(session_id), f)
-        conn.commit()
+    rows = []
+    for ids, scores in clustered_dupes:
+        new_ent = str(uuid4())
+        try:
+            king_record_id = int(ids[0])
+        except ValueError:
+            king_record_id = str(ids[0])
+        row = {
+            'entity_id': new_ent,
+            'record_id': king_record_id,
+            'confidence': float(scores[0]),
+            'target_record_id': None
+        }
+        rows.append(row)
+        for id, score in zip(ids[1:], scores[1:]):
+            try:
+                record_id = int(id)
+            except ValueError:
+                record_id = str(id)
+            row = {
+                'entity_id': new_ent,
+                'record_id': record_id,
+                'confidence': float(score),
+                'target_record_id': king_record_id
+            }
+            rows.append(row)
+        if len(rows) % 50000 is 0:
+            with engine.begin() as conn:
+                conn.execute(temp_table.insert(), rows)
+            rows = []
+
+    if rows:
+        with engine.begin() as conn:
+            conn.execute(temp_table.insert(), *rows)
 
     upd = text(''' 
         UPDATE "{0}" 
@@ -453,7 +458,6 @@ def updateEntityMap(clustered_dupes,
         c.execute(upd, last_update=last_update)
         c.execute(ins, last_update=last_update)
     temp_table.drop(bind=engine)
-    os.remove(fname)
 
 def writeCanonRep(session_id, name_pattern='cr_{0}'):
     engine = worker_session.bind
@@ -530,16 +534,18 @@ def writeBlockingMap(session_id, block_data, canonical=False):
     )
     bkm.drop(engine, checkfirst=True)
     bkm.create(engine)
-    with open('/tmp/{0}.csv'.format(session_id), 'w', encoding='utf-8') as s:
-        writer = csv.writer(s)
-        writer.writerows(block_data)
-    conn = engine.raw_connection()
-    cur = conn.cursor()
-    with open('/tmp/{0}.csv'.format(session_id), 'r', encoding='utf-8') as s:
-        cur.copy_expert('COPY "block_{0}" FROM STDIN CSV'.format(session_id), s)
-    conn.commit()
-    
-    os.remove('/tmp/{0}.csv'.format(session_id))
+    rows = []
+    for row in block_data:
+        rows.append(dict(zip(['block_key', 'record_id'], row)))
+        if len(rows) % 50000 is 0:
+            with engine.begin() as conn:
+                conn.execute(bkm.insert(), rows)
+            rows = []
+
+    if rows:
+        with engine.begin() as conn:
+            conn.execute(bkm.insert(), *rows)
+
 
     block_key_idx = Index('bk_{0}_idx'.format(session_id), bkm.c.block_key)
     block_key_idx.create(engine)
