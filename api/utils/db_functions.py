@@ -374,12 +374,15 @@ def updateEntityMap(clustered_dupes,
     """ 
     Add to entity map table after training
     """
-    engine = worker_session.bind
-    metadata = MetaData()
     if not entity_table:
         entity_table = 'entity_{0}'.format(session_id)
+
+    engine = worker_session.bind
+    metadata = MetaData()
+
     entity = Table(entity_table, metadata,
-        autoload=True, autoload_with=engine, keep_existing=True)
+                   autoload=True, autoload_with=engine, 
+                   keep_existing=True)
     record_id_type = entity.c.record_id.type
     
     temp_table = Table('temp_{0}'.format(session_id), metadata,
@@ -389,40 +392,35 @@ def updateEntityMap(clustered_dupes,
                        Column('confidence', Float))
     temp_table.drop(bind=engine, checkfirst=True)
     temp_table.create(bind=engine)
+
     rows = []
-    for ids, scores in clustered_dupes:
+
+    for record_ids, scores in clustered_dupes:
+        assert len(record_ids) > 1
         new_ent = str(uuid4())
-        try:
-            king_record_id = int(ids[0])
-        except ValueError:
-            king_record_id = str(ids[0])
-        row = {
-            'entity_id': new_ent,
-            'record_id': king_record_id,
-            'confidence': float(scores[0]),
-            'target_record_id': None
-        }
-        rows.append(row)
-        for id, score in zip(ids[1:], scores[1:]):
+
+        for record_id, score in zip(record_ids, scores) :
+
+            # if numpy int64 cast to python int
             try:
-                record_id = int(id)
+                record_id = int(record_id)
             except ValueError:
-                record_id = str(id)
-            row = {
-                'entity_id': new_ent,
-                'record_id': record_id,
-                'confidence': float(score),
-                'target_record_id': king_record_id
-            }
-            rows.append(row)
-        if len(rows) % 50000 is 0:
-            with engine.begin() as conn:
-                conn.execute(temp_table.insert(), rows)
-            rows = []
+                record_id = str(record_id)
+
+            rows.append({'entity_id': new_ent,
+                         'record_id': record_id,
+                         'confidence': float(score),
+                         'target_record_id': None})
+
+            if len(rows) % 50000 == 0:
+                with engine.begin() as conn:
+                    conn.execute(temp_table.insert(), rows)
+
+                rows = []
 
     if rows:
         with engine.begin() as conn:
-            conn.execute(temp_table.insert(), *rows)
+            conn.execute(temp_table.insert(), rows)
 
     upd = text(''' 
         UPDATE "{0}" 
@@ -435,8 +433,12 @@ def updateEntityMap(clustered_dupes,
           FROM "temp_{1}" temp 
         WHERE "{0}".record_id = temp.record_id 
     '''.format(entity_table, session_id))
+
+    # http://stackoverflow.com/questions/2686254/how-to-select-all-records-from-one-table-that-do-not-exist-in-another-table
     ins = text('''
-        INSERT INTO "{0}" (record_id, entity_id, confidence, clustered, checked_out, target_record_id) 
+        INSERT INTO "{0}" 
+        (record_id, entity_id, confidence, 
+         clustered, checked_out, target_record_id) 
           SELECT 
             record_id, 
             entity_id, 
@@ -448,15 +450,16 @@ def updateEntityMap(clustered_dupes,
           LEFT JOIN (
             SELECT record_id 
             FROM "{0}"
-            WHERE last_update = :last_update
-          ) AS s USING(record_id) 
-          WHERE s.record_id IS NULL
-          RETURNING record_id
+          ) AS entity USING(record_id) 
+          WHERE entity.record_id IS NULL
     '''.format(entity_table, session_id))
+
     last_update = datetime.now().replace(tzinfo=TIME_ZONE)
+
     with engine.begin() as c:
         c.execute(upd, last_update=last_update)
-        c.execute(ins, last_update=last_update)
+        c.execute(ins)
+
     temp_table.drop(bind=engine)
 
 def writeCanonRep(session_id, name_pattern='cr_{0}'):
@@ -522,18 +525,27 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
     conn.commit()
 
 def writeBlockingMap(session_id, block_data, canonical=False):
-    pk_type = Integer
+
     if canonical:
         session_id = '{0}_cr'.format(session_id)
         pk_type = String
+    else :
+        pk_type = Integer        
+
     metadata = MetaData()
     engine = worker_session.bind
-    bkm = Table('block_{0}'.format(session_id), metadata,
-        Column('block_key', Text),
-        Column('record_id', pk_type)
-    )
+    
+    bkm = Table('block_{0}'.format(session_id), 
+                metadata,
+                Column('block_key', Text),
+                Column('record_id', pk_type)
+            )
+
     bkm.drop(engine, checkfirst=True)
     bkm.create(engine)
+
+
+    # Blocking map
     rows = []
     for row in block_data:
         rows.append(dict(zip(['block_key', 'record_id'], row)))
@@ -545,7 +557,6 @@ def writeBlockingMap(session_id, block_data, canonical=False):
     if rows:
         with engine.begin() as conn:
             conn.execute(bkm.insert(), *rows)
-
 
     block_key_idx = Index('bk_{0}_idx'.format(session_id), bkm.c.block_key)
     block_key_idx.create(engine)
