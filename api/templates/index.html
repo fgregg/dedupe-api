@@ -105,7 +105,14 @@
         <td>
             <div id="status_<%= object.id %>">
                 <% if (object.processing == true) { %>
-                    <em><i class='fa fa-refresh fa-spin'></i> Processing</em>
+                    <em>
+                        <i class='fa fa-refresh fa-spin'></i> 
+                        <% if (object.status_info.step == 6) { %>
+                            Looking for records to review
+                        <% } else { %>
+                            Processing
+                        <% } %>
+                    </em>
                 <% } else { %>
                     <% if (object.status_info.next_step){ %>
                         Step <%= object.status_info.next_step %>: <a href="<%= object.status_info.next_step_url %>"><%= object.status_info.next_step_name %> &raquo;</a>
@@ -154,38 +161,8 @@
 <script type='text/javascript'>
     var sessions_url = '/session-list/';
 
-    function refresh_display(){
-        setTimeout(function () {
+    function render_session_list(initialize) {
 
-            $.when($.getJSON(sessions_url)).then(
-              function(resp){
-                // console.log(resp)
-                // update display of processing message
-                $("#processing-msg").hide();
-                if (resp.objects.all_sessions.length > 0) {
-                    $.each(resp.objects.in_progress, function(i, object){
-                        // console.log(object);
-                        if (object.processing == true) {
-                            $("#processing-msg").show();
-                            $("#status_" + object.id).html("<em><i class='fa fa-refresh fa-spin'></i> Processing</em>");
-                        }
-                        else {
-                            if (object.status_info.next_step){
-                                $("#status_" + object.id).html("Step " + (object.status_info.next_step) + ": <a href='" + object.status_info.next_step_url + "'>" + object.status_info.next_step_name + " &raquo;</a>");
-                            } else {
-                                $("#status_" + object.id).html("<a href='" + object.status_info.next_step_url + "'>" + object.status_info.next_step_name + " &raquo;</a>");
-                            }
-                        }
-                    });
-                }
-            });
-
-
-            refresh_display();
-        }, 5000); //setTimeout - reloads every 5 seconds
-    }
-
-    function render_session_list() {
         $.when($.getJSON(sessions_url)).then(
           function(resp){
             // console.log(resp)
@@ -223,67 +200,78 @@
                 $('#sessions-container').hide();
                 $('#start-session-btn').hide();
             }
-            $('.delete-session').on('click', function(e){
-                e.preventDefault();
-                var sess_id = $(this).data('session_id');
-                console.log(sess_id);
-                var row = $(this).parent().parent()
-                $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
-                    function(data){
-                        $(row).remove();
-                    }
-                )
-            })
-            $('.delete-model').on('click', function(e){
-                e.preventDefault();
-                var sess_id = $(this).data('session_id');
-                console.log(sess_id);
-                var row = $(this).parent()
-                $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
-                    function(data){
-                        $.when($.getJSON(sessions_url)).then(
-                          function(resp){
-                              make_display(resp)
-                          }
-                        )
-                    }
-                )
-            })
 
-            {% if status == 'canonical' %}
-                $('#dedupe-sessions').DataTable( {
-                    "aaSorting": [ [2,'desc'] ],
-                    "aoColumns": [
-                        null,
-                        null,
-                        { "sType": "datetime" },
-                        { "bSortable": false }
-                    ],
-                    "paging": false,
-                    "searching": false,
-                    "info": false
-                } );
-            {% else %}
-                $('#dedupe-sessions').DataTable( {
-                    "aaSorting": [ [3,'desc'] ],
-                    "aoColumns": [
-                        null,
-                        null,
-                        null,
-                        { "sType": "datetime" },
-                        { "bSortable": false }
-                    ],
-                    "paging": false,
-                    "searching": false,
-                    "info": false
-                } );
-            {% endif %}
+            if (initialize) {
+                $('.delete-session').on('click', function(e){
+                    e.preventDefault();
+                    var sess_id = $(this).data('session_id');
+                    console.log(sess_id);
+                    var row = $(this).parent().parent()
+                    $.when($.getJSON('/delete-session/' + sess_id + '/')).then(
+                        function(data){
+                            $(row).remove();
+                        }
+                    )
+                })
+                $('.delete-model').on('click', function(e){
+                    e.preventDefault();
+                    var sess_id = $(this).data('session_id');
+                    console.log(sess_id);
+                    var row = $(this).parent()
+                    $.when($.getJSON('/delete-data-model/' + sess_id + '/')).then(
+                        function(data){
+                            $.when($.getJSON(sessions_url)).then(
+                              function(resp){
+                                  make_display(resp)
+                              }
+                            )
+                        }
+                    )
+                })
+
+                {% if status == 'canonical' %}
+                    $('#dedupe-sessions').DataTable( {
+                        "aaSorting": [ [2,'desc'] ],
+                        "aoColumns": [
+                            null,
+                            null,
+                            { "sType": "datetime" },
+                            { "bSortable": false }
+                        ],
+                        "paging": false,
+                        "searching": false,
+                        "info": false
+                    } );
+                {% else %}
+                    $('#dedupe-sessions').DataTable( {
+                        "aaSorting": [ [3,'desc'] ],
+                        "aoColumns": [
+                            null,
+                            null,
+                            null,
+                            { "sType": "datetime" },
+                            { "bSortable": false }
+                        ],
+                        "paging": false,
+                        "searching": false,
+                        "info": false
+                    } );
+                {% endif %}
+
+            }
         })
     }
 
+    function refresh_session_list() {
+        setTimeout(function () {
+            render_session_list(false);
+            refresh_session_list();
+        }, 5000); //setTimeout - reloads every 5 seconds
+    }
+
     $(document).ready(function(){
-        render_session_list();
-        refresh_display();
+        render_session_list(true);
+        refresh_session_list();
     })
 </script>
 {% endblock %}
