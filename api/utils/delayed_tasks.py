@@ -31,6 +31,23 @@ import csv
 from uuid import uuid4
 from api.app_config import TIME_ZONE
 
+def profiler(f):
+    def decorated(*args, **kwargs):
+        import cProfile, pstats
+        
+        pr = cProfile.Profile()
+        pr.enable()
+        rv = f(*args, **kwargs)
+        pr.disable()
+        s = StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats(.1)
+        print(s.getvalue())
+
+        return rv
+    return decorated
+
 ### Bulk acceptance tasks ###
 
 @queuefunc
@@ -261,7 +278,7 @@ def getMatchingReady(session_id):
         conn.execute('DROP TABLE IF EXISTS "match_review_{0}"'.format(session_id))
         conn.execute(create_human_review)
         conn.execute('CREATE INDEX "match_rev_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
-    populateHumanReview(session_id)
+    # populateHumanReview(session_id)
     del d
     return None
 
@@ -291,44 +308,47 @@ def populateHumanReview(session_id):
     cleared = []
 
     while len(human_queue) < 20:
-        try:
-            record = next(rows)
-        except StopIteration:
-            break
-        matches = getMatches(session_id, record)
-        # check if any of the matches are low confidence
-        matches = [match for match in matches if match['confidence'] > 0.2]
+        records = []
+        for i in range(500):
+            try:
+                records.append(next(rows))
+            except StopIteration:
+                break
 
-        if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
-            # Means Auto adding match 
-            addToEntityMap(session_id, 
-                           record, 
-                           match_ids=[m['record_id'] for m in matches],
-                           reviewer='machine')
-            cleared.append(record['record_id'])
-        elif len(matches):
-            # Send these to humans
-            r = {
-                'record_id': record['record_id'], 
-                'entities': [m['entity_id'] for m in matches],
-                'confidence': [m['confidence'] for m in matches]
-            }
-            upd = ''' 
-                    UPDATE "match_review_{0}" SET
-                      entities = :entities,
-                      confidence = :confidence,
-                      sent_for_review = TRUE
-                    WHERE record_id = :record_id
-                '''.format(session_id)
-            with engine.begin() as conn:
-                conn.execute(text(upd), **r)
-            human_queue.append(record)
-        elif len(matches) == 0:
-            # Means Auto adding single record entity
-            addToEntityMap(session_id, 
-                           record, 
-                           reviewer='machine')
-            cleared.append(record['record_id'])
+        for matches, record in getMatches(session_id, records):
+            # check if any of the matches are low confidence
+            matches = [match for match in matches if match['confidence'] > 0.2]
+
+            if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
+                # Means Auto adding match 
+                addToEntityMap(session_id, 
+                               record, 
+                               match_ids=[m['record_id'] for m in matches],
+                               reviewer='machine')
+                cleared.append(record['record_id'])
+            elif len(matches):
+                # Send these to humans
+                r = {
+                    'record_id': record['record_id'], 
+                    'entities': [m['entity_id'] for m in matches],
+                    'confidence': [m['confidence'] for m in matches]
+                }
+                upd = ''' 
+                        UPDATE "match_review_{0}" SET
+                          entities = :entities,
+                          confidence = :confidence,
+                          sent_for_review = TRUE
+                        WHERE record_id = :record_id
+                    '''.format(session_id)
+                with engine.begin() as conn:
+                    conn.execute(text(upd), **r)
+                human_queue.append(record)
+            elif len(matches) == 0:
+                # Means Auto adding single record entity
+                addToEntityMap(session_id, 
+                               record, 
+                               reviewer='machine')
+                cleared.append(record['record_id'])
 
     reviewed = ''' 
         UPDATE "match_review_{0}" SET 
