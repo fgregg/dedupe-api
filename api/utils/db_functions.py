@@ -218,7 +218,12 @@ def initializeEntityMap(session_id, fields):
     conn.commit()
     updateEntityCount(session_id)
 
-def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
+def addToEntityMap(session_id, 
+                   new_entity, 
+                   match_ids=None, 
+                   reviewer=None, 
+                   block_keys=None):
+
     sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fds = {}
@@ -330,18 +335,22 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
             conn.execute(ins, **entity)
      
         # Update block table
-        deduper = RetrainGazetteer(BytesIO(sess.gaz_settings_file))
-        field_types = {}
-        for field in field_defs:
-            if field_types.get(field['field']):
-                field_types[field['field']].append(field['type'])
-            else:
-                field_types[field['field']] = [field['type']]
-        for k,v in new_entity.items():
-            if field_types.get(k):
-                new_entity[k] = preProcess(v, field_types[k])
-        block_keys = [{'record_id': b[1], 'block_key': b[0]} \
-                for b in list(deduper.blocker([(new_entity['record_id'], new_entity)]))]
+        if block_keys:
+            block_keys = [{'record_id': new_entity['record_id'], 'block_key': b} \
+                          for b in block_keys]
+        else:
+            deduper = RetrainGazetteer(BytesIO(sess.gaz_settings_file))
+            field_types = {}
+            for field in field_defs:
+                if field_types.get(field['field']):
+                    field_types[field['field']].append(field['type'])
+                else:
+                    field_types[field['field']] = [field['type']]
+            for k,v in new_entity.items():
+                if field_types.get(k):
+                    new_entity[k] = preProcess(v, field_types[k])
+            block_keys = [{'record_id': b[1], 'block_key': b[0]} \
+                    for b in list(deduper.blocker([(new_entity['record_id'], new_entity)]))]
         if block_keys:
             with engine.begin() as conn:
                 conn.execute(text(''' 
@@ -349,7 +358,7 @@ def addToEntityMap(session_id, new_entity, match_ids=None, reviewer=None):
                         block_key,
                         record_id
                     ) VALUES (:block_key, :record_id)
-                '''.format(sess.id)), *block_keys)
+                '''.format(session_id)), *block_keys)
         else:
             if sentry:
                 sentry.captureMessage('Unable to block record', extra=new_entity)

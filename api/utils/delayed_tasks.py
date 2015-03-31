@@ -278,9 +278,6 @@ def getMatchingReady(session_id):
 @queuefunc
 def populateHumanReview(session_id):
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
-    dedupe_session.processing = True
-    worker_session.add(dedupe_session)
-    worker_session.commit()
     
     engine = worker_session.bind
 
@@ -302,13 +299,13 @@ def populateHumanReview(session_id):
 
     while len(human_queue) < 20:
         records = []
-        for i in range(500):
+        for i in range(100):
             try:
                 records.append(next(rows))
             except StopIteration:
                 break
 
-        for matches, record in getMatches(session_id, records):
+        for matches, record, block_keys in getMatches(session_id, records):
             # check if any of the matches are low confidence
             matches = [match for match in matches if match['confidence'] > 0.2]
 
@@ -317,7 +314,8 @@ def populateHumanReview(session_id):
                 addToEntityMap(session_id, 
                                record, 
                                match_ids=[m['record_id'] for m in matches],
-                               reviewer='machine')
+                               reviewer='machine',
+                               block_keys=block_keys)
                 cleared.append(record['record_id'])
             elif len(matches):
                 # Send these to humans
@@ -340,7 +338,8 @@ def populateHumanReview(session_id):
                 # Means Auto adding single record entity
                 addToEntityMap(session_id, 
                                record, 
-                               reviewer='machine')
+                               reviewer='machine',
+                               block_keys=block_keys)
                 cleared.append(record['record_id'])
 
     reviewed = ''' 
@@ -366,7 +365,6 @@ def populateHumanReview(session_id):
     deduper.writeSettings(fobj)
     dedupe_session.gaz_settings_file = fobj.getvalue()
 
-    dedupe_session.processing = False
     worker_session.add(dedupe_session)
     worker_session.commit()
 
