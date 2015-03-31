@@ -251,8 +251,6 @@ def getMatchingReady(session_id):
     count = engine.execute(sel).first()
     sess.status = 'matching ready'
     sess.review_count = count[0]
-    worker_session.add(sess)
-    worker_session.commit()
     create_human_review = '''
         CREATE TABLE "match_review_{0}" AS
           SELECT
@@ -272,6 +270,9 @@ def getMatchingReady(session_id):
         conn.execute(create_human_review)
         conn.execute('CREATE INDEX "match_rev_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
     populateHumanReview(session_id)
+    sess.processing = False
+    worker_session.add(sess)
+    worker_session.commit()
     del d
     return None
 
