@@ -131,7 +131,7 @@ def match():
                 d['entity_id'] = exact_match.entity_id
                 d['match_confidence'] = '1.0'
                 match_list.append(d)
-        matches, record = getMatches(session_id, [obj])
+        matches, record, block_keys = getMatches(session_id, [obj])
         for match in matches:
             m = OrderedDict([(f, match[f],) for f in model_fields])
             m['record_id'] = match['record_id']

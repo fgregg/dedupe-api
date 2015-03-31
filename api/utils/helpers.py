@@ -239,7 +239,7 @@ def getMatches(session_id, records):
                             for r in list(engine.execute(sel, ids=ids))]
                     for match in matches:
                         match['confidence'] = float(confs[str(match['record_id'])])
-        yield matches, record
+        yield matches, record, block_keys
     del deduper
 
 def column_windows(session, column, windowsize):

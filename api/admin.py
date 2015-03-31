@@ -4,6 +4,7 @@ from flask_login import current_user
 from functools import wraps
 from api.database import app_session as db_session, Base
 from api.models import User, Role, DedupeSession, Group, WorkTable
+from api.matching import queueCount
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, \
@@ -354,6 +355,10 @@ def review():
             d['date_updated'] = row.date_added.isoformat()
         if row.field_defs:
             d['field_defs'] = json.loads(row.field_defs.tobytes().decode('utf-8'))
+        if row.status == 'matching ready':
+            queue_count = queueCount(session_id)
+            if queue_count == 0:
+                d['processing'] = True
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
         if row.last_work_status:
