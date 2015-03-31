@@ -249,7 +249,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
             return entity_id, cluster_list, false_pos, false_neg
     return None, None, None, None
 
-def getMatches(session_id, record):
+def getMatches(session_id, records):
     engine = worker_session.bind
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
     settings_file = BytesIO(dedupe_session.gaz_settings_file)
@@ -265,60 +265,61 @@ def getMatches(session_id, record):
             field_types[field['field']].append(field['type'])
         else:
             field_types[field['field']] = [field['type']]
-    matches = []
-    for k,v in record.items():
-        if field_types.get(k):
-            record[k] = preProcess(v, field_types[k])
-    block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', record)]))])
+    for record in records:
+        matches = []
+        for k,v in record.items():
+            if field_types.get(k):
+                record[k] = preProcess(v, field_types[k])
+        block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', record)]))])
 
-    # Sometimes the blocker does not find blocks. In this case we can't match
-    if block_keys:
-        m = MetaData()
-        proc = Table('processed_{0}'.format(session_id), m, 
-            autoload=True, autoload_with=engine)
-        cols = getTupleColumns(proc)
-        proc_cols = [Column('record_id', Integer)] + [c for c in cols if c.name in raw_fields]
-        
-        del m
-        m = MetaData()
-        proc = Table('processed_{0}'.format(session_id), m, *proc_cols)
-        match_table = Table('match_blocks_{0}'.format(session_id), m, 
-            autoload=True, autoload_with=engine)
-        
-        sq = select([match_table]).where(match_table.c.block_key.in_(block_keys)).alias('s')
-        sel = select([proc]).select_from(proc.join(sq, proc.c.record_id == sq.c.record_id))
-        canonical_records = [
-                (int(i[0]), dict(zip(i.keys()[1:], i.values()[1:])), set([]),) \
-                    for i in list(engine.execute(sel, block_keys=block_keys))]
-        if canonical_records:
-            incoming = (('blob', record, set([]),),)
-            block = (incoming, canonical_records,)
-            linked = deduper.matchBlocks([block], 0, 5)
-            if linked:
-                ids = []
-                confs = {}
-                for l in linked[0]:
-                    id_set, confidence = l
-                    ids.extend([i for i in id_set if i != 'blob'])
-                    confs[id_set[1]] = confidence
-                ids = tuple(set(ids))
-                min_fields = ','.join(['MIN(r.{0}) AS {0}'.format(f) for f in raw_fields])
-                sel = text(''' 
-                      SELECT {0}, 
-                        MIN(r.record_id) AS record_id, 
-                        e.entity_id
-                      FROM "raw_{1}" as r
-                      JOIN "entity_{1}" as e
-                        ON r.record_id = e.record_id
-                      WHERE r.record_id IN :ids
-                      GROUP BY e.entity_id
-                    '''.format(min_fields, session_id))
-                matches = [dict(zip(r.keys(), r.values())) \
-                        for r in list(engine.execute(sel, ids=ids))]
-                for match in matches:
-                    match['confidence'] = float(confs[str(match['record_id'])])
+        # Sometimes the blocker does not find blocks. In this case we can't match
+        if block_keys:
+            m = MetaData()
+            proc = Table('processed_{0}'.format(session_id), m, 
+                autoload=True, autoload_with=engine)
+            cols = getTupleColumns(proc)
+            proc_cols = [Column('record_id', Integer)] + [c for c in cols if c.name in raw_fields]
+            
+            del m
+            m = MetaData()
+            proc = Table('processed_{0}'.format(session_id), m, *proc_cols)
+            match_table = Table('match_blocks_{0}'.format(session_id), m, 
+                autoload=True, autoload_with=engine)
+            
+            sq = select([match_table]).where(match_table.c.block_key.in_(block_keys)).alias('s')
+            sel = select([proc]).select_from(proc.join(sq, proc.c.record_id == sq.c.record_id))
+            canonical_records = [
+                    (int(i[0]), dict(zip(i.keys()[1:], i.values()[1:])), set([]),) \
+                        for i in list(engine.execute(sel, block_keys=block_keys))]
+            if canonical_records:
+                incoming = (('blob', record, set([]),),)
+                block = (incoming, canonical_records,)
+                linked = deduper.matchBlocks([block], 0, 5)
+                if linked:
+                    ids = []
+                    confs = {}
+                    for l in linked[0]:
+                        id_set, confidence = l
+                        ids.extend([i for i in id_set if i != 'blob'])
+                        confs[id_set[1]] = confidence
+                    ids = tuple(set(ids))
+                    min_fields = ','.join(['MIN(r.{0}) AS {0}'.format(f) for f in raw_fields])
+                    sel = text(''' 
+                          SELECT {0}, 
+                            MIN(r.record_id) AS record_id, 
+                            e.entity_id
+                          FROM "raw_{1}" as r
+                          JOIN "entity_{1}" as e
+                            ON r.record_id = e.record_id
+                          WHERE r.record_id IN :ids
+                          GROUP BY e.entity_id
+                        '''.format(min_fields, session_id))
+                    matches = [dict(zip(r.keys(), r.values())) \
+                            for r in list(engine.execute(sel, ids=ids))]
+                    for match in matches:
+                        match['confidence'] = float(confs[str(match['record_id'])])
+        yield matches, record
     del deduper
-    return matches
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
