@@ -230,13 +230,9 @@ def getMatchingReady(session_id):
         conn.rollback()
         raise e
     conn.close()
-    try:
-        conn = engine.connect()
-        trans = conn.begin()
-        conn.execute('DROP INDEX "match_blocks_key_{0}_idx"'.format(session_id))
-        trans.commit()
-    except Exception:
-        trans.rollback()
+    with engine.begin() as conn:
+        conn.execute('DROP INDEX IF EXISTS "match_blocks_key_{0}_idx"'.format(session_id))
+    
     with engine.begin() as conn:
         conn.execute('''
             CREATE INDEX "match_blocks_key_{0}_idx" 
@@ -275,7 +271,7 @@ def getMatchingReady(session_id):
         conn.execute('DROP TABLE IF EXISTS "match_review_{0}"'.format(session_id))
         conn.execute(create_human_review)
         conn.execute('CREATE INDEX "match_rev_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
-    # populateHumanReview(session_id)
+    populateHumanReview(session_id)
     del d
     return None
 
