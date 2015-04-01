@@ -23,11 +23,9 @@ from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 from io import StringIO, BytesIO
 from collections import OrderedDict
+from operator import itemgetter
 
-if sys.version_info[:2] == (2,7):
-    import cPickle as pickle
-else:
-    import pickle
+import pickle
 
 STATUS_LIST = [
     {
@@ -104,6 +102,58 @@ class RetrainGazetteer(StaticGazetteer, Gazetteer):
         
         self.learner = sklearner
 
+class DatabaseGazetteer(StaticGazetteer):
+    def __init__(self, *args, **kwargs):
+
+        self.engine = kwargs['engine']
+        self.session_id = kwargs['session_id']
+        
+        del kwargs['engine']
+        del kwargs['session_id']
+
+        super(DatabaseGazetteer, self).__init__(*args, **kwargs)
+
+    def _blockData(self, messy_data):
+
+        block_groups = ''' 
+            SELECT
+              record_id,
+              array_agg(block_key) AS block_keys
+            FROM "match_blocks_{0}" 
+            WHERE record_id in :record_ids
+            GROUP BY record_id
+        '''.format(self.session_id)
+
+        block_groups = self.engine.execute(text(block_groups), 
+                           record_ids=tuple(messy_data.keys()))
+
+        # Distinct by record id where records exist in entity_map
+        sel = ''' 
+            SELECT
+              DISTINCT ON (p.record_id)
+              p.*
+            FROM "processed_{0}" AS p
+            JOIN "match_blocks_{0}" AS m
+              ON p.record_id = m.record_id
+            JOIN "entity_{0}" AS e
+              ON m.record_id = e.record_id
+            WHERE m.block_key IN :block_keys
+            ORDER BY p.record_id
+        '''.format(self.session_id)
+        
+        B = []
+
+        local_engine = self.engine.execute
+
+        for group in block_groups:
+            A = [(group.record_id, messy_data[group.record_id], set())]
+            rows = local_engine(text(sel), 
+                    block_keys=tuple(b for b in group.block_keys))
+            B = [(row.record_id, row, set()) for row in rows]
+
+            if B: 
+                yield (A,B)
+
 def tupleizeTraining(training):
     distinct = []
     match = []
@@ -174,7 +224,10 @@ def getMatches(session_id, records):
     engine = worker_session.bind
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
     settings_file = BytesIO(dedupe_session.gaz_settings_file)
-    deduper = RetrainGazetteer(settings_file, num_cores=1)
+    deduper = DatabaseGazetteer(settings_file, 
+                                num_cores=1, 
+                                engine=engine, 
+                                session_id=session_id)
     field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
@@ -186,61 +239,47 @@ def getMatches(session_id, records):
             field_types[field['field']].append(field['type'])
         else:
             field_types[field['field']] = [field['type']]
-    for record in records:
-        matches = []
-        for k,v in record.items():
-            if field_types.get(k):
-                record[k] = preProcess(v, field_types[k])
-        block_keys = tuple([b[0] for b in list(deduper.blocker([('blob', record)]))])
-
-        # Sometimes the blocker does not find blocks. In this case we can't match
-        if block_keys:
-            m = MetaData()
-            proc = Table('processed_{0}'.format(session_id), m, 
-                autoload=True, autoload_with=engine)
-            cols = getTupleColumns(proc)
-            proc_cols = [Column('record_id', Integer)] + [c for c in cols if c.name in raw_fields]
-            
-            del m
-            m = MetaData()
-            proc = Table('processed_{0}'.format(session_id), m, *proc_cols)
-            match_table = Table('match_blocks_{0}'.format(session_id), m, 
-                autoload=True, autoload_with=engine)
-            
-            sq = select([match_table]).where(match_table.c.block_key.in_(block_keys)).alias('s')
-            sel = select([proc]).select_from(proc.join(sq, proc.c.record_id == sq.c.record_id))
-            canonical_records = [
-                    (int(i[0]), dict(zip(i.keys()[1:], i.values()[1:])), set([]),) \
-                        for i in list(engine.execute(sel, block_keys=block_keys))]
-            if canonical_records:
-                incoming = (('blob', record, set([]),),)
-                block = (incoming, canonical_records,)
-                linked = deduper.matchBlocks([block], 0, 5)
-                if linked:
-                    ids = []
-                    confs = {}
-                    for l in linked[0]:
-                        id_set, confidence = l
-                        ids.extend([i for i in id_set if i != 'blob'])
-                        confs[id_set[1]] = confidence
-                    ids = tuple(set(ids))
-                    min_fields = ','.join(['MIN(r.{0}) AS {0}'.format(f) for f in raw_fields])
-                    sel = text(''' 
-                          SELECT {0}, 
-                            MIN(r.record_id) AS record_id, 
-                            e.entity_id
-                          FROM "raw_{1}" as r
-                          JOIN "entity_{1}" as e
-                            ON r.record_id = e.record_id
-                          WHERE r.record_id IN :ids
-                          GROUP BY e.entity_id
-                        '''.format(min_fields, session_id))
-                    matches = [dict(zip(r.keys(), r.values())) \
-                            for r in list(engine.execute(sel, ids=ids))]
-                    for match in matches:
-                        match['confidence'] = float(confs[str(match['record_id'])])
-        yield matches, record, block_keys
+    records = {r['record_id']: r for r in records}
+    all_matches = []
+    match_mapping = {}
+    
+    linked_records = deduper.match(records, n_matches=5)
+    if linked_records:
+        match_ids = set()
+        for linked in linked_records:
+            for l in linked:
+                id_set, confidence = l
+                messy_id, match_id = id_set
+                match_ids.add(int(match_id))
+                try:
+                    match_mapping[int(messy_id)].append((int(match_id), confidence,))
+                except KeyError:
+                    match_mapping[int(messy_id)] = [(int(match_id), confidence,)]
+        entities = ''' 
+            SELECT 
+              e.entity_id, 
+              {0}
+            FROM "entity_{1}" AS e
+            JOIN "raw_{1}" AS r
+              ON e.record_id = r.record_id
+            WHERE e.record_id IN :record_ids
+        '''.format(fields, session_id)
+        entities = engine.execute(text(entities), record_ids=tuple(match_ids))
+        entity_mapping = {r.record_id: r for r in entities}
+        for incoming_id, matches in match_mapping.items():
+            matches = sorted(matches, key=itemgetter(1))
+            ents = {entity_mapping[m[0]].entity_id: m for m in matches}
+            match_records = []
+            for record_id, confidence in ents.values():
+                record = entity_mapping[record_id]
+                record = dict(zip(record.keys(), record.values()))
+                record['confidence'] = float(confidence)
+                match_records.append(record)
+            all_matches.append((records[incoming_id], match_records,))
+    unmatched_ids = set(records.keys()) - set(match_mapping.keys())
+    unmatched_records = [records[r] for r in unmatched_ids]
     del deduper
+    return all_matches, unmatched_records
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):

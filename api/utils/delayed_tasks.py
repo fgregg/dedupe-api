@@ -191,12 +191,6 @@ def getMatchingReady(session_id):
     worker_session.add(sess)
     worker_session.commit()
 
-    for field in d.blocker.index_fields:
-        fd = (str(f[0]) for f in \
-                engine.execute('select distinct {0} from "processed_{1}"'\
-                    .format(field, session_id)))
-        d.blocker.index(fd, field)
-    
     # Write match_block table
     model_fields = list(set([f['field'] for f in field_defs]))
     
@@ -211,7 +205,7 @@ def getMatchingReady(session_id):
     exact = Table('exact_match_{0}'.format(session_id), meta, 
         autoload=True, autoload_with=engine)
     sel = select([proc]).select_from(proc.outerjoin(exact, 
-                                     proc.c.record_id == exact.c.record_id))\
+                                     proc.c.record_id == exact.c.match))\
                         .where(exact.c.record_id == None)
     rows = engine.execute(sel)
     data = ((getattr(row, 'record_id'), 
@@ -302,49 +296,53 @@ def populateHumanReview(session_id):
     cleared = []
 
     while len(human_queue) < 20:
+        
         records = []
         for i in range(100):
             try:
                 records.append(next(rows))
             except StopIteration:
                 break
-
-        for matches, record, block_keys in getMatches(session_id, records):
-            # check if any of the matches are low confidence
-            matches = [match for match in matches if match['confidence'] > 0.2]
-
-            if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
-                # Means Auto adding match 
-                addToEntityMap(session_id, 
-                               record, 
-                               match_ids=[m['record_id'] for m in matches],
-                               reviewer='machine',
-                               block_keys=block_keys)
-                cleared.append(record['record_id'])
-            elif len(matches):
-                # Send these to humans
-                r = {
-                    'record_id': record['record_id'], 
-                    'entities': [m['entity_id'] for m in matches],
-                    'confidence': [m['confidence'] for m in matches]
-                }
-                upd = ''' 
-                        UPDATE "match_review_{0}" SET
-                          entities = :entities,
-                          confidence = :confidence,
-                          sent_for_review = TRUE
-                        WHERE record_id = :record_id
-                    '''.format(session_id)
-                with engine.begin() as conn:
-                    conn.execute(text(upd), **r)
-                human_queue.append(record)
-            elif len(matches) == 0:
+        if records:
+            all_matches, unmatched = getMatches(session_id, records)
+            for record, matches in all_matches:
+                # check if any of the matches are low confidence
+                matches = [match for match in matches if match['confidence'] > 0.2]
+             
+                if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
+                    # Means Auto adding match 
+                    addToEntityMap(session_id, 
+                                   record, 
+                                   match_ids=[m['record_id'] for m in matches],
+                                   reviewer='machine')
+                    cleared.append(record['record_id'])
+                elif len(matches):
+                    # Send these to humans
+                    r = {
+                        'record_id': record['record_id'], 
+                        'entities': [m['entity_id'] for m in matches],
+                        'confidence': [m['confidence'] for m in matches]
+                    }
+                    upd = ''' 
+                            UPDATE "match_review_{0}" SET
+                              entities = :entities,
+                              confidence = :confidence,
+                              sent_for_review = TRUE
+                            WHERE record_id = :record_id
+                        '''.format(session_id)
+                    with engine.begin() as conn:
+                        conn.execute(text(upd), **r)
+                    human_queue.append(record)
+            for record in unmatched:
                 # Means Auto adding single record entity
                 addToEntityMap(session_id, 
                                record, 
-                               reviewer='machine',
-                               block_keys=block_keys)
+                               reviewer='machine')
                 cleared.append(record['record_id'])
+        else:
+            break
+
+    del rows
 
     reviewed = ''' 
         UPDATE "match_review_{0}" SET 
