@@ -23,8 +23,9 @@ from csv import QUOTE_ALL
 from datetime import datetime, timedelta
 from itertools import combinations, groupby
 from io import StringIO, BytesIO
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from operator import itemgetter
+
 
 import pickle
 
@@ -116,17 +117,20 @@ class DatabaseGazetteer(StaticGazetteer):
 
     def _blockData(self, messy_data):
 
-        block_groups = ''' 
-            SELECT
-              record_id,
-              array_agg(block_key) AS block_keys
-            FROM "match_blocks_{0}" 
-            WHERE record_id in :record_ids
-            GROUP BY record_id
-        '''.format(self.session_id)
+        if messy_data :
+            block_groups = ''' 
+                SELECT
+                  record_id,
+                  array_agg(block_key) AS block_keys
+                FROM "match_blocks_{0}" 
+                WHERE record_id in :record_ids
+                GROUP BY record_id
+            '''.format(self.session_id)
 
-        block_groups = self.engine.execute(text(block_groups), 
-                           record_ids=tuple(messy_data.keys()))
+            block_groups = self.engine.execute(text(block_groups), 
+                               record_ids=tuple(messy_data.keys()))
+        else :
+            block_groups = []
 
         # Distinct by record id where records exist in entity_map
         sel = ''' 
@@ -149,10 +153,10 @@ class DatabaseGazetteer(StaticGazetteer):
         for group in block_groups:
             A = [(group.record_id, messy_data[group.record_id], set())]
             rows = local_engine(text(sel), 
-                    block_keys=tuple(b for b in group.block_keys))
+                    block_keys=tuple(group.block_keys))
             B = [(row.record_id, row, set()) for row in rows]
 
-            if B: 
+            if B:
                 yield (A,B)
 
 def tupleizeTraining(training):
@@ -303,37 +307,32 @@ def getMatches(session_id, records):
     engine = worker_session.bind
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
     settings_file = BytesIO(dedupe_session.gaz_settings_file)
+
     deduper = DatabaseGazetteer(settings_file, 
                                 num_cores=1, 
                                 engine=engine, 
                                 session_id=session_id)
+
     field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
     raw_fields = sorted(list(set([f['field'] \
             for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
     raw_fields.append('record_id')
     fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
-    field_types = {}
-    for field in field_defs:
-        if field_types.get(field['field']):
-            field_types[field['field']].append(field['type'])
-        else:
-            field_types[field['field']] = [field['type']]
-    records = {r['record_id']: r for r in records}
-    all_matches = []
-    match_mapping = {}
-    
-    linked_records = deduper.match(records, n_matches=5)
-    if linked_records:
-        match_ids = set()
-        for linked in linked_records:
-            for l in linked:
-                id_set, confidence = l
-                messy_id, match_id = id_set
-                match_ids.add(int(match_id))
-                try:
-                    match_mapping[int(messy_id)].append((int(match_id), confidence,))
-                except KeyError:
-                    match_mapping[int(messy_id)] = [(int(match_id), confidence,)]
+
+    messy_records = {int(r['record_id']): r for r in records}
+
+    linked_records = deduper.match(messy_records, n_matches=5)
+
+    match_ids = set()
+    match_mapping = defaultdict(list)
+
+    for possible_links in linked_records:
+        for link in possible_links :
+            (messy_id, match_id), confidence = link
+            match_ids.add(int(match_id))
+            match_mapping[int(messy_id)].append((int(match_id), confidence,))
+
+    if match_ids :
         entities = ''' 
             SELECT 
               e.entity_id, 
@@ -343,22 +342,32 @@ def getMatches(session_id, records):
               ON e.record_id = r.record_id
             WHERE e.record_id IN :record_ids
         '''.format(fields, session_id)
-        entities = engine.execute(text(entities), record_ids=tuple(match_ids))
-        entity_mapping = {r.record_id: r for r in entities}
-        for incoming_id, matches in match_mapping.items():
-            matches = sorted(matches, key=itemgetter(1))
-            ents = {entity_mapping[m[0]].entity_id: m for m in matches}
-            match_records = []
-            for record_id, confidence in ents.values():
-                record = entity_mapping[record_id]
-                record = dict(zip(record.keys(), record.values()))
-                record['confidence'] = float(confidence)
-                match_records.append(record)
-            all_matches.append((records[incoming_id], match_records,))
-    unmatched_ids = set(records.keys()) - set(match_mapping.keys())
-    unmatched_records = [records[r] for r in unmatched_ids]
+        match_records = engine.execute(text(entities), 
+                                       record_ids=tuple(match_ids))
+    else :
+        match_records = []
+
+
+    match_records = {r.record_id: r for r in match_records}
+    matches = []
+
+    for messy_id in messy_records : 
+        possible_matches = match_mapping.get(messy_id, [])
+        best_records = defaultdict(dict)
+        for match_id, confidence in possible_matches :
+            record = match_records[match_id]
+            entity = record['entity_id']
+            if confidence > best_records[entity].get('confidence', 0.0) :
+                best_records[entity] = dict(record)
+                best_records[entity]['confidence'] = float(confidence)
+
+        matches.append((messy_records[messy_id], 
+                        list(best_records.values())))
+            
     del deduper
-    return all_matches, unmatched_records
+
+    return matches
+
 
 def column_windows(session, column, windowsize):
     def int_for_range(start_id, end_id):
