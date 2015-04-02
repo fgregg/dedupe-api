@@ -338,25 +338,23 @@ def slugify(text, delim='_'):
 def preProcess(column, field_types):
     if 'Price' in field_types:
         if column:
-            return float(column)
+            column = float(column)
         else:
-            return 0
+            column = return 0
+    elif 'Set' in field_types:
+        column = tuple(column.split(','))
+        if not column :
+            column = ()
     else:
-        if not column:
-            column = ''
-        if column is None:
-            column = ''
         column = str(column)
         column = re.sub('  +', ' ', column)
-        if 'Address' not in field_types:
-            column = re.sub('\n', ' ', column)
-            column = column.strip().strip('"').strip("'").lower().strip()
-        if 'Set' in field_types:
-            if isinstance(column, list):
-                column = ','.join(column)
-            else:
-                column = tuple(column.split(','))
-        return column
+        column = re.sub('\n', ' ', column)
+        column = column.strip().strip('"').strip("'").lower().strip()
+
+        if not column:
+            column = ''
+
+    return column
 
 def clusterGen(result_set, fields):
     lset = set
