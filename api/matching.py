@@ -131,11 +131,26 @@ def match():
                 d['entity_id'] = exact_match.entity_id
                 d['match_confidence'] = '1.0'
                 match_list.append(d)
-        matches, unmatched = getMatches(session_id, [obj])
-        for match in matches:
-            m = OrderedDict([(f, match[f],) for f in model_fields])
-            m['record_id'] = match['record_id']
-            m['entity_id'] = match['entity_id']
+        _, matches = getMatches(session_id, [obj])[0]
+
+        fields = ', '.join(['r.{0}'.format(f) for f in model_fields])
+        records = '''
+            SELECT 
+              e.entity_id, 
+              {0}
+            FROM "entity_{1}" AS e
+            JOIN "raw_{1}" AS r
+              e.entity_id
+              e.record_id
+            FROM "entity_{0}" AS e
+            JOIN "raw_{0}" AS r
+               ON e.record_id = r.record_id
+             WHERE e.record_id = :record_id
+        '''.format(fields, session_id)
+
+        for match in matches :
+            m = OrderedDict(engine.execute(text(entities), 
+                                           record_ids=match['record_id']).first())
             m['match_confidence'] = match['confidence']
             match_list.append(m)
         r['matches'] = match_list
