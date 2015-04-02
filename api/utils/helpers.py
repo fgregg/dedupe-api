@@ -313,12 +313,6 @@ def getMatches(session_id, records):
                                 engine=engine, 
                                 session_id=session_id)
 
-    field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
-    raw_fields = sorted(list(set([f['field'] \
-            for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
-    raw_fields.append('record_id')
-    fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
-
     messy_records = {int(r['record_id']): r for r in records}
 
     linked_records = deduper.match(messy_records, n_matches=5)
@@ -335,13 +329,13 @@ def getMatches(session_id, records):
     if match_ids :
         entities = ''' 
             SELECT 
-              e.entity_id, 
-              {0}
-            FROM "entity_{1}" AS e
-            JOIN "raw_{1}" AS r
+              e.entity_id
+              e.record_id
+            FROM "entity_{0}" AS e
+            JOIN "raw_{0}" AS r
               ON e.record_id = r.record_id
             WHERE e.record_id IN :record_ids
-        '''.format(fields, session_id)
+        '''.format(session_id)
         match_records = engine.execute(text(entities), 
                                        record_ids=tuple(match_ids))
     else :
