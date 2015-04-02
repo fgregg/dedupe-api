@@ -337,9 +337,11 @@ def estimateRemainingReview(session_id) :
 
     remaining_count = total_count * ( proportion + ( std_err * 2 ) )
 
+    rounded_remainder = round(remaining_count)
+
     print(remaining_count, total_count, proportion, std_err)
 
-    return remaining_count
+    return rounded_remainder
 
 def unseenRecords(session_id) :
     engine = db_session.bind

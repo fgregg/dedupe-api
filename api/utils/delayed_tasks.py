@@ -20,7 +20,8 @@ from sqlalchemy import Table, MetaData, Column, String, func, text, \
     Integer, select
 from sqlalchemy.sql import label
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
-from itertools import groupby
+from collections import defaultdict
+from itertools import groupby, islice
 from operator import itemgetter
 from collections import OrderedDict
 from csvkit import convert
@@ -295,65 +296,56 @@ def populateHumanReview(session_id):
     human_queue = []
     cleared = []
 
-    while len(human_queue) < 20:
+    chunk_size = 100
+    query_exhausted = False
+
+    while len(human_queue) < 20 and not query_exhausted :
         
-        records = []
-        for i in range(100):
-            try:
-                records.append(next(rows))
-            except StopIteration:
-                break
-        if records:
-            all_matches, unmatched = getMatches(session_id, records)
-            for record, matches in all_matches:
-                # check if any of the matches are low confidence
-                matches = [match for match in matches if match['confidence'] > 0.2]
+        records = list(islice(rows, chunk_size))
+        if len(records) < chunk_size :
+            query_exhausted = True
+        
+        record_matches = getMatches(session_id, records)
+
+        for record, matches in record_matches:
+            matches = [match for match in matches if match['confidence'] > 0.2]
              
-                if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
-                    # Means Auto adding match 
-                    addToEntityMap(session_id, 
-                                   record, 
-                                   match_ids=[m['record_id'] for m in matches],
-                                   reviewer='machine')
-                    cleared.append(record['record_id'])
-                elif len(matches):
-                    # Send these to humans
-                    r = {
-                        'record_id': record['record_id'], 
-                        'entities': [m['entity_id'] for m in matches],
-                        'confidence': [m['confidence'] for m in matches]
-                    }
-                    upd = ''' 
-                            UPDATE "match_review_{0}" SET
-                              entities = :entities,
-                              confidence = :confidence,
-                              sent_for_review = TRUE
-                            WHERE record_id = :record_id
-                        '''.format(session_id)
-                    with engine.begin() as conn:
-                        conn.execute(text(upd), **r)
-                    human_queue.append(record)
-            for record in unmatched:
-                # Means Auto adding single record entity
+            if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
+                # Means Auto adding match 
+                addToEntityMap(session_id, 
+                               record, 
+                               match_ids=[m['record_id'] for m in matches],
+                               reviewer='machine')
+                markAsReviewed(session_id, record['record_id'], 'machine') 
+            elif len(matches) :
+                r = {
+                    'record_id': record['record_id'], 
+                    'entities': [m['entity_id'] for m in matches],
+                    'confidence': [m['confidence'] for m in matches]
+                }
+                upd = ''' 
+                UPDATE "match_review_{0}" SET
+                entities = :entities,
+                confidence = :confidence,
+                sent_for_review = TRUE
+                WHERE record_id = :record_id
+                '''.format(session_id)
+                with engine.begin() as conn:
+                    conn.execute(text(upd), **r)
+                human_queue.append(record)
+
+            elif len(matches) == 0 :
                 addToEntityMap(session_id, 
                                record, 
                                reviewer='machine')
-                cleared.append(record['record_id'])
-        else:
-            break
+                markAsReviewed(session_id, 
+                               record['record_id'], 
+                               'machine')
+            
+            else :
+                raise ValueError("should not get here") 
 
     del rows
-
-    reviewed = ''' 
-        UPDATE "match_review_{0}" SET 
-        reviewed = TRUE,
-        reviewer = :reviewer,
-        sent_for_review = TRUE
-        WHERE record_id IN :ids
-    '''.format(session_id)
-    with engine.begin() as conn:
-        if cleared:
-            conn.execute(text(reviewed), ids=tuple(cleared), reviewer='machine')
     
     updateEntityCount(session_id)
     
@@ -371,6 +363,26 @@ def populateHumanReview(session_id):
 
     worker_session.add(dedupe_session)
     worker_session.commit()
+
+
+def markAsReviewed(session_id, record_id, reviewer) :
+    dedupe_session = worker_session.query(DedupeSession).get(session_id)
+    engine = worker_session.bind
+
+    reviewed = ''' 
+        UPDATE "match_review_{0}" SET 
+        reviewed = TRUE,
+        reviewer = :reviewer,
+        sent_for_review = TRUE
+        WHERE record_id = :record_id
+    '''.format(session_id)
+    with engine.begin() as conn:
+        conn.execute(text(reviewed), 
+                     record_id=record_id, 
+                     reviewer=reviewer)
+
+
+
 
 @queuefunc
 def cleanupTables(session_id, tables=None):
