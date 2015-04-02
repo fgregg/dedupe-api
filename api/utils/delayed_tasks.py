@@ -366,7 +366,6 @@ def populateHumanReview(session_id):
 
 
 def markAsReviewed(session_id, record_id, reviewer) :
-    dedupe_session = worker_session.query(DedupeSession).get(session_id)
     engine = worker_session.bind
 
     reviewed = ''' 
