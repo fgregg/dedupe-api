@@ -150,7 +150,7 @@ def match():
 
         for match in matches :
             m = OrderedDict(engine.execute(text(entities), 
-                                           record_ids=match['record_id']).first())
+                                           record_id=match['record_id']).first())
             m['match_confidence'] = match['confidence']
             match_list.append(m)
         r['matches'] = match_list
