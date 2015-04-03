@@ -329,7 +329,7 @@ def getMatches(session_id, records):
     if match_ids :
         entities = ''' 
             SELECT 
-              e.entity_id
+              e.entity_id,
               e.record_id
             FROM "entity_{0}" AS e
             JOIN "raw_{0}" AS r
@@ -419,18 +419,21 @@ def preProcess(column, field_types):
         if column:
             column = float(column)
         else:
-            column = return 0
+            column = 0
     elif 'Set' in field_types:
-        column = tuple(column.split(','))
-        if not column :
+        if column :
+            column = tuple(column.split(','))
+        else :
             column = ()
     else:
-        column = str(column)
-        column = re.sub('  +', ' ', column)
-        column = re.sub('\n', ' ', column)
-        column = column.strip().strip('"').strip("'").lower().strip()
-
-        if not column:
+        if column :
+            column = str(column)
+            column = re.sub('  +', ' ', column)
+            column = re.sub('\n', ' ', column)
+            column = column.strip().strip('"').strip("'").lower().strip()
+            if not column :
+                column = ''
+        else :
             column = ''
 
     return column
