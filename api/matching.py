@@ -317,12 +317,6 @@ def pollHumanReview(session_id, fields) :
 
 def estimateRemainingReview(session_id) :
     
-    total_count = '''
-        SELECT 
-          COUNT(*)::double precision AS total_count
-        FROM "match_review_{0}"
-        WHERE reviewed = FALSE
-    '''.format(session_id)
     numerator = ''' 
         SELECT 
           COUNT(*)::double precision AS numerator
@@ -339,7 +333,6 @@ def estimateRemainingReview(session_id) :
     
     engine = db_session.bind
 
-    total_count = engine.execute(total_count).first().total_count
     numerator = engine.execute(text(numerator), 
                                reviewer='machine').first().numerator
     denominator = engine.execute(denominator).first().denominator
@@ -349,14 +342,16 @@ def estimateRemainingReview(session_id) :
 
     proportion = numerator / denominator
     std_err = math.sqrt((proportion * ( 1 - proportion )) / (denominator - 1 ))
+    upper_proportion = proportion + ( std_err * 2 )
 
-    remaining_count = total_count * ( proportion + ( std_err * 2 ) )
+    unseen = unseenRecords(session_id)
+    queue_count = queueCount(session_id)
 
-    rounded_remainder = round(remaining_count)
+    remaining_count = round(unseen * upper_proportion) + queue_count
 
-    print(remaining_count, total_count, proportion, std_err)
+    print(remaining_count, unseen, proportion, std_err)
 
-    return rounded_remainder
+    return remaining_count
 
 def unseenRecords(session_id) :
     engine = db_session.bind

@@ -117,8 +117,6 @@ def writeProcessedTable(session_id,
         # TODO: Need to figure out how to parse a LatLong field type
         if 'Price' in field_types:
             col_def = 'COALESCE("{0}"::DOUBLE PRECISION, 0.0) AS {0}'.format(field)
-        elif 'Address' in field_types:
-            col_def = 'TRIM(COALESCE("{0}", \'\'))::VARCHAR AS {0}'.format(field)
         elif 'Set' in field_types:
             col_def = 'COALESCE(string_to_array("{0}"::VARCHAR, \',\'), ARRAY[]::VARCHAR[]) AS {0}'.format(field)
         else:

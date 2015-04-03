@@ -329,7 +329,7 @@ def getMatches(session_id, records):
     if match_ids :
         entities = ''' 
             SELECT 
-              e.entity_id
+              e.entity_id,
               e.record_id
             FROM "entity_{0}" AS e
             JOIN "raw_{0}" AS r
@@ -417,25 +417,26 @@ def slugify(text, delim='_'):
 def preProcess(column, field_types):
     if 'Price' in field_types:
         if column:
-            return float(column)
+            column = float(column)
         else:
-            return 0
+            column = 0
+    elif 'Set' in field_types:
+        if column :
+            column = tuple(column.split(','))
+        else :
+            column = ()
     else:
-        if not column:
-            column = ''
-        if column is None:
-            column = ''
-        column = str(column)
-        column = re.sub('  +', ' ', column)
-        if 'Address' not in field_types:
+        if column :
+            column = str(column)
+            column = re.sub('  +', ' ', column)
             column = re.sub('\n', ' ', column)
             column = column.strip().strip('"').strip("'").lower().strip()
-        if 'Set' in field_types:
-            if isinstance(column, list):
-                column = ','.join(column)
-            else:
-                column = tuple(column.split(','))
-        return column
+            if not column :
+                column = ''
+        else :
+            column = ''
+
+    return column
 
 def clusterGen(result_set, fields):
     lset = set
