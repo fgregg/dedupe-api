@@ -599,13 +599,14 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
 
 @queuefunc
 def reDedupeRaw(session_id, threshold=0.75):
-    sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs.decode('utf-8'))
-    fields = list(set([f['field'] for f in field_defs]))
-    initializeEntityMap(session_id, fields)
-    dedupeRaw(session_id, threshold=threshold)
-    sess.status = 'entity map updated'
-    worker_session.add(sess)
+    clustered_dupes = clusterDedupe(session_id)
+    updateEntityMap(clustered_dupes, session_id)
+    entity_count, review_count = updateSessionInfo(session_id)
+    dd = worker_session.query(DedupeSession).get(session_id)
+    dd.entity_count = entity_count
+    dd.review_count = review_count
+    dd.status = 'entity map updated'
+    worker_session.add(dd)
     worker_session.commit()
 
 @queuefunc
@@ -643,10 +644,22 @@ def reDedupeCanon(session_id, threshold=0.25):
         trans.commit()
     except Exception:
         trans.rollback()
-    dedupeCanon(session_id, threshold=threshold)
-    sess = worker_session.query(DedupeSession).get(session_id)
-    sess.status = 'canon clustered'
-    worker_session.add(sess)
+    table_fmt = 'entity_{0}_cr'
+    metadata = MetaData()
+    entity_table = entity_map(table_fmt.format(session_id), metadata, record_id_type=String)
+    entity_table.drop(bind=engine, checkfirst=True)
+    entity_table.create(bind=engine)
+    clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
+    if clustered_dupes:
+        writeCanonicalEntities(session_id, clustered_dupes)
+    else: # pragma: no cover
+        print('did not find clusters')
+        getMatchingReady(session_id)
+    entity_count, review_count = updateSessionInfo(session_id, table_fmt=table_fmt)
+    dd = worker_session.query(DedupeSession).get(session_id)
+    dd.review_count = review_count
+    dd.status = 'canon clustered'
+    worker_session.add(dd)
     worker_session.commit()
 
 @queuefunc
@@ -656,9 +669,19 @@ def dedupeRaw(session_id, threshold=0.75):
     writeBlockingMap(session_id, block_gen, canonical=False)
     clustered_dupes = clusterDedupe(session_id)
     updateEntityMap(clustered_dupes, session_id)
+    entity_count, review_count = updateSessionInfo(session_id)
+    dd = worker_session.query(DedupeSession).get(session_id)
+    dd.entity_count = entity_count
+    dd.review_count = review_count
+    dd.status = 'entity map updated'
+    worker_session.add(dd)
+    worker_session.commit()
+
+def updateSessionInfo(session_id, table_fmt='entity_{0}'):
     engine = worker_session.bind
     metadata = MetaData()
-    entity_table = Table('entity_{0}'.format(session_id), metadata,
+    table_name = table_fmt.format(session_id)
+    entity_table = Table(table_name, metadata,
         autoload=True, autoload_with=engine, keep_existing=True)
     entity_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .count()
@@ -669,19 +692,17 @@ def dedupeRaw(session_id, threshold=0.75):
         SELECT 
             entity_id, 
             array_agg(confidence)
-        FROM "entity_{0}"
+        FROM "{0}"
         WHERE clustered = FALSE
         GROUP BY entity_id
-    '''.format(session_id)
+    '''.format(table_name)
     clusters = engine.execute(sel)
     machine = ReviewMachine(clusters)
     dd = worker_session.query(DedupeSession).get(session_id)
     dd.review_machine = pickle.dumps(machine)
-    dd.entity_count = entity_count
-    dd.review_count = review_count
-    dd.status = 'entity map updated'
     worker_session.add(dd)
     worker_session.commit()
+    return entity_count, review_count
 
 @queuefunc
 def dedupeCanon(session_id, threshold=0.25):
@@ -704,65 +725,56 @@ def dedupeCanon(session_id, threshold=0.25):
     writeBlockingMap(session_id, block_gen, canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
     if clustered_dupes:
-        fname = '/tmp/clusters_{0}.csv'.format(session_id)
-        with open(fname, 'w', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            for ids, scores in clustered_dupes:
-                new_ent = str(uuid4())
-                writer.writerow([
-                    new_ent,
-                    ids[0],
-                    scores[0],
-                    None,
-                    False,
-                    False,
-                ])
-                for id, score in zip(ids[1:], scores):
-                    writer.writerow([
-                        new_ent,
-                        id,
-                        score,
-                        ids[0],
-                        False,
-                        False,
-                    ])
-        with open(fname, 'r', encoding='utf-8') as f:
-            conn = engine.raw_connection()
-            cur = conn.cursor()
-            try:
-                cur.copy_expert(''' 
-                    COPY "entity_{0}_cr" (
-                        entity_id,
-                        record_id,
-                        confidence,
-                        target_record_id,
-                        clustered,
-                        checked_out
-                    ) 
-                    FROM STDIN CSV'''.format(session_id), f)
-                conn.commit()
-                os.remove(fname)
-            except Exception as e: # pragma: no cover
-                conn.rollback()
-                raise e
+        writeCanonicalEntities(session_id, clustered_dupes)
     else: # pragma: no cover
         print('did not find clusters')
         getMatchingReady(session_id)
-    review_count = worker_session.query(entity_table.c.entity_id.distinct())\
-        .filter(entity_table.c.clustered == False)\
-        .count()
-    sel = ''' 
-        SELECT 
-            entity_id, 
-            array_agg(confidence)
-        FROM "entity_{0}_cr"
-        WHERE clustered = FALSE
-        GROUP BY entity_id
-    '''.format(session_id)
-    clusters = engine.execute(sel)
-    machine = ReviewMachine(clusters)
-    dd.review_machine = pickle.dumps(machine)
+    entity_count, review_count = updateSessionInfo(session_id, table_fmt='entity_{0}_cr')
     dd.review_count = review_count
     dd.status = 'canon clustered'
     worker_session.add(dd)
     worker_session.commit()
+
+def writeCanonicalEntities(session_id, clustered_dupes):
+    fname = '/tmp/clusters_{0}.csv'.format(session_id)
+    with open(fname, 'w', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        for ids, scores in clustered_dupes:
+            new_ent = str(uuid4())
+            writer.writerow([
+                new_ent,
+                ids[0],
+                scores[0],
+                None,
+                False,
+                False,
+            ])
+            for id, score in zip(ids[1:], scores):
+                writer.writerow([
+                    new_ent,
+                    id,
+                    score,
+                    ids[0],
+                    False,
+                    False,
+                ])
+    engine = worker_session.bind
+    with open(fname, 'r', encoding='utf-8') as f:
+        conn = engine.raw_connection()
+        cur = conn.cursor()
+        try:
+            cur.copy_expert(''' 
+                COPY "entity_{0}_cr" (
+                    entity_id,
+                    record_id,
+                    confidence,
+                    target_record_id,
+                    clustered,
+                    checked_out
+                ) 
+                FROM STDIN CSV'''.format(session_id), f)
+            conn.commit()
+            os.remove(fname)
+        except Exception as e: # pragma: no cover
+            conn.rollback()
+            raise e
