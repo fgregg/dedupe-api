@@ -3,6 +3,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import create_session, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql.psycopg2 import PGDialect_psycopg2
+from sqlalchemy.dialects import registry
 import uuid
 from dedupe.serializer import _from_json, _to_json
 
@@ -19,6 +21,105 @@ DEFAULT_ROLES = [
     }
 ]
 
+def castStringArrayAsTuple(value, cur):
+    # "value" is the raw string we get from the DB
+    # including the brackets ("{}"). This is kind of a 
+    # dumb way of doing this but it should work for all
+    # of our purposes in dedupe.
+    if value == '{}':
+        return ()
+    last_bracket = value.find('}')
+    return tuple(value[1:last_bracket].split(','))
+
+def castIntArrayAsTuple(value, cur):
+    if value == '{}':
+        return ()
+    last_bracket = value.find('}')
+    cast_vals = []
+    for val in value[1:last_bracket].split(','):
+        try:
+            cast_vals.append(int(val))
+        except ValueError:
+            cast_vals.append(None)
+    return tuple(cast_vals)
+
+def castFloatArrayAsTuple(value, cur):
+    if value == '{}':
+        return ()
+    last_bracket = value.find('}')
+    cast_vals = []
+    for val in value[1:last_bracket].split(','):
+        try:
+            cast_vals.append(float(val))
+        except ValueError:
+            cast_vals.append(None)
+    return tuple(cast_vals)
+
+class DedupeDialect(PGDialect_psycopg2):
+
+    @classmethod
+    def dbapi(cls):
+        import psycopg2
+        return psycopg2
+
+    @classmethod
+    def _psycopg2_extensions(cls):
+        from psycopg2 import extensions
+        return extensions
+
+    @classmethod
+    def _psycopg2_extras(cls):
+        from psycopg2 import extras
+        return extras
+
+    def on_connect(self):
+        extras = self._psycopg2_extras()
+        extensions = self._psycopg2_extensions()
+
+        fns = []
+        if self.client_encoding is not None:
+            def on_connect(conn):
+                conn.set_client_encoding(self.client_encoding)
+            fns.append(on_connect)
+
+        if self.isolation_level is not None:
+            def on_connect(conn):
+                self.set_isolation_level(conn, self.isolation_level)
+            fns.append(on_connect)
+
+        if self.dbapi and self._json_deserializer:
+            def on_connect(conn):
+                if self._has_native_json:
+                    extras.register_default_json(
+                        conn, loads=self._json_deserializer)
+                if self._has_native_jsonb:
+                    extras.register_default_jsonb(
+                        conn, loads=self._json_deserializer)
+            fns.append(on_connect)
+    
+        def on_connect(conn):
+            # Register new "type" which effectively overrides all of the ARRAY types
+            # we care about. The first arg here is the PostgreSQL datatype object IDs
+            # which are registered in it's internal tables.
+            # More info here: 
+            # http://initd.org/psycopg/docs/advanced.html#type-casting-of-sql-types-into-python-objects
+            
+            string_array_type = extensions.new_type((1015,1009,), "STRINGARRAY", castStringArrayAsTuple)
+            float_array_type = extensions.new_type((1022,), "FLOATARRAY", castFloatArrayAsTuple)
+            int_array_type = extensions.new_type((1007,), "INTARRAY", castIntArrayAsTuple)
+            extensions.register_type(string_array_type, conn)
+            extensions.register_type(float_array_type, conn)
+            extensions.register_type(int_array_type, conn)
+        fns.append(on_connect)
+
+        if fns:
+            def on_connect(conn):
+                for fn in fns:
+                    fn(conn)
+            return on_connect
+        else:
+            return None
+
 engine = None
 
 app_session = scoped_session(lambda: create_session(bind=engine, 
@@ -33,6 +134,10 @@ Base = declarative_base()
 
 def init_engine(uri):
     global engine
+
+    # Register the dialect we created above
+    registry.register("postgresql.dedupe", "api.database", "DedupeDialect")
+
     engine = create_engine(uri, 
                            convert_unicode=True, 
                            server_side_cursors=True,

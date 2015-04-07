@@ -466,7 +466,7 @@ def get_pair():
             'right': right[field],
         }
         data.append(d)
-    resp = make_response(json.dumps(data))
+    resp = make_response(json.dumps(data, default=_to_json))
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
