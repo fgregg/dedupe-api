@@ -9,8 +9,8 @@ from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
 from api.utils.helpers import clusterGen, \
     makeSampleDict, windowed_query, getDistinct, getMatches, \
-    updateEntityCount, RetrainGazetteer, hasMissing, selectWithTuples, \
-    getTupleColumns
+    updateEntityCount, RetrainGazetteer, hasMissing, \
+    readFieldDefs, readTraining
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
     addRowHash, addToEntityMap
@@ -30,6 +30,7 @@ import pickle
 import csv
 from uuid import uuid4
 from api.app_config import TIME_ZONE
+from dedupe.serializer import _to_json
 
 def profiler(f):
     def decorated(*args, **kwargs):
@@ -175,12 +176,13 @@ def getMatchingReady(session_id):
             )
             '''.format(session_id))
     sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs.decode('utf-8'))
+    field_defs = readFieldDefs(session_id)
 
     # Save Gazetteer settings
     d = dedupe.Gazetteer(field_defs)
-    
-    d.readTraining(StringIO(sess.training_data.decode('utf-8')))
+    training = readTraining(session_id)
+
+    d.readTraining(StringIO(json.dumps(training, default=_to_json)))
     d.train(ppc=0.1, index_predicates=False)
     g_settings = BytesIO()
     d.writeSettings(g_settings)
@@ -191,21 +193,18 @@ def getMatchingReady(session_id):
 
     # Write match_block table
     model_fields = list(set([f['field'] for f in field_defs]))
-    
-    m = MetaData()
-    proc = Table('processed_{0}'.format(session_id), m, 
-        autoload=True, autoload_with=engine)
-    cols = getTupleColumns(proc)
-    proc_cols = [Column('record_id', Integer)] + [c for c in cols if c.name in model_fields]
-    
-    meta = MetaData()
-    proc = Table('processed_{0}'.format(session_id), meta, *proc_cols)
-    exact = Table('exact_match_{0}'.format(session_id), meta, 
-        autoload=True, autoload_with=engine)
-    sel = select([proc]).select_from(proc.outerjoin(exact, 
-                                     proc.c.record_id == exact.c.match))\
-                        .where(exact.c.record_id == None)
-    rows = engine.execute(sel)
+    fields = ', '.join(['p.{0}'.format(f) for f in model_fields])
+    sel = ''' 
+        SELECT 
+          p.record_id, 
+          {0}
+        FROM "processed_{1}" AS p 
+        LEFT JOIN "exact_match_{1}" AS e 
+          ON p.record_id = e.match 
+        WHERE e.record_id IS NULL;
+        '''.format(fields, session_id)
+    conn = engine.connect()
+    rows = conn.execute(sel)
     data = ((getattr(row, 'record_id'), 
                  dict(zip(row.keys()[1:], row.values()[1:]))) \
              for row in rows)
@@ -408,7 +407,7 @@ def cleanupTables(session_id, tables=None):
 
 def drawSample(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs.decode('utf-8'))
+    field_defs = readFieldDefs(session_id)
     d = dedupe.Dedupe(field_defs)
     data_d = makeSampleDict(sess.id)
     if len(data_d) < 50001:
@@ -449,33 +448,14 @@ def initializeModel(session_id, init=True):
         if not sess.field_defs: # pragma: no cover
             time.sleep(3)
         else:
-            field_defs = json.loads(sess.field_defs.decode('utf-8'))
-            fields = list(set([f['field'] for f in field_defs]))
             if init:
                 writeProcessedTable(session_id)
-            updated_fds = []
-            for field in field_defs:
-                if field['type'] == 'Categorical':
-                    distinct_vals = getDistinct(field['field'], session_id)
-                    if len(distinct_vals) <= 6:
-                        field.update({'categories': distinct_vals})
-                    else:
-                        field['type'] = 'Exact'
-                if field['type'] in ['Text', 'Set']:
-                    corpus = getDistinct(field['field'], session_id)
-                    field.update({'corpus': corpus})
-                if field['type'] == 'Address':
-                    field.update({'log file': '/tmp/addresses.csv'})
-                if field['type'] == 'Name':
-                    field.update({'log file': '/tmp/name.csv'})
-                if hasMissing(field['field'], session_id):
-                    field.update({'has_missing': True})
-                updated_fds.append(field)
-            sess.field_defs = bytes(json.dumps(updated_fds).encode('utf-8'))
             sess.status = 'model defined'
             worker_session.add(sess)
             worker_session.commit()
             if init:
+                field_defs = json.loads(sess.field_defs.decode('utf-8'))
+                fields = list(set([f['field'] for f in field_defs]))
                 initializeEntityMap(session_id, fields)
                 drawSample(session_id)
             print('got sample')
@@ -486,8 +466,8 @@ def trainDedupe(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     data_sample = pickle.loads(dd_session.sample)
-    field_defs = json.loads(dd_session.field_defs.decode('utf-8'))
-    training_data = json.loads(dd_session.training_data.decode('utf-8'))
+    field_defs = readFieldDefs(session_id)
+    training_data = readTraining(session_id)
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
     training_data = StringIO(json.dumps(training_data))
     deduper.readTraining(training_data)
@@ -522,32 +502,20 @@ def blockDedupe(session_id,
                 engine.execute('select distinct {0} from "{1}"'.format(field, table_name)))
         deduper.blocker.index(fd, field)
 
-    select_block_records = selectBlockRecords(session_id, 
-                                              table_name, 
-                                              entity_table_name)
-    
+    select_block_records = ''' 
+        SELECT p.*
+        FROM "processed_{0}" AS p
+        LEFT OUTER JOIN "entity_{0}" AS e
+          ON p.record_id = e.record_id
+        WHERE e.target_record_id IS NULL
+    '''.format(session_id)
+
     full_data = ((getattr(row, 'record_id'), dict(zip(row.keys(), row.values()))) \
         for row in engine.execute(select_block_records))
 
+    full_data = list(full_data)
+
     return deduper.blocker(full_data)
-
-def selectBlockRecords(session_id, table_name, entity_table_name):
-    engine = worker_session.bind
-    m = MetaData()
-    proc = Table(table_name, m, 
-                  autoload=True, autoload_with=engine)
-    new_cols = getTupleColumns(proc)
-    meta = MetaData()
-    new_proc = Table(table_name, meta, *new_cols).alias(name='p')
-    entity = Table(entity_table_name, meta, 
-                  autoload=True, autoload_with=engine).alias(name='e')
-    sel = select([new_proc])\
-            .select_from(new_proc.join(entity, 
-                             new_proc.c.record_id == entity.c.record_id,
-                             isouter=True))\
-            .where(entity.c.target_record_id == None)
-    return sel
-
 
 def clusterDedupe(session_id, canonical=False, threshold=0.75):
     dd_session = worker_session.query(DedupeSession)\
@@ -560,36 +528,67 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
     if canonical:
         sc_format = 'small_cov_{0}_cr'
         proc_format = 'cr_{0}'
-    metadata = MetaData()
-    p = Table(proc_format.format(session_id), metadata,
-        autoload=True, autoload_with=engine)
-    proc_cols = getTupleColumns(p)
     trained_fields = list(set([f['field'] for f in \
         json.loads(dd_session.field_defs.decode('utf-8'))]))
-    
-    m = MetaData()
-    proc = Table(proc_format.format(session_id), m, *proc_cols)
-    proc_cols = [getattr(proc.c, f) for f in trained_fields]
-    small_cov = Table(sc_format.format(session_id), m,
-            autoload=True, autoload_with=engine)
-    
-    cols = [c for c in small_cov.columns] + proc_cols
-    rows = worker_session.query(*cols)\
-        .join(proc, small_cov.c.record_id == proc.c.record_id)
-    fields = [c.name for c in cols]
     clustered_dupes = []
+    sc_table = sc_format.format(session_id)
+    proc_table = proc_format.format(session_id)
     while not clustered_dupes:
+        print(clustered_dupes)
         clustered_dupes = deduper.matchBlocks(
-            clusterGen(windowed_query(rows, small_cov.c.block_id, 50000), fields), 
+            clusterGen(genRows(sc_table, proc_table, trained_fields)), 
             threshold=threshold
         )
         threshold = threshold - 0.1
         if threshold <= 0.1:
             break
-    del rows
     del deduper
     worker_session.close()
     return clustered_dupes
+
+def genRows(sc_table, proc_table, fields):
+    intervals = getRecordIntervals(sc_table)
+    field_names = ','.join(['p.{0}'.format(f) for f in fields])
+    engine = worker_session.bind
+    for clause, args in getRecordRanges(intervals):
+        sel = ''' 
+          SELECT p.record_id, {field_names}, s.block_id, s.smaller_ids
+          FROM "{proc_table}" AS p
+          JOIN "{sc_table}" AS s
+            ON p.record_id = s.record_id
+          {clause}
+        '''.format(field_names=field_names,
+                   proc_table=proc_table,
+                   sc_table=sc_table,
+                   clause=clause)
+        for row in engine.execute(text(sel), **args):
+            print(row)
+            yield row
+
+def getRecordIntervals(small_cov_table):
+    interval_size = '50000'
+    engine = worker_session.bind
+    sel = '''
+        SELECT 
+          s.block_id AS block_id
+        FROM (
+          SELECT 
+            block_id,
+            row_number() OVER (ORDER BY block_id) AS rownum
+          FROM "{0}"
+        ) AS s
+        WHERE rownum %% 50000=1
+    '''.format(small_cov_table)
+    return [i.block_id for i in engine.execute(sel)]
+
+def getRecordRanges(intervals):
+    while intervals:
+        int_dict = {'start': intervals.pop(0)}
+        if intervals: # pragma: no cover
+            int_dict['end'] = intervals[0]
+            yield 'WHERE s.block_id >= :start AND s.block_id < :end', int_dict
+        else:
+            yield 'WHERE s.block_id >= :start', int_dict
 
 @queuefunc
 def reDedupeRaw(session_id, threshold=0.75):

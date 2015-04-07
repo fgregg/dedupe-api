@@ -223,6 +223,11 @@ def addToEntityMap(session_id,
                    block_keys=None):
 
     sess = worker_session.query(DedupeSession).get(session_id)
+    
+    raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
+        autoload=True, autoload_with=engine, keep_existing=True)
+    raw_fields = raw_table.column.keys()
+    
     field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fds = {}
     for fd in field_defs:
@@ -244,8 +249,6 @@ def addToEntityMap(session_id,
     if row.entity_id is None: # Record does not exist in entity map
         # If this is an entirely new record, we need to add it to the processed table
         if row is None: # pragma: no cover
-            raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
-                autoload=True, autoload_with=engine, keep_existing=True)
             proc_ins = 'INSERT INTO "processed_{0}" (SELECT record_id, '\
                 .format(proc_table_name)
             for idx, field in enumerate(fds.keys()):
@@ -274,7 +277,8 @@ def addToEntityMap(session_id,
                 conn.execute(text(proc_ins), record_id=record_id)
      
         # Add to entity map
-        hash_me = ';'.join([preProcess(str(new_entity[i]), ['String']) for i in fds.keys()])
+        hash_me = ';'.join([preProcess(str(new_entity[i]), ['String']) \
+                for i in raw_fields])
         md5_hash = md5(hash_me.encode('utf-8')).hexdigest()
         last_update = datetime.now().replace(tzinfo=TIME_ZONE)
         entity = {
@@ -487,14 +491,9 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
 
     cols = [entity.c.entity_id]
     col_names = [c for c in proc_table.columns.keys() if c != 'record_id']
-    array_cols = []
     for name in col_names:
         col = getattr(proc_table.c, name)
-        if isinstance(col.type, ARRAY):
-            array_cols.append(name)
-            cols.append(label(name, func.array_agg(func.array_to_string(col, ',', ''))))
-        else:
-            cols.append(label(name, func.array_agg(getattr(proc_table.c, name))))
+        cols.append(label(name, func.array_agg(col)))
     rows = worker_session.query(*cols)\
         .filter(entity.c.record_id == proc_table.c.record_id)\
         .group_by(entity.c.entity_id)
@@ -507,11 +506,7 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
             dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
             for idx, dct in enumerate(dicts):
                 for name in col_names:
-                    if name in array_cols:
-                        s = str(getattr(row, name)[idx]).replace('{', '').replace('}', '')
-                        val = '{' + s + '}'
-                    else:
-                        val = str(getattr(row, name)[idx])
+                    val = str(getattr(row, name)[idx])
                     dicts[idx][name] = val
             canon_form = dedupe.canonicalize(dicts)
             r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])

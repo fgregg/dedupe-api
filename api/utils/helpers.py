@@ -8,7 +8,7 @@ import numpy
 from dedupe.core import frozendict
 from dedupe import canonicalize
 from dedupe.api import StaticGazetteer, Gazetteer
-from dedupe.serializer import _to_json
+from dedupe.serializer import _to_json, _from_json
 import dedupe
 from api.database import app_session, worker_session, Base, init_engine
 from api.models import DedupeSession
@@ -25,7 +25,6 @@ from itertools import combinations, groupby
 from io import StringIO, BytesIO
 from collections import OrderedDict, defaultdict
 from operator import itemgetter
-
 
 import pickle
 
@@ -159,7 +158,23 @@ class DatabaseGazetteer(StaticGazetteer):
             if B:
                 yield (A,B)
 
-def tupleizeTraining(training):
+def readTraining(session_id):
+    engine = worker_session.bind
+    sel = ''' 
+        SELECT training_data, field_defs
+        FROM dedupe_session
+        WHERE id = :session_id
+    '''
+    row = engine.execute(text(sel), session_id=session_id).first()
+    training = json.loads(row.training_data.tobytes().decode('utf-8'), 
+                          object_hook=_from_json)
+    field_defs = json.loads(row.field_defs.tobytes().decode('utf-8'))
+    fds = {}
+    for fd in field_defs:
+        try:
+            fds[fd['field']].append(fd['type'])
+        except KeyError:
+            fds[fd['field']] = [fd['type']]
     distinct = []
     match = []
     td = {'distinct': [], 'match': []}
@@ -168,12 +183,44 @@ def tupleizeTraining(training):
             p = []
             for item in pair:
                 for k,v in item.items():
-                    if isinstance(v, list):
+                    if fds.get(k) and set(fds.get(k)) & set(['Set']):
                         item[k] = tuple(v)
                 p.append(item)
             td[match_type].append(p)
     return td
 
+def readFieldDefs(session_id):
+    engine = worker_session.bind
+    sel = ''' 
+        SELECT field_defs
+        FROM dedupe_session
+        WHERE id = :session_id
+    '''
+    row = engine.execute(text(sel), session_id=session_id).first()
+    field_defs = json.loads(row.field_defs.tobytes().decode('utf-8'))
+    updated_fds = []
+    for field in field_defs:
+        if field['type'] == 'Categorical':
+            distinct_vals = getDistinct(field['field'], session_id)
+            if len(distinct_vals) <= 6:
+                field.update({'categories': distinct_vals})
+            else:
+                field['type'] = 'Exact'
+        if field['type'] == 'Set':
+            distinct_vals = getDistinct(field['field'], session_id)
+            corpus = [tuple(d.split(',')) for d in distinct_vals]
+            field.update({'corpus': corpus})
+        if field['type'] == 'Text':
+            corpus = getDistinct(field['field'], session_id)
+            field.update({'corpus': corpus})
+        if field['type'] == 'Address':
+            field.update({'log file': '/tmp/addresses.csv'})
+        if field['type'] == 'Name':
+            field.update({'log file': '/tmp/name.csv'})
+        if hasMissing(field['field'], session_id):
+            field.update({'has_missing': True})
+        updated_fds.append(field)
+    return updated_fds
 
 def updateTraining(session_id, distinct_ids=[], match_ids=[]):
     ''' 
@@ -217,7 +264,8 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
                 for r in engine.execute(sel, record_ids=all_ids)}
  
         if sess.training_data:
-            training = json.loads(sess.training_data.decode('utf-8'))
+            training = json.loads(sess.training_data.decode('utf-8'), 
+                                  object_hook=_from_json)
         if distinct_ids and match_ids:
             distinct_ids.extend(match_ids)
         
@@ -247,7 +295,8 @@ def updateTraining(session_id, distinct_ids=[], match_ids=[]):
         if len(training['match']) > 300:
             training['match'] = training['match'][-300:]
 
-        sess.training_data = bytes(json.dumps(training).encode('utf-8'))
+        sess.training_data = bytes(json.dumps(training, 
+                                              default=_to_json).encode('utf-8'))
         worker_session.add(sess)
         worker_session.commit()
     return None
@@ -438,12 +487,12 @@ def preProcess(column, field_types):
 
     return column
 
-def clusterGen(result_set, fields):
+def clusterGen(result_set):
     lset = set
     block_id = None
     records = []
     for row in result_set:
-        row = dict(zip(fields, row))
+        row = dict(zip(row.keys(), row.values()))
         if row['block_id'] != block_id:
             if records:
                 yield records
@@ -458,38 +507,15 @@ def clusterGen(result_set, fields):
     if records:
         yield records
 
-def getTupleColumns(table):
-    new_cols = []
-    for col in table.columns:
-        if isinstance(col.type, ARRAY):
-            new_cols.append(Column(col.name, ARRAY(String, as_tuple=True)))
-        else:
-            new_cols.append(Column(col.name, col.type))
-    return new_cols
-
-def selectWithTuples(session_id, 
-                     proc_fmt='processed_{0}', 
-                     join_fmt='entity_{0}',
-                     isouter=True):
-    engine = worker_session.bind
-    m = MetaData()
-    proc = Table(proc_fmt.format(session_id), m, 
-                  autoload=True, autoload_with=engine)
-    new_cols = getTupleColumns(proc)
-    meta = MetaData()
-    new_proc = Table(proc_fmt.format(session_id), meta, *new_cols)
-    entity = Table(join_fmt.format(session_id), meta, 
-                  autoload=True, autoload_with=engine)
-    sel = select([new_proc])\
-            .select_from(new_proc.join(entity, 
-                             new_proc.c.record_id == entity.c.record_id,
-                             isouter=isouter))\
-            .where(entity.c.record_id == None)
-    return sel
-
 def makeSampleDict(session_id):
     engine = worker_session.bind
-    sel = selectWithTuples(session_id)
+    sel = ''' 
+        SELECT p.*
+        FROM "processed_{0}" as p
+        LEFT JOIN "entity_{0}" as e
+            ON p.record_id = e.record_id
+        WHERE e.target_record_id IS NULL
+    '''.format(session_id)
     curs = engine.execute(sel)
     result = dict((i, frozendict(zip(row.keys(), row.values()))) 
                             for i, row in enumerate(curs))

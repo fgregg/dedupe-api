@@ -12,13 +12,13 @@ import os
 import copy
 import time
 from itertools import groupby
-from dedupe.serializer import _to_json, dedupe_decoder
+from dedupe.serializer import _to_json, _from_json
 import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.db_functions import writeRawTable
 from api.utils.helpers import getDistinct, slugify, STATUS_LIST, \
-    updateTraining, tupleizeTraining
+    updateTraining, readFieldDefs, readTraining
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
@@ -227,7 +227,8 @@ def select_field_types():
 @check_roles(roles=['admin'])
 @check_sessions()
 def training_run():
-    dedupe_session = db_session.query(DedupeSession).get(flask_session['session_id'])
+    session_id = flask_session['session_id']
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
     if dedupe_session.training_data:
         td = json.loads(dedupe_session.training_data.decode('utf-8'))
         flask_session['counter'] = {
@@ -250,8 +251,8 @@ def training_run():
     else:
         time.sleep(1)
         db_session.refresh(dedupe_session)
-        field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
         if not dedupe_session.processing and dedupe_session.sample:
+            field_defs = readFieldDefs(session_id)
             sample = pickle.loads(dedupe_session.sample)
             if sample[0][0].get('record_id'):
                 deduper = dedupe.Dedupe(field_defs, data_sample=sample)
@@ -286,7 +287,7 @@ def get_pair():
             'right': right[field],
         }
         data.append(d)
-    resp = make_response(json.dumps(data))
+    resp = make_response(json.dumps(data, default=_to_json))
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
@@ -297,7 +298,8 @@ def mark_pair():
     action = request.args['action']
     flask_session['last_interaction'] = datetime.now()
     counter = flask_session.get('counter')
-    sess = db_session.query(DedupeSession).get(flask_session['session_id'])
+    session_id = flask_session['session_id']
+    sess = db_session.query(DedupeSession).get(session_id)
     db_session.refresh(sess, ['training_data'])
     deduper = flask_session['deduper']
 
@@ -314,8 +316,7 @@ def mark_pair():
     left, right = current_pair
     record_ids = [left['record_id'], right['record_id']]
     if sess.training_data:
-        training = json.loads(sess.training_data.decode('utf-8'))
-        labels = tupleizeTraining(training)
+        labels = readTraining(session_id)
     else:
         labels = {'distinct' : [], 'match' : []}
     if action == 'yes':
@@ -337,9 +338,7 @@ def mark_pair():
         counter['unsure'] += 1
         flask_session['counter'] = counter
         resp = {'counter': counter}
-    db_session.refresh(sess, ['training_data'])
-    training = json.loads(sess.training_data.decode('utf-8'))
-    labels = tupleizeTraining(training)
+    labels = readTraining(session_id)
     deduper.markPairs(labels)
     if resp.get('finished'):
         del flask_session['deduper']
