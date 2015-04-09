@@ -76,6 +76,10 @@ $(function () {
             $('#upload_message').html("Uploading done!");
             $('#next-step').fadeIn();
         },
+        fail: function (e, data) {
+            $('#upload_message').html("<div class='alert alert-danger'>Error - upload failed. <a href=' info+error@datamade.us'>Contact us</a> if this error persists.</div>");
+            $('.progress').fadeOut();
+        },
         progressall: function (e, data) {
             var progress = parseInt(data.loaded / data.total * 100, 10);
             $('.progress-bar').css(
