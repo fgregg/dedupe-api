@@ -51,12 +51,12 @@ def upload():
     session_id = str(uuid4())
     f = request.files['input_file']
     flask_session['session_name'] = f.filename
-    file_type = f.filename.rsplit('.')[1]
+    file_type = f.filename.rsplit('.', 1)[1]
     u = StringIO(f.read().decode('utf-8'))
     u.seek(0)
     if file_type != 'csv': # pragma: no cover
         file_format = convert.guess_format(flask_session['session_name'])
-        u = StringIO(convert.convert(u, file_format).decode('utf-8'))
+        u = StringIO(convert.convert(u, file_format))
     reader = csv.reader(u)
     fieldnames = [slugify(str(i)) for i in next(reader)]
     sample_values = [[] for i in range(len(fieldnames))]
