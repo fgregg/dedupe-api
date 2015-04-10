@@ -410,47 +410,6 @@ def getMatches(session_id, records):
 
     return matches
 
-
-def column_windows(session, column, windowsize):
-    def int_for_range(start_id, end_id):
-        if end_id: # pragma: no cover
-            return and_(
-                column>=start_id,
-                column<end_id
-            )
-        else:
-            return column>=start_id
-
-    q = session.query(
-                column, 
-                func.row_number().\
-                        over(order_by=column).\
-                        label('rownum')
-                ).\
-                from_self(column)
-    if windowsize > 1:
-        q = q.filter("rownum %% %d=1" % windowsize)
-
-    intervals = [id for id, in q]
-
-    while intervals:
-        start = intervals.pop(0)
-        if intervals: # pragma: no cover
-            end = intervals[0]
-        else:
-            end = None
-        yield int_for_range(start, end)
-
-def windowed_query(q, column, windowsize):
-    ''' 
-    Details on how this works can be found here:
-    https://bitbucket.org/zzzeek/sqlalchemy/wiki/UsageRecipes/WindowedRangeQuery
-    '''
-    for whereclause in column_windows(q.session, 
-                                        column, windowsize):
-        for row in q.filter(whereclause).order_by(column):
-            yield row
-
 def slugify(text, delim='_'):
     if text:
         punct_re = re.compile(r'[\t !"#$%&\'()*\-/<=>?@\[\\\]^_`{|},.:;]+')

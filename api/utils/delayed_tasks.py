@@ -8,9 +8,8 @@ from api.queue import queuefunc
 from api.app_config import DB_CONN, DOWNLOAD_FOLDER
 from api.models import DedupeSession, User, entity_map
 from api.database import worker_session
-from api.utils.helpers import clusterGen, \
-    makeSampleDict, windowed_query, getDistinct, getMatches, \
-    updateEntityCount, RetrainGazetteer, hasMissing, \
+from api.utils.helpers import clusterGen, makeSampleDict, getDistinct, \
+    getMatches, updateEntityCount, RetrainGazetteer, hasMissing, \
     readFieldDefs, readTraining
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
@@ -507,7 +506,7 @@ def blockDedupe(session_id,
     
     for field in deduper.blocker.index_fields:
         fd = (str(f[0]) for f in \
-                engine.execute('select distinct {0} from "{1}"'.format(field, table_name)))
+                engine.execute('SELECT DISTINCT {0} FROM "{1}"'.format(field, table_name)))
         deduper.blocker.index(fd, field)
 
     select_block_records = ''' 
@@ -542,9 +541,8 @@ def clusterDedupe(session_id, canonical=False, threshold=0.75):
     sc_table = sc_format.format(session_id)
     proc_table = proc_format.format(session_id)
     while not clustered_dupes:
-        print(clustered_dupes)
         clustered_dupes = deduper.matchBlocks(
-            clusterGen(genRows(sc_table, proc_table, trained_fields)), 
+            genRows(sc_table, proc_table, trained_fields), 
             threshold=threshold
         )
         threshold = threshold - 0.1
@@ -560,18 +558,38 @@ def genRows(sc_table, proc_table, fields):
     engine = worker_session.bind
     for clause, args in getRecordRanges(intervals):
         sel = ''' 
-          SELECT p.record_id, {field_names}, s.block_id, s.smaller_ids
+          SELECT 
+            p.record_id, 
+            {field_names}, 
+            s.block_id, 
+            s.smaller_ids
           FROM "{proc_table}" AS p
           JOIN "{sc_table}" AS s
             ON p.record_id = s.record_id
           {clause}
+          ORDER BY s.block_id
         '''.format(field_names=field_names,
                    proc_table=proc_table,
                    sc_table=sc_table,
                    clause=clause)
+        lset = set
+        block_id = None
+        records = []
         for row in engine.execute(text(sel), **args):
-            print(row)
-            yield row
+            row = dict(zip(row.keys(), row.values()))
+            if row['block_id'] != block_id:
+                if records:
+                    yield records
+                block_id = row['block_id']
+                records = []
+            smaller_ids = row['smaller_ids']
+            if smaller_ids:
+                smaller_ids = lset(smaller_ids)
+            else:
+                smaller_ids = lset([])
+            records.append((row['record_id'], row, smaller_ids))
+        if records:
+            yield records
 
 def getRecordIntervals(small_cov_table):
     interval_size = '50000'
