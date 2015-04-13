@@ -428,7 +428,9 @@ def preProcess(column, field_types):
         else:
             column = 0
     elif 'Set' in field_types:
-        if column :
+        if isinstance(column, (list, tuple)) :
+            column = tuple(column)
+        elif column:
             column = tuple(column.split(','))
         else :
             column = ()

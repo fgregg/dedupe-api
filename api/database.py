@@ -28,13 +28,24 @@ def castStringArrayAsTuple(value, cur):
     # of our purposes in dedupe.
     if value == '{}':
         return ()
-    last_bracket = value.find('}')
-    return tuple(value[1:last_bracket].split(','))
+    last_bracket = value.rfind('}', 1)
+
+    # Handle two dimensional array
+    vals = []
+    for part in value[1:last_bracket].split('}","{'):
+        cleaned = part.replace('}', '')\
+                      .replace('{', '')\
+                      .replace('"', '')\
+                      .replace('\\', '')
+        vals.append(tuple(cleaned.split(',')))
+    if len(vals) == 1:
+        return tuple(vals[0])
+    return tuple(vals)
 
 def castIntArrayAsTuple(value, cur):
     if value == '{}':
         return ()
-    last_bracket = value.find('}')
+    last_bracket = value.rfind('}', 1)
     cast_vals = []
     for val in value[1:last_bracket].split(','):
         try:
@@ -46,7 +57,7 @@ def castIntArrayAsTuple(value, cur):
 def castFloatArrayAsTuple(value, cur):
     if value == '{}':
         return ()
-    last_bracket = value.find('}')
+    last_bracket = value.rfind('}', 1)
     cast_vals = []
     for val in value[1:last_bracket].split(','):
         try:

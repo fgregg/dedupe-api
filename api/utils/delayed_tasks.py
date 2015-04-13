@@ -378,9 +378,6 @@ def markAsReviewed(session_id, record_id, reviewer) :
                      record_id=record_id, 
                      reviewer=reviewer)
 
-
-
-
 @queuefunc
 def cleanupTables(session_id, tables=None):
     engine = worker_session.bind
@@ -663,23 +660,7 @@ def reDedupeCanon(session_id, threshold=0.25):
         trans.commit()
     except Exception:
         trans.rollback()
-    table_fmt = 'entity_{0}_cr'
-    metadata = MetaData()
-    entity_table = entity_map(table_fmt.format(session_id), metadata, record_id_type=String)
-    entity_table.drop(bind=engine, checkfirst=True)
-    entity_table.create(bind=engine)
-    clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
-    if clustered_dupes:
-        writeCanonicalEntities(session_id, clustered_dupes)
-    else: # pragma: no cover
-        print('did not find clusters')
-        getMatchingReady(session_id)
-    entity_count, review_count = updateSessionInfo(session_id, table_fmt=table_fmt)
-    dd = worker_session.query(DedupeSession).get(session_id)
-    dd.review_count = review_count
-    dd.status = 'canon clustered'
-    worker_session.add(dd)
-    worker_session.commit()
+    dedupeCanon(session_id)
 
 @queuefunc
 def dedupeRaw(session_id, threshold=0.75):
@@ -745,14 +726,14 @@ def dedupeCanon(session_id, threshold=0.25):
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
     if clustered_dupes:
         writeCanonicalEntities(session_id, clustered_dupes)
+        entity_count, review_count = updateSessionInfo(session_id, table_fmt='entity_{0}_cr')
+        dd.review_count = review_count
+        dd.status = 'canon clustered'
+        worker_session.add(dd)
+        worker_session.commit()
     else: # pragma: no cover
         print('did not find clusters')
         getMatchingReady(session_id)
-    entity_count, review_count = updateSessionInfo(session_id, table_fmt='entity_{0}_cr')
-    dd.review_count = review_count
-    dd.status = 'canon clustered'
-    worker_session.add(dd)
-    worker_session.commit()
 
 def writeCanonicalEntities(session_id, clustered_dupes):
     fname = '/tmp/clusters_{0}.csv'.format(session_id)
