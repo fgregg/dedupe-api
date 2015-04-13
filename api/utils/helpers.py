@@ -184,6 +184,8 @@ def readTraining(session_id):
                 for k,v in item.items():
                     if fds.get(k) and set(fds.get(k)) & set(['Set']):
                         item[k] = tuple(v)
+                    if fds.get(k) and set(fds.get(k)) & set(['Price']):
+                        item[k] = float(v)
                 p.append(item)
             td[match_type].append(p)
     return td
