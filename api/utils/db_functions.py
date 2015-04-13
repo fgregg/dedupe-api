@@ -224,9 +224,7 @@ def addToEntityMap(session_id,
 
     sess = worker_session.query(DedupeSession).get(session_id)
     
-    raw_table = Table('raw_{0}'.format(session_id), Base.metadata, 
-        autoload=True, autoload_with=engine, keep_existing=True)
-    raw_fields = raw_table.column.keys()
+    engine = worker_session.bind
     
     field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fds = {}
@@ -271,6 +269,10 @@ def addToEntityMap(session_id,
                 proc_ins += 'FROM "raw_{0}" WHERE record_id = :record_id)'\
                     .format(session_id)
      
+            meta = MetaData()
+            raw_table = Table('raw_{0}'.format(session_id), meta, 
+                autoload=True, autoload_with=engine)
+            raw_fields = raw_table.columns.keys()
             with engine.begin() as conn:
                 record_id = conn.execute(raw_table.insert()\
                     .returning(raw_table.c.record_id) , **new_entity)
@@ -278,7 +280,7 @@ def addToEntityMap(session_id,
      
         # Add to entity map
         hash_me = ';'.join([preProcess(str(new_entity[i]), ['String']) \
-                for i in raw_fields])
+                for i in fds.keys()])
         md5_hash = md5(hash_me.encode('utf-8')).hexdigest()
         last_update = datetime.now().replace(tzinfo=TIME_ZONE)
         entity = {
@@ -489,27 +491,39 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
     cr.drop(bind=engine, checkfirst=True)
     cr.create(bind=engine)
 
-    cols = [entity.c.entity_id]
+    array_cols = [c.name for c in cr.columns if str(c.type).endswith('[]')]
     col_names = [c for c in proc_table.columns.keys() if c != 'record_id']
-    for name in col_names:
-        col = getattr(proc_table.c, name)
-        cols.append(label(name, func.array_agg(col)))
-    rows = worker_session.query(*cols)\
-        .filter(entity.c.record_id == proc_table.c.record_id)\
-        .group_by(entity.c.entity_id)
+    cols = ['array_agg(p."{0}"::VARCHAR) AS {0}'.format(c) for c in col_names]
+    rows = ''' 
+        SELECT 
+          e.entity_id,
+          {0},
+          COUNT(*) AS member_count
+        FROM "entity_{1}" AS e
+        JOIN "processed_{1}" AS p
+          ON e.record_id = p.record_id
+        GROUP BY e.entity_id
+    '''.format(','.join(cols), session_id)
     names = cr.columns.keys()
     with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'w', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(names)
-        for row in rows:
+        for row in engine.execute(rows):
             r = [row.entity_id]
-            dicts = [dict(**{n:None for n in col_names}) for i in range(len(row[1]))]
+            dicts = [dict(**{n:None for n in col_names}) for i in range(row.member_count)]
             for idx, dct in enumerate(dicts):
                 for name in col_names:
-                    val = str(getattr(row, name)[idx])
+                    val = getattr(row, name)[idx]
+                    if name in array_cols:
+                        val = ','.join(val)
                     dicts[idx][name] = val
             canon_form = dedupe.canonicalize(dicts)
-            r.extend([canon_form[k] for k in names if canon_form.get(k) is not None])
+            for name in names:
+                if canon_form.get(name) is not None:
+                    if name in array_cols:
+                        r.append('{"%s"}' % canon_form[name])
+                    else:
+                        r.append(canon_form[name])
             writer.writerow(r)
     canon_table_name = name_pattern.format(session_id)
     copy_st = 'COPY "{0}" ('.format(canon_table_name)
