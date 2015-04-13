@@ -508,11 +508,11 @@ def blockDedupe(session_id,
 
     select_block_records = ''' 
         SELECT p.*
-        FROM "processed_{0}" AS p
-        LEFT OUTER JOIN "entity_{0}" AS e
+        FROM "{0}" AS p
+        LEFT OUTER JOIN "{1}" AS e
           ON p.record_id = e.record_id
         WHERE e.target_record_id IS NULL
-    '''.format(session_id)
+    '''.format(table_name, entity_table_name)
 
     full_data = ((getattr(row, 'record_id'), dict(zip(row.keys(), row.values()))) \
         for row in engine.execute(select_block_records))
