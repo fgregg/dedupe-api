@@ -33,10 +33,24 @@ except ImportError:
 except KeyError: #pragma: no cover
     sentry = None
 
+def packJSON(record):
+    if isinstance(record, dedupe.core.frozendict):
+        record = dict(record)
+    for k,v in record.items():
+        if isinstance(v, tuple):
+            record[k] = {'__class__': 'tuple', '__value__': list(v)}
+    return record
+
+def unpackJSON(record):
+    for k,v in record.items():
+        if isinstance(v, dict):
+            if v.get('__class__') == 'tuple':
+                record[k] = tuple(v['__value__'])
+    return record
+
 def updateTraining(session_id, 
                    distinct_ids=[], 
                    match_ids=[],
-                   unsure_ids=[],
                    trainer=None):
     ''' 
     Update the sessions training data with the given record_ids
@@ -67,11 +81,10 @@ def updateTraining(session_id,
             if fields_by_type.get(field):
                 if 'Price' in fields_by_type[field]:
                     sel_clauses.add('"{0}"::double precision'.format(field))
+                else:
+                    sel_clauses.add('"{0}"'.format(field))
             else:
                 sel_clauses.add('"{0}"'.format(field))
-        for field, types in fields_by_type.items():
-            if 'Price' in types:
-                sel_clauses.add('{0}::double precision'.format(field))
         sel_clauses = ', '.join(sel_clauses)
         sel = text(''' 
             SELECT {1} FROM "processed_{0}" 
@@ -124,8 +137,8 @@ def saveTraining(session_id, training_data, trainer):
         for pair in pairs:
             row = {
                 'trainer': trainer,
-                'left_record': json.dumps(pair[0], default=_to_json),
-                'right_record': json.dumps(pair[1], default=_to_json),
+                'left_record': json.dumps(packJSON(pair[0])),
+                'right_record': json.dumps(packJSON(pair[1])),
                 'pair_type': pair_type,
                 'session_id': session_id
             }
@@ -146,12 +159,31 @@ def makeTrainingCombos(ids, training_records):
     
     return record_combos
 
+def migrateTraining(session_id):
+    engine = worker_session.bind
+    sel = ''' 
+        SELECT training_data
+        FROM dedupe_session
+        WHERE id = :session_id
+    '''
+    td = engine.execute(text(sel), session_id=session_id).first()
+    if td.training_data:
+        training_data = json.loads(td.training_data.tobytes().decode('utf-8'))
+        saveTraining(session_id, training_data, 'migrated')
+        with engine.begin() as conn:
+            conn.execute(text('''
+                UPDATE dedupe_session SET 
+                  training_data = NULL 
+                WHERE id = :session_id
+                '''), session_id=session_id)
 
 def readTraining(session_id):
     engine = worker_session.bind
     
     training = {'distinct': [], 'match': []}
     
+    migrateTraining(session_id)
+
     for pair_type in ['match', 'distinct']:
         sel = ''' 
           SELECT 
@@ -170,12 +202,12 @@ def readTraining(session_id):
                             pair_type=pair_type, 
                             session_id=session_id).first()
         if pairs.pairs:
-            training[pair_type] = [r['pair'] \
-                for r in json.loads(pairs.pairs, object_hook=_from_json)]
+            for pair in pairs.pairs:
+                for idx, record in enumerate(pair['pair']):
+                    pair['pair'][idx] = unpackJSON(record)
+                training[pair_type].append(pair['pair'])
     
-    if training:
-        return training
-    return None
+    return training
 
 def addRowHash(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)

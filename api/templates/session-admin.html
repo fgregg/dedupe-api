@@ -353,6 +353,11 @@
                     </form>
                 </div>
             </div>
+            <hr />
+            <a href="{{ url_for('trainer.training_run', session_id=dedupe_session.id)}}"
+               class="btn btn-default">
+              Add more training
+            </a>
         </div>
     </div>
 {% endif %}

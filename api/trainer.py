@@ -16,12 +16,9 @@ from dedupe.serializer import _to_json, dedupe_decoder, _from_json
 import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
-from api.utils.db_functions import writeRawTable, updateTraining, \
-    readTraining, saveTraining
 from api.utils.helpers import getDistinct, slugify, STATUS_LIST, readFieldDefs
 from api.utils.db_functions import writeRawTable, updateTraining, \
-    readTraining, saveTraining
-from api.utils.helpers import getDistinct, slugify, STATUS_LIST, tupleizeTraining
+    readTraining, saveTraining, unpackJSON
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
@@ -300,7 +297,11 @@ def training_run():
         training_data = readTraining(session_id)
         deduper.markPairs(training_data)
     
-    training_pair, training_ids = getTrainingPair(session_id, deduper, training_ids=training_ids)
+    pair_tuple = getTrainingPair(session_id, 
+                                 deduper, 
+                                 training_ids=training_ids)
+    training_pair, training_ids, pair_type, date_added, trainer = pair_tuple
+    
     flask_session['current_pair'] = training_pair
     
     formatted = []
@@ -333,14 +334,17 @@ def training_run():
                             counter=counter,
                             training_pair=formatted,
                             training_ids=training_ids,
+                            pair_type=pair_type,
+                            trainer=trainer,
+                            date_added=date_added,
                             previous_ids=previous_ids,
                             next_ids=next_ids)
 
 def getPrevNext(session_id, training_ids):
     engine = db_session.bind
     previous_ids = None
+    next_ids = None
     if training_ids is None:
-        next_ids = None
         prev = ''' 
             SELECT 
               left_record->'record_id' AS left_record_id,
@@ -353,7 +357,6 @@ def getPrevNext(session_id, training_ids):
         prev = engine.execute(text(prev), session_id=session_id).first()
         if prev is not None:
             previous_ids = ','.join([str(prev.left_record_id), str(prev.right_record_id)])
-        return previous_ids, next_ids
     else:
         left_id, right_id = training_ids.split(',')
         records = '''
@@ -386,15 +389,26 @@ def getPrevNext(session_id, training_ids):
             ORDER BY date_added DESC LIMIT 1) 
           ORDER BY date_added
         '''
+        min_max = ''' 
+            SELECT 
+              MIN(date_added) AS oldest, 
+              MAX(date_added) AS newest
+            FROM dedupe_training_data
+        '''
         records = list(engine.execute(text(records), 
                                  session_id=session_id,
                                  left_id=left_id, 
                                  right_id=right_id))
+        min_max = engine.execute(min_max).first()
         first = records[0]
         last = records[-1]
-        previous_ids = ','.join([str(first.left_record_id), str(first.right_record_id)])
-        next_ids = ','.join([str(last.left_record_id), str(last.right_record_id)])
-        return previous_ids, next_ids
+        if len(records) == 3:
+            previous_ids = ','.join([str(first.left_record_id), str(first.right_record_id)])
+            next_ids = ','.join([str(last.left_record_id), str(last.right_record_id)])
+        else:
+            if first.date_added != min_max.oldest:
+                previous_ids = ','.join([str(first.left_record_id), str(first.right_record_id)])
+    return previous_ids, next_ids
 
 def getTrainingCounts(session_id):
     counts = ''' 
@@ -430,98 +444,38 @@ def getTrainingPair(session_id, deduper, training_ids=None):
         left_id, right_id = training_ids.split(',')
         sel = ''' 
           SELECT
-            json_build_array(left_record, right_record) AS training_pair
+            json_build_array(left_record, right_record) AS training_pair,
+            pair_type,
+            date_added,
+            trainer
           FROM dedupe_training_data
           WHERE session_id = :session_id
             AND left_record->>'record_id' = :left_id
             AND right_record->>'record_id' = :right_id
         '''
         engine = db_session.bind
-        training_pair = engine.execute(text(sel), 
-                                     left_id=left_id, 
-                                     right_id=right_id, 
-                                     session_id=session_id).first()
-        if training_pair:
-            training_pair = json.loads(training_pair.training_pair, 
-                                     object_hook=_from_json)
+        tp = engine.execute(text(sel), 
+                            left_id=left_id, 
+                            right_id=right_id, 
+                            session_id=session_id).first()
+        if tp:
+            training_pair = []
+            for record in tp.training_pair:
+                training_pair.append(unpackJSON(record))
+
+            pair_type = tp.pair_type
+            date_added = tp.date_added
+            trainer = tp.trainer
         else:
             # We need an error or something here
             print('not found')
     else:
         training_pair = deduper.uncertainPairs()[0]
         training_ids = ','.join([str(r['record_id']) for r in training_pair])
-    return training_pair, training_ids
-
-@trainer.route('/get-pair/')
-@login_required
-@check_roles(roles=['admin'])
-def get_pair():
-    deduper = flask_session['deduper']
-    fields = list(set([f[0] for f in deduper.data_model.field_comparators]))
-    record_pair = deduper.uncertainPairs()[0]
-    flask_session['current_pair'] = record_pair
-    data = []
-    left, right = record_pair
-    for field in fields:
-        d = {
-            'field': field,
-            'left': left[field],
-            'right': right[field],
-        }
-        data.append(d)
-    resp = make_response(json.dumps(data, default=_to_json))
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
-
-@trainer.route('/mark-pair/')
-@login_required
-@check_roles(roles=['admin'])
-def mark_pair():
-    action = request.args['action']
-    counter = flask_session.get('counter')
-    session_id = flask_session['session_id']
-    deduper = flask_session['deduper']
-
-    sess = db_session.query(DedupeSession).get(session_id)
-    field_defs = json.loads(sess.field_defs.decode('utf-8'))
-    fds = {}
-    for fd in field_defs:
-        try:
-            fds[fd['field']].append(fd['type'])
-        except KeyError:
-            fds[fd['field']] = [fd['type']]
-    current_pair = flask_session['current_pair']
-    left, right = current_pair
-    record_ids = [left['record_id'], right['record_id']]
-    if action == 'yes':
-        updateTraining(session_id, 
-                       match_ids=record_ids, 
-                       trainer=current_user.name)
-        counter['yes'] += 1
-        resp = {'counter': counter}
-    elif action == 'no':
-        updateTraining(session_id, 
-                       distinct_ids=record_ids,
-                       trainer=current_user.name)
-        counter['no'] += 1
-        resp = {'counter': counter}
-    elif action == 'finish':
-        sess.processing = True
-        db_session.add(sess)
-        db_session.commit()
-        dedupeRaw.delay(session_id)
-        resp = {'finished': True}
-    else:
-        counter['unsure'] += 1
-        flask_session['counter'] = counter
-        resp = {'counter': counter}
-    training_data = readTraining(session_id)
-    deduper.markPairs(training_data)
-    if resp.get('finished'):
-        del flask_session['deduper']
-    resp = make_response(json.dumps(resp))
-    resp.headers['Content-Type'] = 'application/json'
-    return resp
+        pair_type = None
+        date_added = None
+        trainer = None
+    return training_pair, training_ids, pair_type, date_added, trainer
 
 @trainer.route('/upload_formats/')
 def upload_formats(): # pragma: no cover
