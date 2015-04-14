@@ -312,8 +312,11 @@ def getCluster(session_id, entity_pattern, raw_pattern):
     cluster_list = []
     prediction = None
     machine = pickle.loads(sess.review_machine)
-    if machine.get_next() is not None:
+    try:
         entity_id = bytes(machine.get_next()).decode('utf-8')
+    except TypeError:
+        entity_id = None
+    if entity_id is not None:
         sess.review_machine = pickle.dumps(machine)
         app_session.add(sess)
         app_session.commit()
