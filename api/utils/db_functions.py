@@ -1,6 +1,7 @@
 import os
 import json
 import dedupe
+from dedupe.serializer import _to_json, _from_json
 import csv
 from io import StringIO, BytesIO
 from hashlib import md5
@@ -21,7 +22,7 @@ from uuid import uuid4
 import csv
 from datetime import datetime
 from operator import itemgetter
-from itertools import groupby
+from itertools import groupby, combinations
 
 try: # pragma: no cover
     from raven import Client as Sentry
@@ -31,6 +32,182 @@ except ImportError:
     sentry = None
 except KeyError: #pragma: no cover
     sentry = None
+
+def packJSON(record):
+    if isinstance(record, dedupe.core.frozendict):
+        record = dict(record)
+    for k,v in record.items():
+        if isinstance(v, tuple):
+            record[k] = {'__class__': 'tuple', '__value__': list(v)}
+    return record
+
+def unpackJSON(record):
+    for k,v in record.items():
+        if isinstance(v, dict):
+            if v.get('__class__') == 'tuple':
+                record[k] = tuple(v['__value__'])
+    return record
+
+def updateTraining(session_id, 
+                   distinct_ids=[], 
+                   match_ids=[],
+                   trainer=None):
+    ''' 
+    Update the sessions training data with the given record_ids
+    '''
+    sess = worker_session.query(DedupeSession).get(session_id)
+    worker_session.refresh(sess)
+    engine = worker_session.bind
+    
+    meta = MetaData()
+    raw_table = Table('raw_{0}'.format(session_id), meta, 
+            autoload=True, autoload_with=engine)
+    raw_fields = [r.name for r in raw_table.columns]
+
+    training = {'distinct': [], 'match': []}
+    field_defs = json.loads(sess.field_defs.decode('utf-8'))
+    fields_by_type = {}
+    for field in field_defs:
+        try:
+            fields_by_type[field['field']].append(field['type'])
+        except KeyError:
+            fields_by_type[field['field']] = [field['type']]
+
+    all_ids = tuple([i for i in distinct_ids + match_ids])
+    if all_ids:
+        sel_clauses = set()
+        for field in raw_fields:
+            # Need to figure out set and other array fields
+            if fields_by_type.get(field):
+                if 'Price' in fields_by_type[field]:
+                    sel_clauses.add('"{0}"::double precision'.format(field))
+                else:
+                    sel_clauses.add('"{0}"'.format(field))
+            else:
+                sel_clauses.add('"{0}"'.format(field))
+        sel_clauses = ', '.join(sel_clauses)
+        sel = text(''' 
+            SELECT {1} FROM "processed_{0}" 
+            WHERE record_id IN :record_ids
+        '''.format(session_id, sel_clauses))
+        all_records = {r.record_id: dict(zip(r.keys(), r.values())) \
+                for r in engine.execute(sel, record_ids=all_ids)}
+ 
+        if distinct_ids and match_ids:
+            distinct_ids.extend(match_ids)
+        
+        training['distinct'].extend(
+                makeTrainingCombos(distinct_ids, all_records))
+        
+        training['match'].extend(
+                makeTrainingCombos(match_ids, all_records))
+        
+        saveTraining(session_id, training, trainer)
+
+    return None
+
+def saveTraining(session_id, training_data, trainer):
+    engine = worker_session.bind
+    ins = ''' 
+        WITH upsert AS (
+          UPDATE dedupe_training_data SET
+            pair_type = :pair_type,
+            date_added = NOW()
+          WHERE session_id = :session_id
+            AND left_record = :left_record
+            AND right_record = :right_record
+          RETURNING *
+        )
+        INSERT INTO dedupe_training_data (
+          trainer, 
+          left_record,
+          right_record,
+          pair_type, 
+          session_id
+        ) SELECT 
+            :trainer,
+            :left_record,
+            :right_record,
+            :pair_type,
+            :session_id
+          WHERE NOT EXISTS (SELECT * FROM upsert)
+    '''
+    
+    for pair_type, pairs in training_data.items():
+        for pair in pairs:
+            row = {
+                'trainer': trainer,
+                'left_record': json.dumps(packJSON(pair[0])),
+                'right_record': json.dumps(packJSON(pair[1])),
+                'pair_type': pair_type,
+                'session_id': session_id
+            }
+            row_ins = ins.format(**row)
+            with engine.begin() as conn:
+                conn.execute(text(row_ins), **row)
+
+def makeTrainingCombos(ids, training_records):
+    combos = []
+    if ids:
+        combos = combinations(ids, 2)
+    
+    record_combos = []
+    for combo in combos:
+        combo = tuple([int(c) for c in combo])
+        records = [training_records[combo[0]], training_records[combo[1]]]
+        record_combos.append(records)
+    
+    return record_combos
+
+def migrateTraining(session_id):
+    engine = worker_session.bind
+    sel = ''' 
+        SELECT training_data
+        FROM dedupe_session
+        WHERE id = :session_id
+    '''
+    td = engine.execute(text(sel), session_id=session_id).first()
+    if td.training_data:
+        training_data = json.loads(td.training_data.tobytes().decode('utf-8'))
+        saveTraining(session_id, training_data, 'migrated')
+        with engine.begin() as conn:
+            conn.execute(text('''
+                UPDATE dedupe_session SET 
+                  training_data = NULL 
+                WHERE id = :session_id
+                '''), session_id=session_id)
+
+def readTraining(session_id):
+    engine = worker_session.bind
+    
+    training = {'distinct': [], 'match': []}
+    
+    migrateTraining(session_id)
+
+    for pair_type in ['match', 'distinct']:
+        sel = ''' 
+          SELECT 
+            json_agg(pairs) AS pairs
+          FROM (
+            SELECT 
+              json_build_array(left_record, right_record) AS pair
+            FROM dedupe_training_data 
+            WHERE pair_type = :pair_type
+              AND session_id = :session_id
+            ORDER BY date_added
+            LIMIT 300
+          ) AS pairs
+        '''
+        pairs = engine.execute(text(sel), 
+                            pair_type=pair_type, 
+                            session_id=session_id).first()
+        if pairs.pairs:
+            for pair in pairs.pairs:
+                for idx, record in enumerate(pair['pair']):
+                    pair['pair'][idx] = unpackJSON(record)
+                training[pair_type].append(pair['pair'])
+    
+    return training
 
 def addRowHash(session_id):
     sess = worker_session.query(DedupeSession).get(session_id)

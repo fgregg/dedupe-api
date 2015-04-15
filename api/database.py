@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql.psycopg2 import PGDialect_psycopg2
 from sqlalchemy.dialects import registry
 import uuid
-import re
+from dedupe.serializer import _from_json, _to_json
 
 from api.app_config import DEFAULT_USER
 
@@ -98,16 +98,6 @@ class DedupeDialect(PGDialect_psycopg2):
                 self.set_isolation_level(conn, self.isolation_level)
             fns.append(on_connect)
 
-        if self.dbapi and self._json_deserializer:
-            def on_connect(conn):
-                if self._has_native_json:
-                    extras.register_default_json(
-                        conn, loads=self._json_deserializer)
-                if self._has_native_jsonb:
-                    extras.register_default_jsonb(
-                        conn, loads=self._json_deserializer)
-            fns.append(on_connect)
-    
         def on_connect(conn):
             # Register new "type" which effectively overrides all of the ARRAY types
             # we care about. The first arg here is the PostgreSQL datatype object IDs

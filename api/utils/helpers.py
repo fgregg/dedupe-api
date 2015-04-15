@@ -21,7 +21,6 @@ from itertools import count
 from csvkit.unicsv import UnicodeCSVDictWriter
 from csv import QUOTE_ALL
 from datetime import datetime, timedelta
-from itertools import combinations, groupby
 from io import StringIO, BytesIO
 from collections import OrderedDict, defaultdict
 from operator import itemgetter
@@ -223,85 +222,6 @@ def readFieldDefs(session_id):
             field.update({'has_missing': True})
         updated_fds.append(field)
     return updated_fds
-
-def updateTraining(session_id, distinct_ids=[], match_ids=[]):
-    ''' 
-    Update the sessions training data with the given record_ids
-    '''
-    sess = worker_session.query(DedupeSession).get(session_id)
-    worker_session.refresh(sess)
-    engine = worker_session.bind
-    
-    meta = MetaData()
-    raw_table = Table('raw_{0}'.format(session_id), meta, 
-            autoload=True, autoload_with=engine)
-    raw_fields = [r.name for r in raw_table.columns]
-
-    training = {'distinct': [], 'match': []}
-    field_defs = json.loads(sess.field_defs.decode('utf-8'))
-    fields_by_type = {}
-    for field in field_defs:
-        try:
-            fields_by_type[field['field']].append(field['type'])
-        except KeyError:
-            fields_by_type[field['field']] = [field['type']]
-
-    all_ids = tuple([i for i in distinct_ids + match_ids])
-    if all_ids:
-        sel_clauses = set()
-        for field in raw_fields:
-            sel_clauses.add('"{0}"'.format(field))
-            if fields_by_type.get(field):
-                if 'Price' in fields_by_type[field]:
-                    sel_clauses.add('"{0}"::double precision'.format(field))
-        for field, types in fields_by_type.items():
-            if 'Price' in types:
-                sel_clauses.add('{0}::double precision'.format(field))
-        sel_clauses = ', '.join(sel_clauses)
-        sel = text(''' 
-            SELECT {1} FROM "processed_{0}" 
-            WHERE record_id IN :record_ids
-        '''.format(session_id, sel_clauses))
-        all_records = {r.record_id: dict(zip(r.keys(), r.values())) \
-                for r in engine.execute(sel, record_ids=all_ids)}
- 
-        if sess.training_data:
-            training = json.loads(sess.training_data.decode('utf-8'), 
-                                  object_hook=_from_json)
-        if distinct_ids and match_ids:
-            distinct_ids.extend(match_ids)
-        
-        distinct_combos = []
-        match_combos = []
-        if distinct_ids:
-            distinct_combos = combinations(distinct_ids, 2)
-        if match_ids:
-            match_combos = combinations(match_ids, 2)
-        
-        distinct_records = []
-        for combo in distinct_combos:
-            combo = tuple([int(c) for c in combo])
-            records = [all_records[combo[0]], all_records[combo[1]]]
-            distinct_records.append(records)
-
-        training['distinct'].extend(distinct_records)
-        if len(training['distinct']) > 300:
-            training['distinct'] = training['distinct'][-300:]
-
-        match_records = []
-        for combo in match_combos:
-            combo = tuple([int(c) for c in combo])
-            records = [all_records[combo[0]], all_records[combo[1]]]
-            match_records.append(records)
-        training['match'].extend(match_records)
-        if len(training['match']) > 300:
-            training['match'] = training['match'][-300:]
-
-        sess.training_data = bytes(json.dumps(training, 
-                                              default=_to_json).encode('utf-8'))
-        worker_session.add(sess)
-        worker_session.commit()
-    return None
 
 def getCluster(session_id, entity_pattern, raw_pattern):
     ent_name = entity_pattern.format(session_id)

@@ -1,4 +1,5 @@
 import dedupe
+from dedupe.serializer import _to_json, _from_json
 import os
 import json
 import time
@@ -12,7 +13,7 @@ from api.utils.helpers import clusterGen, makeSampleDict, getDistinct, \
     readFieldDefs, readTraining
 from api.utils.db_functions import updateEntityMap, writeBlockingMap, \
     writeRawTable, initializeEntityMap, writeProcessedTable, writeCanonRep, \
-    addRowHash, addToEntityMap
+    addRowHash, addToEntityMap, readTraining
 from api.utils.review_machine import ReviewMachine
 from sqlalchemy import Table, MetaData, Column, String, func, text, \
     Integer, select
@@ -179,9 +180,11 @@ def getMatchingReady(session_id):
 
     # Save Gazetteer settings
     d = dedupe.Gazetteer(field_defs)
-    training = readTraining(session_id)
+    
+    training_data = readTraining(session_id)
 
-    d.readTraining(StringIO(json.dumps(training, default=_to_json)))
+    d.readTraining(StringIO(json.dumps(training_data, default=_to_json)))
+    
     d.train(ppc=0.1, index_predicates=False)
     g_settings = BytesIO()
     d.writeSettings(g_settings)
@@ -347,8 +350,10 @@ def populateHumanReview(session_id):
     # Train classifier
     settings_file = BytesIO(dedupe_session.gaz_settings_file)
     deduper = RetrainGazetteer(settings_file, num_cores=1)
-    training_data = BytesIO(dedupe_session.training_data)
-    deduper.readTraining(training_data)
+    
+    training_data = readTraining(session_id)
+
+    deduper.readTraining(StringIO(json.dumps(training_data, default=_to_json)))
     deduper._trainClassifier()
     fobj = BytesIO()
     deduper.writeSettings(fobj)
@@ -462,17 +467,20 @@ def trainDedupe(session_id):
     dd_session = worker_session.query(DedupeSession)\
         .get(session_id)
     data_sample = pickle.loads(dd_session.sample)
+    
     field_defs = readFieldDefs(session_id)
     training_data = readTraining(session_id)
+    
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
-    training_data = StringIO(json.dumps(training_data))
-    deduper.readTraining(training_data)
+    
+    training_data = readTraining(session_id)
+    deduper.readTraining(StringIO(json.dumps(training_data, default=_to_json)))
+    
     deduper.train()
+    
     settings_file_obj = BytesIO()
     deduper.writeSettings(settings_file_obj)
     dd_session.settings_file = settings_file_obj.getvalue()
-    training_data.seek(0)
-    dd_session.training_data = bytes(training_data.getvalue().encode('utf-8'))
     worker_session.add(dd_session)
     worker_session.commit()
     deduper.cleanupTraining()
