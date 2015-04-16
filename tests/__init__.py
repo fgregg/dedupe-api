@@ -1,4 +1,5 @@
 import unittest
+import json
 from uuid import uuid4
 from api.database import init_db, app_session as db_session, \
     init_engine, DEFAULT_USER
@@ -51,7 +52,7 @@ class DedupeAPITestCase(unittest.TestCase):
         db_session.commit()
         
         training = json.load(open(join(fixtures_path, 'training_data.json'), 'r'))
-        saveTraining(cls.dd_sess.id, training, cls.user.name)
+        saveTraining(self.dd_sess.id, training, self.user.name)
 
     def tearDown(self):
         try:

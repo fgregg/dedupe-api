@@ -1,14 +1,10 @@
 import unittest
-import json
 from api.queue import queuefunc, processMessage
-from uuid import uuid4
 from api import create_app
-import time
-from api.database import app_session, worker_session, init_engine
+from api.database import app_session as db_session, init_engine
 from api.models import User
 from .test_config import DEFAULT_USER, DB_CONN
 from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker, scoped_session
 
 import logging
 logging.getLogger('dedupe').setLevel(logging.WARNING)
@@ -30,10 +26,7 @@ class QueueTest(unittest.TestCase):
         cls.app = create_app(config='tests.test_config')
         cls.client = cls.app.test_client()
         cls.engine = init_engine(cls.app.config['DB_CONN'])
-        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
-                                              autocommit=False, 
-                                              autoflush=False))
-        cls.user = cls.session.query(User).first()
+        cls.user = db_session.query(User).first()
         cls.user_pw = DEFAULT_USER['user']['password']
         with cls.engine.begin() as conn:
             conn.execute('delete from work_table')
@@ -45,9 +38,7 @@ class QueueTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        app_session.close()
-        worker_session.close()
-        worker_session.bind.dispose()
+        db_session.close()
         cls.engine.dispose()
 
     def login(self, email=None, pw=None):

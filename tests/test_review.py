@@ -6,6 +6,7 @@ from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, bulkMarkClusters, bulkMarkCanonClusters
 from tests import DedupeAPITestCase
 from api.utils.helpers import slugify
+from api.database import app_session as db_session
 
 import logging
 logging.getLogger('dedupe').setLevel(logging.WARNING)
@@ -53,7 +54,7 @@ class ReviewTest(DedupeAPITestCase):
             self.login()
             with self.client as c:
                 rv = c.get(endpoints['get'])
-                self.session.refresh(self.dd_sess)
+                db_session.refresh(self.dd_sess)
                 json_resp = json.loads(rv.data.decode('utf-8'))
                 assert json_resp['total_clusters'] == \
                         self.dd_sess.entity_count
