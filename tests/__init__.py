@@ -1,14 +1,14 @@
 import unittest
 from uuid import uuid4
-from api.database import init_db, app_session, worker_session, \
+from api.database import init_db, app_session as db_session, \
     init_engine, DEFAULT_USER
 from api.models import User, Group, Role, DedupeSession
 from api.utils.helpers import STATUS_LIST
+from api.utils.db_functions import saveTraining
 from .test_config import DB_CONFIG, DB_CONN
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
 from api import create_app
 from os.path import join, abspath, dirname
 
@@ -21,13 +21,6 @@ dbuser = DB_CONFIG['user']
 conn_str = 'user={dbuser} host={host} port={port} dbname=postgres'\
     .format(dbuser=dbuser, host=host, port=port)
 
-engine = create_engine(DB_CONN, 
-                       convert_unicode=True, 
-                       server_side_cursors=True)
-
-session = scoped_session(sessionmaker(bind=engine, 
-                                      autocommit=False, 
-                                      autoflush=False))
 
 class DedupeAPITestCase(unittest.TestCase):
     
@@ -37,17 +30,13 @@ class DedupeAPITestCase(unittest.TestCase):
         cls.app = create_app(config='tests.test_config')
         cls.client = cls.app.test_client()
    
-        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
-                                              autocommit=False, 
-                                              autoflush=False))
-        cls.user = cls.session.query(User).first()
+        cls.user = db_session.query(User).first()
         cls.group = cls.user.groups[0]
         cls.user_pw = DEFAULT_USER['user']['password']
 
     def setUp(self):
         self.field_defs = open(join(fixtures_path, 'field_defs.json'), 'r').read()
         settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
-        training = open(join(fixtures_path, 'training_data.json'), 'r').read()
         self.dd_sess = DedupeSession(
                         id=str(uuid4()), 
                         filename='test_filename.csv',
@@ -56,25 +45,24 @@ class DedupeAPITestCase(unittest.TestCase):
                         group=self.group,
                         status=STATUS_LIST[0]['machine_name'],
                         settings_file=settings,
-                        field_defs=bytes(self.field_defs.encode('utf-8')),
-                        training_data=bytes(training.encode('utf-8'))
+                        field_defs=bytes(self.field_defs.encode('utf-8'))
                       )
-        self.session.add(self.dd_sess)
-        self.session.commit()
+        db_session.add(self.dd_sess)
+        db_session.commit()
+        
+        training = json.load(open(join(fixtures_path, 'training_data.json'), 'r'))
+        saveTraining(cls.dd_sess.id, training, cls.user.name)
 
     def tearDown(self):
         try:
-            self.session.delete(self.dd_sess)
-            self.session.commit()
+            db_session.delete(self.dd_sess)
+            db_session.commit()
         except Exception:
-            self.session.rollback()
+            db_session.rollback()
 
     @classmethod
     def tearDownClass(cls):
-        cls.session.close()
-        app_session.close()
-        worker_session.close()
-        worker_session.bind.dispose()
+        db_session.close()
         cls.engine.dispose()
     
     def login(self, email=None, pw=None):
@@ -116,20 +104,19 @@ def setUpPackage():
                               ''')
     curs.close()
     conn.close()
-    init_db(eng=engine, sess=session)
+    engine = init_engine(DB_CONN)
+    init_db(eng=engine)
     user = User('bob', 'bobspw', 'bob@bob.com')
-    group = session.query(Group).first()
-    role = session.query(Role)\
+    group = db_session.query(Group).first()
+    role = db_session.query(Role)\
         .filter(Role.name == 'reviewer').first()
     user.groups = [group]
     user.roles = [role]
     dummy_group = Group(name='dummy', description='dummy')
-    session.add(dummy_group)
-    session.add(user)
-    session.commit()
+    db_session.add(dummy_group)
+    db_session.add(user)
+    db_session.commit()
 
 def tearDownPackage():
-    session.close_all()
-    worker_session.close_all()
-    engine.dispose()
-    worker_session.bind.dispose()
+    db_session.close_all()
+    db_session.bind.dispose()

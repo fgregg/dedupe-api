@@ -287,7 +287,7 @@ def getMatches(session_id, records):
                                 engine=engine, 
                                 session_id=session_id)
 
-    messy_records = {int(r['record_id']): r for r in records}
+    messy_records = {int(r.get('record_id', idx)): r for idx, r in enumerate(records)}
 
     linked_records = deduper.match(messy_records, n_matches=5)
 

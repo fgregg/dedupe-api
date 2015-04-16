@@ -7,8 +7,10 @@ from flask import request, session
 from api.models import User, Group
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, bulkMarkClusters, reDedupeRaw, reDedupeCanon
+from api.database import app_session as db_session
 from api.queue import processMessage
 from api.utils.helpers import slugify
+from api.utils.db_functions import readTraining
 from sqlalchemy import text
 from io import StringIO
 import csv
@@ -71,7 +73,7 @@ class AdminTest(DedupeAPITestCase):
             assert self.dd_sess.description in rv.data.decode('utf-8')
 
     def no_access(self, path):
-        dummy_group = self.session.query(Group)\
+        dummy_group = db_session.query(Group)\
             .filter(Group.name == 'dummy')\
             .first()
         self.add_user({'name': 'george',
@@ -137,7 +139,7 @@ class AdminTest(DedupeAPITestCase):
                 with c.session_transaction() as sess:
                     sess['user_id'] = self.user.id
                 rv = c.open('/delete-data-model/?session_id=' + self.dd_sess.id)
-                self.session.refresh(self.dd_sess)
+                db_session.refresh(self.dd_sess)
                 assert self.dd_sess.field_defs is None
                 assert self.dd_sess.status == 'dataset uploaded'
                 removed_tables = [
@@ -231,11 +233,11 @@ class AdminTest(DedupeAPITestCase):
         initializeModel(self.dd_sess.id)
         dedupeRaw(self.dd_sess.id)
 
-        self.session.refresh(self.dd_sess)
+        db_session.refresh(self.dd_sess)
         assert self.dd_sess.status == 'entity map updated'
         
         bulkMarkClusters(self.dd_sess.id)
-        self.session.refresh(self.dd_sess)
+        db_session.refresh(self.dd_sess)
         assert self.dd_sess.status == 'canon clustered'
         
         with self.app.test_request_context():
@@ -244,13 +246,13 @@ class AdminTest(DedupeAPITestCase):
                 self.engine.execute('delete from work_table')
                 c.get('/rewind/?session_id={0}&step=first&threshold=0.75'.format(self.dd_sess.id))
                 reDedupeRaw(self.dd_sess.id, threshold=0.75)
-                self.session.refresh(self.dd_sess)
+                db_session.refresh(self.dd_sess)
                 assert self.dd_sess.status == 'entity map updated'
 
     def test_bulk_training(self):
-        self.dd_sess.training_data = None
-        self.session.add(self.dd_sess)
-        self.session.commit()
+        engine = db_session.bind
+        with engine.begin() as conn:
+            conn.execute('DELETE FROM dedupe_training_data')
         with self.app.test_request_context():
             self.login()
             with self.client as c:
@@ -261,6 +263,5 @@ class AdminTest(DedupeAPITestCase):
                             'input_file': (open(join(fixtures_path, 
                                 'training_data.json'),'rb'), 
                                 'training_data.json')}, follow_redirects=True)
-                self.session.refresh(self.dd_sess)
-                assert self.dd_sess.training_data is not None
+                assert readTraining(self.dd_sess.id) != {'distinct': [], 'match': []}
 

@@ -4,6 +4,7 @@ from api import create_app
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, getMatchingReady
 from api.utils.helpers import slugify
+from api.database import app_session as db_session
 from sqlalchemy import text
 from tests import DedupeAPITestCase
 from api.utils.helpers import STATUS_LIST
@@ -40,7 +41,7 @@ class DelayedTest(DedupeAPITestCase):
                 outp.write(inp.read())
         fieldnames = [slugify(c).strip('\n') for c in raw_fieldnames.split(',')]
         initializeSession(self.dd_sess.id, fieldnames)
-        self.session.refresh(self.dd_sess)
+        db_session.refresh(self.dd_sess)
         rows = []
         with self.engine.begin() as conn:
             rows = list(conn.execute('select count(*) from "raw_{0}"'\
@@ -51,28 +52,28 @@ class DelayedTest(DedupeAPITestCase):
         assert 'raw_{0}'.format(self.dd_sess.id) in self.table_names
 
         initializeModel(self.dd_sess.id)
-        self.session.refresh(self.dd_sess)
+        db_session.refresh(self.dd_sess)
         self.get_table_names()
         assert self.dd_sess.sample is not None
         assert 'processed_{0}'.format(self.dd_sess.id) in self.table_names
         assert 'entity_{0}'.format(self.dd_sess.id) in self.table_names
 
         dedupeRaw(self.dd_sess.id)
-        self.session.refresh(self.dd_sess)
+        db_session.refresh(self.dd_sess)
         self.get_table_names()
         assert self.dd_sess.entity_count > 0
         assert self.dd_sess.review_count > 0
         assert 'small_cov_{0}'.format(self.dd_sess.id) in self.table_names
 
         dedupeCanon(self.dd_sess.id)
-        self.session.refresh(self.dd_sess)
+        db_session.refresh(self.dd_sess)
         self.get_table_names()
         assert 'processed_{0}_cr'.format(self.dd_sess.id) in self.table_names
         assert 'entity_{0}_cr'.format(self.dd_sess.id) in self.table_names
         assert 'small_cov_{0}_cr'.format(self.dd_sess.id) in self.table_names
 
         getMatchingReady(self.dd_sess.id)
-        self.session.refresh(self.dd_sess)
+        db_session.refresh(self.dd_sess)
         self.get_table_names()
         removed_tables = set()
         table_patterns = [

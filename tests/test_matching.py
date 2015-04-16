@@ -5,11 +5,11 @@ from uuid import uuid4
 from flask import request, session
 from api import create_app
 from api.models import User, DedupeSession, Group
-from api.database import init_engine, app_session, worker_session
+from api.database import init_engine, app_session as db_session
 from .test_config import DEFAULT_USER, DB_CONN
-from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST, preProcess, slugify
+from api.utils.db_functions import readTraining, saveTraining
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters, \
     populateHumanReview
@@ -29,15 +29,11 @@ class MatchingTest(unittest.TestCase):
         cls.client = cls.app.test_client()
         cls.engine = init_engine(cls.app.config['DB_CONN'])
    
-        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
-                                              autocommit=False, 
-                                              autoflush=False))
-        cls.user = cls.session.query(User).first()
+        cls.user = db_session.query(User).first()
         cls.group = cls.user.groups[0]
         cls.user_pw = DEFAULT_USER['user']['password']
         cls.field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
         settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
-        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
         cls.dd_sess = DedupeSession(
                         id=str(uuid4()), 
                         filename='test_filename.csv',
@@ -45,11 +41,13 @@ class MatchingTest(unittest.TestCase):
                         group=cls.group,
                         status=STATUS_LIST[0]['machine_name'],
                         settings_file=settings,
-                        field_defs=cls.field_defs,
-                        training_data=training,
+                        field_defs=cls.field_defs
                       )
-        cls.session.add(cls.dd_sess)
-        cls.session.commit()
+        db_session.add(cls.dd_sess)
+        db_session.commit()
+        
+        training = json.load(open(join(fixtures_path, 'training_data.json'), 'r'))
+        saveTraining(cls.dd_sess.id, training, cls.user.name)
         
         # Go through dedupe process
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:
@@ -66,10 +64,8 @@ class MatchingTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.session.close()
-        app_session.close()
-        worker_session.close()
-        worker_session.bind.dispose()
+        db_session.close()
+        db_session.bind.dispose()
         cls.engine.dispose()
     
     def login(self, email=None, pw=None):
@@ -168,18 +164,17 @@ class MatchingTest(unittest.TestCase):
                     sess['user_sessions'] = [self.dd_sess.id]
 
                 # First, get an unmatched record and try to find matches
-                matches = []
-                while not matches:
-                    unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
-                    obj = json.loads(unmatched.data.decode('utf-8'))['object']
-                    post_data = {
-                        'api_key': self.user.id,
-                        'session_id': self.dd_sess.id,
-                        'object': obj
-                    }
-                    rv = c.post('/match/', data=json.dumps(post_data))
-                    matches = json.loads(rv.data.decode('utf-8'))['matches']
-
+                unmatched = c.get('/get-unmatched-record/?session_id=' + self.dd_sess.id)
+                unmatched = json.loads(unmatched.data.decode('utf-8'))
+                obj = unmatched['object']
+                post_data = {
+                    'session_id': self.dd_sess.id,
+                    'object': obj,
+                    'api_key': self.user.id,
+                    'add_entity': True,
+                    'matches': [],
+                }
+                matches = unmatched['matches']
                 matches[0]['match'] = 1
                 del matches[0]['entity_id']
                 for match in matches[1:]:
@@ -187,8 +182,8 @@ class MatchingTest(unittest.TestCase):
                     del match['entity_id']
                 post_data['matches'] = matches
                 rv = c.post('/train/', data=json.dumps(post_data))
-                self.session.refresh(self.dd_sess)
-                td = json.loads(self.dd_sess.training_data.decode('utf-8'))
+                db_session.refresh(self.dd_sess)
+                td = readTraining(self.dd_sess.id)
                 del matches[0]['match']
                 record_ids = set()
                 for left, right in td['match']:
@@ -196,7 +191,7 @@ class MatchingTest(unittest.TestCase):
                     record_ids.add(right['record_id'])
                 assert set([matches[0]['record_id'], obj['record_id']]).intersection(record_ids)
                 for match in matches[1:]:
-                    m = {k:preProcess(str(v)) for k,v in match.items()}
+                    m = {k:preProcess(str(v), ['String']) for k,v in match.items()}
                     del m['match']
                     assert [m, obj] in td['distinct']
 
@@ -235,7 +230,6 @@ class MatchingTest(unittest.TestCase):
                         WHERE record_id = :record_id
                     '''.format(self.dd_sess.id)), record_id=obj['record_id']))
                 entity_id = rows[0][0]
-
                 # Check to see that the status is OK and that the new entry is
                 # associated with the correct entity
                 assert json.loads(add_entity.data.decode('utf-8'))['status'] == 'ok'
