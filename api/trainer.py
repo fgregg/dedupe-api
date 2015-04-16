@@ -299,6 +299,7 @@ def training_run():
     pair_tuple = getTrainingPair(session_id, 
                                  deduper, 
                                  training_ids=training_ids)
+    
     training_pair, training_ids, pair_type, date_added, trainer = pair_tuple
     
     flask_session['current_pair'] = training_pair
