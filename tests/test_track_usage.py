@@ -5,13 +5,13 @@ from uuid import uuid4
 from flask import request, session
 from api import create_app
 from api.models import User, DedupeSession, Group
-from api.database import init_engine, app_session, worker_session
+from api.database import init_engine, app_session as db_session
 from .test_config import DEFAULT_USER, DB_CONN
-from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import text
 from api.utils.helpers import STATUS_LIST, slugify
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
     dedupeRaw, dedupeCanon, bulkMarkClusters, bulkMarkCanonClusters
+from api.utils.db_functions import saveTraining
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -28,15 +28,11 @@ class TrackUsageTest(unittest.TestCase):
         cls.client = cls.app.test_client()
         cls.engine = init_engine(cls.app.config['DB_CONN'])
    
-        cls.session = scoped_session(sessionmaker(bind=cls.engine, 
-                                              autocommit=False, 
-                                              autoflush=False))
-        cls.user = cls.session.query(User).first()
+        cls.user = db_session.query(User).first()
         cls.group = cls.user.groups[0]
         cls.user_pw = DEFAULT_USER['user']['password']
         cls.field_defs = open(join(fixtures_path, 'field_defs.json'), 'rb').read()
         settings = open(join(fixtures_path, 'settings_file.dedupe'), 'rb').read()
-        training = open(join(fixtures_path, 'training_data.json'), 'rb').read()
         cls.dd_sess = DedupeSession(
                         id=str(uuid4()), 
                         filename='test_filename.csv',
@@ -45,10 +41,12 @@ class TrackUsageTest(unittest.TestCase):
                         status=STATUS_LIST[0]['machine_name'],
                         settings_file=settings,
                         field_defs=cls.field_defs,
-                        training_data=training
                       )
-        cls.session.add(cls.dd_sess)
-        cls.session.commit()
+        db_session.add(cls.dd_sess)
+        db_session.commit()
+        
+        training = json.load(open(join(fixtures_path, 'training_data.json'), 'r'))
+        saveTraining(cls.dd_sess.id, training, cls.user.name)
         
         # Go through dedupe process
         with open(join(fixtures_path, 'csv_example_messy_input.csv'), 'r') as inp:
@@ -65,10 +63,7 @@ class TrackUsageTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.session.close()
-        app_session.close()
-        worker_session.close()
-        worker_session.bind.dispose()
+        db_session.close()
         cls.engine.dispose()
     
     def login(self, email=None, pw=None):
