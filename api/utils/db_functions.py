@@ -751,9 +751,26 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         with engine.begin() as conn:
             conn.execute(bkm.insert(), *rows)
 
-    block_key_idx = Index('bk_{0}_idx'.format(session_id), bkm.c.block_key)
-    block_key_idx.create(engine)
-    
+    conn = engine.connect()
+    trans = conn.begin()
+
+    try:
+        conn.execute(''' 
+            CREATE INDEX "bk_{0}_idx" ON "block_{0}" (block_key)
+        '''.format(session_id))
+        trans.commit()
+    except ProgrammingError:
+        trans.rollback()
+        conn.execute(''' 
+            DROP INDEX "bk_{0}_idx"
+        '''.format(session_id))
+        trans.commit()
+        
+        conn.execute(''' 
+            CREATE INDEX "bk_{0}_idx" ON "block_{0}" (block_key)
+        '''.format(session_id))
+        trans.commit()
+
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "plural_key_{0}"'.format(session_id))
 
