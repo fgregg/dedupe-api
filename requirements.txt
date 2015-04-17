@@ -21,4 +21,5 @@ coverage
 coveralls
 
 # Temp just for tests to pass
+scipy
 scikit-learn
