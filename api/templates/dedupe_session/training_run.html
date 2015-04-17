@@ -92,6 +92,26 @@
                 </div>
                 {% endif %}
             </p>
+            {% if ( counter.yes + counter.no + counter.unsure ) > 0 %}
+              <p class='pull-right'>
+                {% if previous_ids %}
+                <a class="btn btn-info"
+                       role="button"
+                       href="{{ url_for('trainer.training_run',
+                                        training_ids=previous_ids,
+                                        session_id=session.session_id)}}">
+                  &laquo; Back
+                </a>
+                {% endif %}
+                <a class="btn btn-info"
+                       role="button"
+                       href="{{ url_for('trainer.training_run',
+                                        training_ids=next_ids,
+                                        session_id=session.session_id)}}">
+                  Forward &raquo;
+                </a>
+              </p>
+            {% endif %}
         </form>
     </div>
     <div class='col-md-4'>
@@ -115,25 +135,6 @@
                 </tr>
             </tbody>
         </table>
-        {% if ( counter.yes + counter.no + counter.unsure ) > 0 %}
-            {% if previous_ids %}
-            <a class="btn btn-info"
-                   role="button"
-                   href="{{ url_for('trainer.training_run',
-                                    training_ids=previous_ids,
-                                    session_id=session.session_id)}}">
-              <i class="fa fa-step-backward"></i> Go Back
-            </a>
-            {% endif %}
-            <a class="btn btn-info"
-                   role="button"
-                   href="{{ url_for('trainer.training_run',
-                                    training_ids=next_ids,
-                                    session_id=session.session_id)}}">
-              Go Forward <i class="fa fa-step-forward"></i>
-            </a>
-
-        {% endif %}
         <div class='alert alert-info'>
             <p><i class='fa fa-info-circle'></i> By providing examples of what records are the same or not, dedupe will learn the best way to deduplicate your data. The more training you provide, the better the results will be.</p>
             <p><a target='_blank' href='https://github.com/datamade/dedupe/wiki/Making-smart-comparisons'>Read more about training &raquo;</a></p>
