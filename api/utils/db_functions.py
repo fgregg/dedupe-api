@@ -235,6 +235,8 @@ def writeRawTable(session_id=None,
     """
     cols = []
     for field in fieldnames:
+        if field == 'record_id':
+            field = 'user_record_id'
         cols.append(Column(field, String))
     engine = worker_session.bind
     metadata = MetaData()
