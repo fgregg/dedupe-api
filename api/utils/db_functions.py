@@ -8,7 +8,7 @@ from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
 from api.utils.helpers import preProcess, slugify, updateEntityCount, \
-    RetrainGazetteer
+    RetrainGazetteer, getFieldsByType
 from api.app_config import TIME_ZONE
 from csvkit import convert
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
@@ -66,12 +66,7 @@ def updateTraining(session_id,
 
     training = {'distinct': [], 'match': []}
     field_defs = json.loads(sess.field_defs.decode('utf-8'))
-    fields_by_type = {}
-    for field in field_defs:
-        try:
-            fields_by_type[field['field']].append(field['type'])
-        except KeyError:
-            fields_by_type[field['field']] = [field['type']]
+    fields_by_type = getFieldsByType(field_defs)
 
     all_ids = tuple([i for i in distinct_ids + match_ids])
     if all_ids:
@@ -272,12 +267,8 @@ def writeProcessedTable(session_id,
                         proc_table_format='processed_{0}'):
     dd = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(dd.field_defs.decode('utf-8'))
-    fds = {}
-    for fd in field_defs:
-        try:
-            fds[fd['field']].append(fd['type'])
-        except KeyError:
-            fds[fd['field']] = [fd['type']]
+    fds = getFieldsByType(field_defs)
+    
     engine = worker_session.bind
     metadata = MetaData()
     proc_table_name = proc_table_format.format(session_id)
@@ -404,12 +395,8 @@ def addToEntityMap(session_id,
     engine = worker_session.bind
     
     field_defs = json.loads(sess.field_defs.decode('utf-8'))
-    fds = {}
-    for fd in field_defs:
-        try:
-            fds[fd['field']].append(fd['type'])
-        except KeyError:
-            fds[fd['field']] = [fd['type']]
+    fds = getFieldsByType(field_defs)
+
     engine = worker_session.bind
     sel = text(''' 
         SELECT 

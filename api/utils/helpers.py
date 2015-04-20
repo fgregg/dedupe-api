@@ -168,12 +168,7 @@ def readTraining(session_id):
     training = json.loads(row.training_data.tobytes().decode('utf-8'), 
                           object_hook=_from_json)
     field_defs = json.loads(row.field_defs.tobytes().decode('utf-8'))
-    fds = {}
-    for fd in field_defs:
-        try:
-            fds[fd['field']].append(fd['type'])
-        except KeyError:
-            fds[fd['field']] = [fd['type']]
+    fds = getFieldsByType(field_defs)
     distinct = []
     match = []
     td = {'distinct': [], 'match': []}
@@ -190,6 +185,15 @@ def readTraining(session_id):
             td[match_type].append(p)
     return td
 
+def getFieldsByType(field_defs):
+    fds = {}
+    for fd in field_defs:
+        try:
+            fds[fd['field']].append(fd['type'])
+        except KeyError:
+            fds[fd['field']] = [fd['type']]
+    return fds
+
 def readFieldDefs(session_id):
     engine = worker_session.bind
     sel = ''' 
@@ -200,6 +204,7 @@ def readFieldDefs(session_id):
     row = engine.execute(text(sel), session_id=session_id).first()
     field_defs = json.loads(row.field_defs.tobytes().decode('utf-8'))
     updated_fds = []
+    fields_by_type = getFieldsByType(field_defs)
     for field in field_defs:
         if field['type'] == 'Categorical':
             distinct_vals = getDistinct(field['field'], session_id)
@@ -219,8 +224,10 @@ def readFieldDefs(session_id):
         if field['type'] == 'Name':
             field.update({'log file': '/tmp/name.csv'})
         if hasMissing(field['field'], session_id):
-            field.update({'has_missing': True})
+            if 'Exists' not in fields_by_type[field['field']]:
+                field.update({'has_missing': True})
         updated_fds.append(field)
+
     return updated_fds
 
 def getCluster(session_id, entity_pattern, raw_pattern):
