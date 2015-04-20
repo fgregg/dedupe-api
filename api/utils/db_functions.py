@@ -77,7 +77,6 @@ def updateTraining(session_id,
     if all_ids:
         sel_clauses = set()
         for field in raw_fields:
-            # Need to figure out set and other array fields
             if fields_by_type.get(field):
                 if 'Price' in fields_by_type[field]:
                     sel_clauses.add('"{0}"::double precision'.format(field))
@@ -94,7 +93,8 @@ def updateTraining(session_id,
                 for r in engine.execute(sel, record_ids=all_ids)}
  
         if distinct_ids and match_ids:
-            distinct_ids.extend(match_ids)
+            if len(distinct_ids) == 1:
+                distinct_ids.extend(match_ids)
         
         training['distinct'].extend(
                 makeTrainingCombos(distinct_ids, all_records))
