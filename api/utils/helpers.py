@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from io import StringIO, BytesIO
 from collections import OrderedDict, defaultdict
 from operator import itemgetter
+import rlr
 
 import pickle
 
@@ -89,6 +90,8 @@ class RetrainGazetteer(StaticGazetteer, Gazetteer):
 
         self.training_data = numpy.zeros(0, dtype=training_dtype)
         self.training_pairs = OrderedDict({u'distinct': [], u'match': []}) 
+
+        self.learner = rlr.lr
         
 
 class DatabaseGazetteer(StaticGazetteer):
