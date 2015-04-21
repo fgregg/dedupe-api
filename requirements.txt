@@ -19,7 +19,5 @@ dedupe-variable-name
 nose
 coverage
 coveralls
+rlr>=1.2
 
-# Temp just for tests to pass
-scipy
-scikit-learn

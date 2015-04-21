@@ -1,6 +1,6 @@
 import numpy as np
 from collections import OrderedDict
-from .helpers import sklearner
+from rlr import lr as learner
 
 class ReviewMachine(object):
     def __init__(self, clusters):
@@ -56,7 +56,7 @@ class ReviewMachine(object):
                                                             ids)]
 
         if 1 in labels and 0 in labels :
-            self.weight = sklearner(labels, attributes, 1)
+            self.weight = learner(labels, attributes, 1)
         self._score()
         return self.weight
     
