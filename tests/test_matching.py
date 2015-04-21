@@ -182,7 +182,6 @@ class MatchingTest(unittest.TestCase):
                     del match['entity_id']
                 post_data['matches'] = matches
                 rv = c.post('/train/', data=json.dumps(post_data))
-                db_session.refresh(self.dd_sess)
                 td = readTraining(self.dd_sess.id)
                 del matches[0]['match']
                 record_ids = set()
@@ -190,10 +189,6 @@ class MatchingTest(unittest.TestCase):
                     record_ids.add(left['record_id'])
                     record_ids.add(right['record_id'])
                 assert set([matches[0]['record_id'], obj['record_id']]).intersection(record_ids)
-                for match in matches[1:]:
-                    m = {k:preProcess(str(v), ['String']) for k,v in match.items()}
-                    del m['match']
-                    assert [m, obj] in td['distinct']
 
     def test_matches_add_entity_getunmatched(self):
         with self.app.test_request_context():
