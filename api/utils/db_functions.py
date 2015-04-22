@@ -22,7 +22,7 @@ from uuid import uuid4
 import csv
 from datetime import datetime
 from operator import itemgetter
-from itertools import groupby, combinations
+import itertools
 
 try: # pragma: no cover
     from raven import Client as Sentry
@@ -55,51 +55,74 @@ def updateTraining(session_id,
     ''' 
     Update the sessions training data with the given record_ids
     '''
+
+    all_ids = tuple([i for i in distinct_ids + match_ids])
+
+    if not all_ids :
+        return None
+
     sess = worker_session.query(DedupeSession).get(session_id)
     worker_session.refresh(sess)
     engine = worker_session.bind
     
-    meta = MetaData()
-    raw_table = Table('raw_{0}'.format(session_id), meta, 
-            autoload=True, autoload_with=engine)
+    raw_table = Table('raw_{0}'.format(session_id), 
+                      MetaData(),
+                      autoload=True, 
+                      autoload_with=engine)
     raw_fields = [r.name for r in raw_table.columns]
 
+    sel_clause = ', '.join(castFields(session_id, raw_fields))
+
+    sel = text(''' 
+    SELECT {1} FROM "processed_{0}" 
+    WHERE record_id IN :record_ids
+    '''.format(session_id, sel_clause))
+
     training = {'distinct': [], 'match': []}
+
+    all_records = {r.record_id: dict(r)
+                   for r 
+                   in engine.execute(sel, record_ids=all_ids)}
+ 
+    if len(distinct_ids) == 1 :
+        for id_pair in itertools.product(distinct_ids, match_ids) :
+            training['distinct'].append(recordPair(all_records, 
+                                                   id_pair))
+    elif len(distinct_ids) == len(all_ids) == 2 :
+        training['distinct'].append(recordPair(all_records,
+                                               distinct_ids))
+
+    for id_pair in itertools.combinations(match_ids, 2) :
+        training['match'].append(recordPair(all_records,
+                                            id_pair))
+   
+    saveTraining(session_id, training, trainer)
+
+    return None
+
+def recordPair(records, id_pair) :
+    id_1, id_2 = id_pair
+    return (records[int(id_1)], records[int(id_2)])
+
+def castFields(session_id, fields) :
+    sess = worker_session.query(DedupeSession).get(session_id)
     field_defs = json.loads(sess.field_defs.decode('utf-8'))
     fields_by_type = getFieldsByType(field_defs)
 
-    all_ids = tuple([i for i in distinct_ids + match_ids])
-    if all_ids:
-        sel_clauses = set()
-        for field in raw_fields:
-            if fields_by_type.get(field):
-                if 'Price' in fields_by_type[field]:
-                    sel_clauses.add('"{0}"::double precision'.format(field))
-                else:
-                    sel_clauses.add('"{0}"'.format(field))
+    sel_clauses = set()
+    for field in fields:
+        if fields_by_type.get(field):
+            if 'Price' in fields_by_type[field]:
+                sel_clauses.add('"{0}"::double precision'.format(field))
             else:
                 sel_clauses.add('"{0}"'.format(field))
-        sel_clauses = ', '.join(sel_clauses)
-        sel = text(''' 
-            SELECT {1} FROM "processed_{0}" 
-            WHERE record_id IN :record_ids
-        '''.format(session_id, sel_clauses))
-        all_records = {r.record_id: dict(zip(r.keys(), r.values())) \
-                for r in engine.execute(sel, record_ids=all_ids)}
- 
-        if distinct_ids and match_ids:
-            if len(distinct_ids) == 1:
-                distinct_ids.extend(match_ids)
+        else:
+            sel_clauses.add('"{0}"'.format(field))
         
-        training['distinct'].extend(
-                makeTrainingCombos(distinct_ids, all_records))
-        
-        training['match'].extend(
-                makeTrainingCombos(match_ids, all_records))
-        
-        saveTraining(session_id, training, trainer)
 
-    return None
+    return sel_clauses
+
+    
 
 def saveTraining(session_id, training_data, trainer):
     engine = worker_session.bind
@@ -140,19 +163,6 @@ def saveTraining(session_id, training_data, trainer):
             row_ins = ins.format(**row)
             with engine.begin() as conn:
                 conn.execute(text(row_ins), **row)
-
-def makeTrainingCombos(ids, training_records):
-    combos = []
-    if ids:
-        combos = combinations(ids, 2)
-    
-    record_combos = []
-    for combo in combos:
-        combo = tuple([int(c) for c in combo])
-        records = [training_records[combo[0]], training_records[combo[1]]]
-        record_combos.append(records)
-    
-    return record_combos
 
 def migrateTraining(session_id):
     engine = worker_session.bind
@@ -339,7 +349,7 @@ def initializeEntityMap(session_id, fields):
     now = datetime.now().replace(tzinfo=TIME_ZONE).isoformat()
     rows = sorted(rows, key=itemgetter(0))
     grouped = {}
-    for k, g in groupby(rows, key=itemgetter(0)):
+    for k, g in itertools.groupby(rows, key=itemgetter(0)):
         rs = [r[1] for r in g]
         grouped[k] = rs
     for king,serfs in grouped.items():
