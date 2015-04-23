@@ -211,9 +211,10 @@ class TrainerTest(DedupeAPITestCase):
 class TestUpdateTraining(unittest.TestCase) :
 
     def test_one_distinct(self) :
-        db_functions.castRecords = mock.Mock(return_value = {1 : 'a',
-                                                             2 : 'b',
-                                                             3 : 'c'})
-        db_functions.saveTraining = mock.Mock()
+        records = {1 : 'a',
+                   2 : 'b',
+                   3 : 'c'}
 
-        print(db_functions.updateTraining('foo', ['1'], ['2', '3']))
+        print(db_functions.examplesFromCluster(['1'], 
+                                               ['2', '3'],
+                                               records))

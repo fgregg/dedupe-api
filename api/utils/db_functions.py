@@ -56,26 +56,37 @@ def updateTraining(session_id,
     Update the sessions training data with the given record_ids
     '''
 
-    all_ids = tuple([i for i in distinct_ids + match_ids])
+    all_ids = tuple(distinct_ids + match_ids)
     all_records = castRecords(session_id, all_ids)
 
+    training = examplesFromCluster(distinct_ids,
+                                   match_ids,
+                                   all_records)
+
+    saveTraining(session_id, training, trainer)
+
+
+def examplesFromCluster(distinct_ids, match_ids, records) :
     training = {'distinct': [], 'match': []}
 
     if len(distinct_ids) == 1 :
         for id_pair in itertools.product(distinct_ids, match_ids) :
-            training['distinct'].append(recordPair(all_records, 
+            training['distinct'].append(recordPair(records, 
                                                    id_pair))
-    elif len(distinct_ids) == len(all_ids) == 2 :
-        training['distinct'].append(recordPair(all_records,
+    elif len(distinct_ids) == 2 and not match_ids :
+        training['distinct'].append(recordPair(records,
                                                distinct_ids))
 
     for id_pair in itertools.combinations(match_ids, 2) :
-        training['match'].append(recordPair(all_records,
+        training['match'].append(recordPair(records,
                                             id_pair))
-   
-    saveTraining(session_id, training, trainer)
 
     return training
+    
+
+def recordPair(records, id_pair) :
+    id_1, id_2 = id_pair
+    return (records[int(id_1)], records[int(id_2)])
 
 def castRecords(session_id, ids) :
     sess = worker_session.query(DedupeSession).get(session_id)
@@ -97,15 +108,11 @@ def castRecords(session_id, ids) :
 
     all_records = {r.record_id: dict(r)
                    for r 
-                   in engine.execute(sel, record_ids=all_ids)}
+                   in engine.execute(sel, record_ids=ids)}
 
     return all_records
 
     
-
-def recordPair(records, id_pair) :
-    id_1, id_2 = id_pair
-    return (records[int(id_1)], records[int(id_2)])
 
 def castFields(session_id, fields) :
     sess = worker_session.query(DedupeSession).get(session_id)
