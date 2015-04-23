@@ -57,10 +57,27 @@ def updateTraining(session_id,
     '''
 
     all_ids = tuple([i for i in distinct_ids + match_ids])
+    all_records = castRecords(session_id, all_ids)
 
-    if not all_ids :
-        return None
+    training = {'distinct': [], 'match': []}
 
+    if len(distinct_ids) == 1 :
+        for id_pair in itertools.product(distinct_ids, match_ids) :
+            training['distinct'].append(recordPair(all_records, 
+                                                   id_pair))
+    elif len(distinct_ids) == len(all_ids) == 2 :
+        training['distinct'].append(recordPair(all_records,
+                                               distinct_ids))
+
+    for id_pair in itertools.combinations(match_ids, 2) :
+        training['match'].append(recordPair(all_records,
+                                            id_pair))
+   
+    saveTraining(session_id, training, trainer)
+
+    return training
+
+def castRecords(session_id, ids) :
     sess = worker_session.query(DedupeSession).get(session_id)
     worker_session.refresh(sess)
     engine = worker_session.bind
@@ -78,27 +95,13 @@ def updateTraining(session_id,
     WHERE record_id IN :record_ids
     '''.format(session_id, sel_clause))
 
-    training = {'distinct': [], 'match': []}
-
     all_records = {r.record_id: dict(r)
                    for r 
                    in engine.execute(sel, record_ids=all_ids)}
- 
-    if len(distinct_ids) == 1 :
-        for id_pair in itertools.product(distinct_ids, match_ids) :
-            training['distinct'].append(recordPair(all_records, 
-                                                   id_pair))
-    elif len(distinct_ids) == len(all_ids) == 2 :
-        training['distinct'].append(recordPair(all_records,
-                                               distinct_ids))
 
-    for id_pair in itertools.combinations(match_ids, 2) :
-        training['match'].append(recordPair(all_records,
-                                            id_pair))
-   
-    saveTraining(session_id, training, trainer)
+    return all_records
 
-    return None
+    
 
 def recordPair(records, id_pair) :
     id_1, id_2 = id_pair
