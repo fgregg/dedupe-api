@@ -50,13 +50,18 @@ class ReviewMachine(object):
         self.examples['label'][self.examples['id'] == byte_eid] = cluster_label
         self.labels[byte_eid] = cluster_label
 
-        ids, labels = list(zip(*list(self.labels.items())[-60:]))
-    
-        attributes = self.examples['attributes'][np.in1d(self.examples['id'],
-                                                            ids)]
+        ids = list(self.labels.keys())[::-1]
+        ids = list(self.labels.keys())[::-1]
 
-        if 1 in labels and 0 in labels :
-            self.weight = learner(labels, attributes, 1)
+        attributes = self.examples['attributes'][np.in1d(self.examples['id'],
+                                                         ids)]
+
+        labels = np.array(list(self.labels.values())[::-1])
+        
+        case_weights = np.exp(-np.arange(len(labels))**2/20.0)
+
+        self.weight = learner(labels, attributes, 1, case_weights)
+
         self._score()
         return self.weight
     

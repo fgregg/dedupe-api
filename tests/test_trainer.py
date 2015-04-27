@@ -8,10 +8,12 @@ from api.utils.helpers import slugify
 from api.utils.db_functions import writeRawTable, writeProcessedTable
 from api.utils.delayed_tasks import initializeSession, initializeModel
 from api.database import app_session as db_session
+import api.utils.db_functions as db_functions
 from csvkit.unicsv import UnicodeCSVReader, UnicodeCSVWriter
 from tests import DedupeAPITestCase
 from operator import itemgetter
 from api.trainer import getTrainingPair, getTrainingCounts
+import unittest
 
 fixtures_path = join(dirname(abspath(__file__)), 'fixtures')
 
@@ -204,3 +206,15 @@ class TrainerTest(DedupeAPITestCase):
                             assert p_type == 'distinct'
                         else:
                             assert p_type == 'unsure'
+
+
+class TestUpdateTraining(unittest.TestCase) :
+
+    def test_one_distinct(self) :
+        records = {1 : 'a',
+                   2 : 'b',
+                   3 : 'c'}
+
+        print(db_functions.examplesFromCluster(['1'], 
+                                               ['2', '3'],
+                                               records))
