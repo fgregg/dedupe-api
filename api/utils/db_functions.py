@@ -22,7 +22,7 @@ from uuid import uuid4
 import csv
 from datetime import datetime
 from operator import itemgetter
-from itertools import groupby, combinations
+import itertools
 
 try: # pragma: no cover
     from raven import Client as Sentry
@@ -89,13 +89,18 @@ def updateTraining(session_id,
  
         if distinct_ids and match_ids:
             if len(distinct_ids) == 1:
-                distinct_ids.extend(match_ids)
+                distinct_pairs = list(itertools.product(distinct_ids, match_ids))
+                for left, right in distinct_pairs:
+                    training['distinct'].append([all_records[int(left)], 
+                                                 all_records[int(right)]])
         
-        training['distinct'].extend(
-                makeTrainingCombos(distinct_ids, all_records))
+        elif distinct_ids and not match_ids:
+            training['distinct'].extend(
+                    makeTrainingCombos(distinct_ids, all_records))
         
-        training['match'].extend(
-                makeTrainingCombos(match_ids, all_records))
+        elif match_ids and not distinct_ids:
+            training['match'].extend(
+                    makeTrainingCombos(match_ids, all_records))
         
         saveTraining(session_id, training, trainer)
 
@@ -144,7 +149,7 @@ def saveTraining(session_id, training_data, trainer):
 def makeTrainingCombos(ids, training_records):
     combos = []
     if ids:
-        combos = combinations(ids, 2)
+        combos = itertools.combinations(ids, 2)
     
     record_combos = []
     for combo in combos:
@@ -339,7 +344,7 @@ def initializeEntityMap(session_id, fields):
     now = datetime.now().replace(tzinfo=TIME_ZONE).isoformat()
     rows = sorted(rows, key=itemgetter(0))
     grouped = {}
-    for k, g in groupby(rows, key=itemgetter(0)):
+    for k, g in itertools.groupby(rows, key=itemgetter(0)):
         rs = [r[1] for r in g]
         grouped[k] = rs
     for king,serfs in grouped.items():

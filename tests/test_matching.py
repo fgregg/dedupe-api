@@ -177,7 +177,7 @@ class MatchingTest(unittest.TestCase):
                 matches = unmatched['matches']
                 matches[0]['match'] = 1
                 del matches[0]['entity_id']
-                for match in matches[1:]:
+                for match in matches[1:2]:
                     match['match'] = 0
                     del match['entity_id']
                 post_data['matches'] = matches
