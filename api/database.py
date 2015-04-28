@@ -180,10 +180,15 @@ def init_db(sess=None, eng=None):
         user = api.models.User(name, password, email)
         g_name = DEFAULT_USER['group']['name']
         description = DEFAULT_USER['group']['description']
-        group = api.models.Group(name=g_name, description=description)
-        sess.add(group)
-        sess.commit()
+        group = sess.query(api.models.Group).filter_by(name=g_name, description=description).first()
+        if not group:
+            group = api.models.Group(name=g_name, description=description)
+            sess.add(group)
+            sess.commit()
         user.groups = [group]
         user.roles = [admin]
         sess.add(user)
-        sess.commit()
+        try:
+            sess.commit()
+        except IntegrityError as e:
+            sess.rollback()

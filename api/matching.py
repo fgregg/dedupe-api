@@ -179,7 +179,6 @@ def train():
         match_ids = []
         distinct_ids = []
         for match in post['matches']:
-            print(match)
             if match['match'] is 1:
                 if match.get('record_id'):
                     match_ids.append(match['record_id'])
