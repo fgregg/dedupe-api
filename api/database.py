@@ -1,4 +1,5 @@
 import os
+import simplejson as json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import create_session, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
@@ -98,6 +99,12 @@ class DedupeDialect(PGDialect_psycopg2):
                 self.set_isolation_level(conn, self.isolation_level)
             fns.append(on_connect)
 
+        if self.dbapi and self._json_deserializer:
+            def on_connect(conn):
+                extras.register_default_json(conn, loads=self._json_deserializer)
+                extras.register_default_jsonb(conn, loads=self._json_deserializer)
+            fns.append(on_connect)
+
         def on_connect(conn):
             # Register new "type" which effectively overrides all of the ARRAY types
             # we care about. The first arg here is the PostgreSQL datatype object IDs
@@ -139,9 +146,13 @@ def init_engine(uri):
     # Register the dialect we created above
     registry.register("postgresql.dedupe", "api.database", "DedupeDialect")
 
+    deserializer = lambda x: json.loads(x, object_hook=_from_json)
+    serializer = lambda x: json.dumps(x, default=_to_json, tuple_as_array=False)
     engine = create_engine(uri, 
                            convert_unicode=True, 
-                           server_side_cursors=True)
+                           server_side_cursors=True,
+                           json_serializer=serializer,
+                           json_deserializer=deserializer) 
     return engine
 
 def init_db(sess=None, eng=None):

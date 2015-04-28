@@ -1,5 +1,5 @@
 import os
-import json
+import simplejson as json
 import math
 from uuid import uuid4
 from flask import Flask, make_response, request, Blueprint, \
@@ -152,8 +152,8 @@ def match():
                 m['match_confidence'] = match['confidence']
                 match_list.append(m)
         r['matches'] = match_list
-
-    resp = make_response(json.dumps(r, default=_to_json, sort_keys=False), status_code)
+    r = json.dumps(r, default=_to_json, tuple_as_array=False, sort_keys=False)
+    resp = make_response(r, status_code)
     resp.headers['Content-Type'] = 'application/json'
     return resp
 
@@ -179,6 +179,7 @@ def train():
         match_ids = []
         distinct_ids = []
         for match in post['matches']:
+            print(match)
             if match['match'] is 1:
                 if match.get('record_id'):
                     match_ids.append(match['record_id'])

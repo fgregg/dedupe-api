@@ -1,7 +1,7 @@
 import os
-import json
+import simplejson as json
 import dedupe
-from dedupe.serializer import _to_json, _from_json
+from dedupe.serializer import _from_json, _to_json
 import csv
 from io import StringIO, BytesIO
 from hashlib import md5
@@ -131,8 +131,6 @@ def castFields(session_id, fields) :
 
     return sel_clauses
 
-    
-
 def saveTraining(session_id, training_data, trainer):
     engine = worker_session.bind
     ins = ''' 
@@ -161,11 +159,13 @@ def saveTraining(session_id, training_data, trainer):
     '''
     
     for pair_type, pairs in training_data.items():
-        for pair in pairs:
+        for left, right in pairs:
+            left = json.dumps(left, default=_to_json, tuple_as_array=False)
+            right = json.dumps(right, default=_to_json, tuple_as_array=False)
             row = {
                 'trainer': trainer,
-                'left_record': json.dumps(packJSON(pair[0])),
-                'right_record': json.dumps(packJSON(pair[1])),
+                'left_record': left,
+                'right_record': right,
                 'pair_type': pair_type,
                 'session_id': session_id
             }
@@ -218,7 +218,7 @@ def readTraining(session_id):
         if pairs.pairs:
             for pair in pairs.pairs:
                 for idx, record in enumerate(pair['pair']):
-                    pair['pair'][idx] = unpackJSON(record)
+                    pair['pair'][idx] = record
                 training[pair_type].append(pair['pair'])
     
     return training

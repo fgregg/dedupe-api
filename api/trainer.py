@@ -12,7 +12,7 @@ import os
 import copy
 import time
 from itertools import groupby
-from dedupe.serializer import _to_json, dedupe_decoder, _from_json
+from dedupe.serializer import _to_json, _from_json
 import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel

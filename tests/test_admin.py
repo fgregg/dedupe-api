@@ -168,7 +168,19 @@ class AdminTest(DedupeAPITestCase):
         conn = self.engine.connect()
         rows = conn.execute(text('select * from dedupe_session where id = :id'), id=self.dd_sess.id)
         assert list(rows) == []
-    
+
+    def test_delete_training_data(self):
+        with self.app.test_request_context():
+            self.login()
+            with self.client as c:
+                with c.session_transaction() as sess:
+                    sess['user_id'] = self.user.id
+                rv = c.get('/delete-training-data/?session_id=' + self.dd_sess.id)
+        conn = self.engine.connect()
+        count = 'SELECT COUNT(*) FROM dedupe_training_data WHERE session_id = :session_id'
+        count = conn.execute(text(count), session_id=self.dd_sess.id).first()
+        assert count[0] == 0
+
     def test_delete_sess_no_access(self):
         rv = self.no_access('/delete-session/?session_id=' + self.dd_sess.id)
         assert "Sorry, you don't have access to that session" in rv.data.decode('utf-8')

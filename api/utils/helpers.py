@@ -8,7 +8,7 @@ import numpy
 from dedupe.core import frozendict
 from dedupe import canonicalize
 from dedupe.api import StaticGazetteer, Gazetteer
-from dedupe.serializer import _to_json, _from_json
+from dedupe.serializer import _from_json
 import dedupe
 from api.database import app_session, worker_session, Base, init_engine
 from api.models import DedupeSession

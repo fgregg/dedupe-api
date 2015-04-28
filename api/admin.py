@@ -19,7 +19,7 @@ from sqlalchemy.sql import select
 from sqlalchemy.exc import NoSuchTableError, ProgrammingError
 from itertools import groupby
 from operator import itemgetter
-import json
+import simplejson as json
 from pickle import loads
 from dedupe.convenience import canonicalize
 from dedupe.serializer import _to_json, _from_json
@@ -184,8 +184,8 @@ def training_data():
 
     session_id = flask_session['session_id']
     training_data = readTraining(session_id)
-    
-    resp = make_response(json.dumps(training_data, default=_to_json), 200)
+    training = json.dumps(training_data, default=_to_json, tuple_as_array=False) 
+    resp = make_response(training, 200)
     resp.headers['Content-Type'] = 'text/plain'
     resp.headers['Content-Disposition'] = 'attachment; filename=%s_training.json' % session_id
     return resp
@@ -248,6 +248,26 @@ def delete_data_model():
 
     flash("Data model for '{0}' has been deleted".format(session_name), 'success')
     resp = make_response(json.dumps(resp), status_code)
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+@admin.route('/delete-training-data/')
+@login_required
+@check_sessions()
+def delete_training():
+    session_id = flask_session['session_id']
+    delete = ''' DELETE FROM dedupe_training_data 
+                 WHERE session_id = :session_id '''
+    engine = db_session.bind
+    with engine.begin() as conn:
+        conn.execute(text(delete), session_id=session_id)
+    resp = {
+        'status': 'ok',
+        'message': 'Training data for session {0} deleted'.format(session_id)
+    }
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+    flash("Training data for '{0}' has been deleted".format(dedupe_session.name), 'success')
+    resp = make_response(json.dumps(resp), 200)
     resp.headers['Content-Type'] = 'application/json'
     return resp
 

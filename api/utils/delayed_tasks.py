@@ -1,7 +1,7 @@
 import dedupe
-from dedupe.serializer import _to_json, _from_json
+from dedupe.serializer import _from_json, _to_json
 import os
-import json
+import simplejson as json
 import time
 from io import StringIO, BytesIO
 from api.queue import queuefunc
@@ -30,7 +30,6 @@ import pickle
 import csv
 from uuid import uuid4
 from api.app_config import TIME_ZONE
-from dedupe.serializer import _to_json
 
 def profiler(f):
     def decorated(*args, **kwargs):
@@ -183,7 +182,9 @@ def getMatchingReady(session_id):
     
     training_data = readTraining(session_id)
 
-    d.readTraining(StringIO(json.dumps(training_data, default=_to_json)))
+    d.readTraining(StringIO(json.dumps(training_data, 
+                                       default=_to_json,
+                                       tuple_as_array=False)))
     
     d.train(ppc=0.1, index_predicates=False)
     g_settings = BytesIO()
@@ -353,7 +354,9 @@ def populateHumanReview(session_id):
     
     training_data = readTraining(session_id)
 
-    deduper.readTraining(StringIO(json.dumps(training_data, default=_to_json)))
+    deduper.readTraining(StringIO(json.dumps(training_data, 
+                                             default=_to_json,
+                                             tuple_as_array=False)))
     deduper._trainClassifier()
     fobj = BytesIO()
     deduper.writeSettings(fobj)
@@ -474,7 +477,9 @@ def trainDedupe(session_id):
     deduper = dedupe.Dedupe(field_defs, data_sample=data_sample)
     
     training_data = readTraining(session_id)
-    deduper.readTraining(StringIO(json.dumps(training_data, default=_to_json)))
+    deduper.readTraining(StringIO(json.dumps(training_data, 
+                                             default=_to_json,
+                                             tuple_as_array=False)))
     
     deduper.train()
     
