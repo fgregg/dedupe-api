@@ -1,9 +1,9 @@
-branches:
+branches: 
 only:
 - master
 language: python
-notifications:
-email:
+notifications: 
+email: 
 on_success: change
 on_failure: always
 irc: chat.freenode.net#dedupe
@@ -21,14 +21,24 @@ before_script:
 - cp api/app_config.py.travis api/app_config.py
 script: nosetests --with-coverage --cover-package=api tests
 deploy:
-  provider: codedeploy
-  access_key_id: AKIAIDJFUA6FY4AKAJ6Q
-  secret_access_key:
-    secure: Tb/1+DXcIL3PMZJwWHUiUjcs1+tvwyGy+fvHkyzleK9TlfoGqVoVse2DbC1P73TE1U3sjdNeQANhn2oh7X5yZ9H6h/dBXBXg2FMKBzx+5lO6Afmg/hLi6+4GUnQLDmyijwHwRpLC/WcTiPeLyKUANY18sNxtdvG9hd7Z0/H7SgE=
+- provider: s3
+  access_key_id: AKIAI46US37BJ27ZPPSQ
+  secret_access_key: &1
+    secure: Blyg4CVbH2y1C56VUnp17MRvm8ZVeudWX8fI0jpz7JyUBMRRA+ltIjI2qvs6EjUVyEfLXoryHjOAsqrghPyrGz83XKhex8cO+Bx+fKgl7vS9Vw2CMTCYUKrwjsxooKuI9n1caItMW5GmnonVPusY3Cu8dsnFN0j86N/PxYd+s84=
+  local_dir: dpl_cd_upload
+  skip_cleanup: true
+  on: &2
+    repo: datamade/dedupe-api
   bucket: datamade-codedeploy
-  key: dedupe-api.zip
+- provider: codedeploy
+  access_key_id: AKIAI46US37BJ27ZPPSQ
+  secret_access_key: *1
+  bucket: datamade-codedeploy
+  key: dedupeapi-latest.zip
   bundle_type: zip
   application: dedupe-api
   deployment_group: dedupe-api-group
-  on:
-    repo: datamade/dedupe-api
+  on: *2
+before_deploy:
+- mkdir -p dpl_cd_upload
+- mv dedupeapi-latest.zip dpl_cd_upload/dedupeapi-latest.zip
