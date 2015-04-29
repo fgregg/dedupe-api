@@ -20,7 +20,6 @@ before_script:
 - cp tests/test_config.py.travis tests/test_config.py
 - cp api/app_config.py.travis api/app_config.py
 script: nosetests -v tests
-after_success: zip -r dedupeapi-latest.zip .
 deploy:
 - provider: s3
   access_key_id: AKIAIDJFUA6FY4AKAJ6Q
@@ -41,5 +40,6 @@ deploy:
   deployment_group: dedupe-api-group
   on: *2
 before_deploy:
+- zip -r dedupeapi-latest.zip .
 - mkdir -p dpl_cd_upload
 - mv dedupeapi-latest.zip dpl_cd_upload/dedupeapi-latest.zip

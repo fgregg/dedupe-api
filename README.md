@@ -12,7 +12,7 @@ Repository for Enterprise Dedupe API
 
 **Install OS level dependencies:** 
 
-* [Python 2.7](https://www.python.org/download/releases/2.7/)
+* [Python 3.4](https://www.python.org/)
 * [Redis](http://redis.io/)
 
 **Install app requirements**
@@ -26,7 +26,7 @@ pip install -r requirements.txt
 
 Create a PostgreSQL database for dedupeapi. (If you aren't
   already running [PostgreSQL](http://www.postgresql.org/), we recommend
-  installing version 9.3 or later.)
+  installing version 9.4.)
 
 ```
 createdb dedupeapi
@@ -67,6 +67,19 @@ python runserver.py
 
 Once the server is running, navigate to http://localhost:5000/
 
+## Running the tests
+
+The test runner has a separate example config file which can be used to
+establish a configuration for the test runner. It will attempt to either create
+a test database or drop all the tables from the test database (if it already
+exists) so you'll need to make sure that the user that you are using to connect
+to the database has the appropriate permissions.
+
+Once the database is configured, you should be able to run:
+
+```
+$ nosetests tests
+```
 
 ## Community
 * [Dedupe Google group](https://groups.google.com/forum/?fromgroups=#!forum/open-source-deduplication)
