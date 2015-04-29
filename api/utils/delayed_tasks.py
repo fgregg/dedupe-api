@@ -18,7 +18,7 @@ from api.utils.review_machine import ReviewMachine
 from sqlalchemy import Table, MetaData, Column, String, func, text, \
     Integer, select
 from sqlalchemy.sql import label
-from sqlalchemy.exc import NoSuchTableError, ProgrammingError
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError, IntegrityError
 from collections import defaultdict
 from itertools import groupby, islice
 from operator import itemgetter
@@ -223,7 +223,7 @@ def getMatchingReady(session_id):
         curs.copy_expert('COPY "match_blocks_{0}" FROM STDIN CSV'\
             .format(session_id), s)
         conn.commit()
-    except Exception as e: # pragma: no cover
+    except (ProgrammingError, IntegrityError) as e: # pragma: no cover
         conn.rollback()
         raise e
     conn.close()
@@ -399,13 +399,13 @@ def cleanupTables(session_id, tables=None):
             'plural_key_{0}',
         ]
     conn = engine.connect()
-    trans = conn.begin()
     for table in tables:
         tname = table.format(session_id)
+        trans = conn.begin()
         try:
             conn.execute('DROP TABLE "{0}"'.format(tname))
             trans.commit()
-        except Exception as e:
+        except ProgrammingError as e:
             trans.rollback()
     conn.close()
 
@@ -663,8 +663,9 @@ def reDedupeCanon(session_id, threshold=0.25):
     try:
         conn.execute(delete)
         trans.commit()
-    except Exception:
+    except (ProgrammingError, IntegrityError) as e:
         trans.rollback()
+        raise e
     dedupeCanon(session_id)
 
 @queuefunc
@@ -780,6 +781,6 @@ def writeCanonicalEntities(session_id, clustered_dupes):
                 FROM STDIN CSV'''.format(session_id), f)
             conn.commit()
             os.remove(fname)
-        except Exception as e: # pragma: no cover
+        except (ProgrammingError, IntegrityError) as e: # pragma: no cover
             conn.rollback()
             raise e

@@ -1,9 +1,9 @@
-branches: 
+branches:
 only:
 - master
 language: python
-notifications: 
-email: 
+notifications:
+email:
 on_success: change
 on_failure: always
 irc: chat.freenode.net#dedupe
@@ -19,7 +19,8 @@ services:
 before_script:
 - cp tests/test_config.py.travis tests/test_config.py
 - cp api/app_config.py.travis api/app_config.py
-script: nosetests --with-coverage --cover-package=api tests
+script: nosetests -v tests
+after_success: zip -r dedupeapi-latest.zip .
 deploy:
 - provider: s3
   access_key_id: AKIAIDJFUA6FY4AKAJ6Q

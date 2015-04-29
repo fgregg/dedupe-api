@@ -15,7 +15,7 @@ from sqlalchemy import MetaData, Table, Column, Integer, String, \
     create_engine, Float, Boolean, BigInteger, distinct, text, select, \
     Text, func, Index
 from sqlalchemy.sql import label
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import ProgrammingError, IntegrityError
 from sqlalchemy.dialects.postgresql.base import ARRAY
 from unidecode import unidecode
 from uuid import uuid4
@@ -278,7 +278,7 @@ def writeRawTable(session_id=None,
         cur.copy_expert(copy_st, file_obj)
         conn.commit()
         os.remove(file_path)
-    except Exception as e:
+    except (ProgrammingError, IntegrityError) as e:
         conn.rollback()
         raise e
     return fieldnames
