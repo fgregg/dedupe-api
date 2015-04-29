@@ -76,7 +76,16 @@ The test runner has a separate example config file which can be used to
 establish a configuration for the test runner. It will attempt to either create
 a test database or drop all the tables from the test database (if it already
 exists) so you'll need to make sure that the user that you are using to connect
-to the database has the appropriate permissions.
+to the database has the appropriate permissions. If your database is relatively
+isolated from the outside world, you should be able to add directives such as
+these to your ``pg_hba.conf`` file:
+
+```
+
+local all all trust
+host all all 127.0.0.1/32 trust
+
+```
 
 Once the database is configured, you should be able to run this from the root
 folder:
