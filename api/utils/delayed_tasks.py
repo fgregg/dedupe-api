@@ -31,22 +31,6 @@ import csv
 from uuid import uuid4
 from api.app_config import TIME_ZONE
 
-def profiler(f):
-    def decorated(*args, **kwargs):
-        import cProfile, pstats
-        
-        pr = cProfile.Profile()
-        pr.enable()
-        rv = f(*args, **kwargs)
-        pr.disable()
-        s = StringIO()
-        sortby = 'cumulative'
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats(.1)
-        print(s.getvalue())
-
-        return rv
-    return decorated
 
 ### Bulk acceptance tasks ###
 
@@ -403,7 +387,7 @@ def cleanupTables(session_id, tables=None):
         tname = table.format(session_id)
         trans = conn.begin()
         try:
-            conn.execute('DROP TABLE "{0}"'.format(tname))
+            conn.execute('DROP TABLE "{0}" CASCADE'.format(tname))
             trans.commit()
         except ProgrammingError as e:
             trans.rollback()
@@ -784,3 +768,11 @@ def writeCanonicalEntities(session_id, clustered_dupes):
         except (ProgrammingError, IntegrityError) as e: # pragma: no cover
             conn.rollback()
             raise e
+
+@queuefunc
+def updateSettingsFiles():
+    sessions = worker_session.query(DedupeSession).all()
+    for session in sessions:
+        if session.settings_file:
+            trainDedupe(session.id)
+

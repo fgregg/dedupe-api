@@ -8,7 +8,7 @@ from api.matching import queueCount
 from api.auth import login_required, check_roles, check_sessions
 from api.utils.helpers import STATUS_LIST
 from api.utils.delayed_tasks import cleanupTables, reDedupeRaw, \
-    reDedupeCanon, trainDedupe
+    reDedupeCanon, trainDedupe, updateSettingsFiles
 from api.utils.db_functions import readTraining, saveTraining
 from flask_wtf import Form
 from wtforms import TextField, PasswordField
@@ -266,6 +266,9 @@ def delete_training():
         'message': 'Training data for session {0} deleted'.format(session_id)
     }
     dedupe_session = db_session.query(DedupeSession).get(session_id)
+    dedupe_session.settings_file = None
+    db_session.add(dedupe_session)
+    db_session.commit()
     flash("Training data for '{0}' has been deleted".format(dedupe_session.name), 'success')
     resp = make_response(json.dumps(resp), 200)
     resp.headers['Content-Type'] = 'application/json'
@@ -610,3 +613,10 @@ def edit_model():
                            model=json.loads(dedupe_session.field_defs.decode('utf-8')),
                            field_types=field_types)
 
+@admin.route('/update-settings-files/')
+@login_required
+def update_settings_files():
+    updateSettingsFiles.delay()
+    response = make_response(json.dumps({'status': 'ok'}))
+    response.headers['Content-Type'] = 'application/json'
+    return response
