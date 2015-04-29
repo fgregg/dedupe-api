@@ -75,7 +75,8 @@ a test database or drop all the tables from the test database (if it already
 exists) so you'll need to make sure that the user that you are using to connect
 to the database has the appropriate permissions.
 
-Once the database is configured, you should be able to run:
+Once the database is configured, you should be able to run this from the root
+folder:
 
 ```
 $ nosetests tests
