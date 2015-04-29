@@ -20,26 +20,18 @@ before_script:
 - cp tests/test_config.py.travis tests/test_config.py
 - cp api/app_config.py.travis api/app_config.py
 script: nosetests -v tests
-deploy:
-- provider: s3
-  access_key_id: AKIAIDJFUA6FY4AKAJ6Q
-  secret_access_key: &1
-    secure: f61A+9d7LpYPsXtIfzSWbOTucxsrb/NFALQkIn3SnFbLw37jmiTXCJmnhYq3N6SQBWZui/las1MygqXeQwEsipxBjSwp+5xGmwJZ+9bem3kL0HYfo1bSzolHKxrQBfrHN5bvFZF8gcwutMgWqq9wYKwopag0PuDtCQ+IlBOMwsc=
-  local_dir: dpl_cd_upload
-  skip_cleanup: true
-  on: &2
-    repo: datamade/dedupe-api
-  bucket: datamade-codedeploy
-- provider: codedeploy
-  access_key_id: AKIAIDJFUA6FY4AKAJ6Q
-  secret_access_key: *1
-  bucket: datamade-codedeploy
-  key: dedupeapi-latest.zip
-  bundle_type: zip
-  application: dedupe-api
-  deployment_group: dedupe-api-group
-  on: *2
 before_deploy:
 - zip -r dedupeapi-latest.zip .
 - mkdir -p dpl_cd_upload
 - mv dedupeapi-latest.zip dpl_cd_upload/dedupeapi-latest.zip
+deploy:
+  provider: codedeploy
+  access_key_id: AKIAIDJFUA6FY4AKAJ6Q
+  secret_access_key:
+    secure: L2IWMzEQu1h7QXqc6s4V0S75HyohzEyhpMweFG0frZRpK0RLMVLJiQrHWb4irHJgb/v3YTGCbj4k/t1apmK83JBdclvRHOIWG0y2Yi3Yt4TGdciI1Hkiughsr+LzK/+xYEG9lby3HF9phGmxLx8qVwQokAqZKkaqwcWKIqQGuMI=
+  bucket: datamade-codedeploy
+  revision_type: github
+  application: dedupe-api
+  deployment_group: dedupe-api-group
+  on:
+    repo: datamade/dedupe-api
