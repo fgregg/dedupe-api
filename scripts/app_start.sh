@@ -1,3 +1,3 @@
 #!/bin/bash
 
-sudo supervisorctl start dedupe-api
+supervisorctl start dedupe-api

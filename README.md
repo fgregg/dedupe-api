@@ -14,6 +14,9 @@ Repository for Enterprise Dedupe API
 
 * [Python 3.4](https://www.python.org/)
 * [Redis](http://redis.io/)
+* libxml2-dev
+* libxslt1-dev
+* libpq-dev
 
 **Install app requirements**
 

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-sudo supervisorctl stop dedupe-api
+supervisorctl stop dedupe-api
