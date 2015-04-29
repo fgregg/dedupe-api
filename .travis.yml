@@ -22,16 +22,16 @@ before_script:
 script: nosetests --with-coverage --cover-package=api tests
 deploy:
 - provider: s3
-  access_key_id: AKIAI46US37BJ27ZPPSQ
+  access_key_id: AKIAIDJFUA6FY4AKAJ6Q
   secret_access_key: &1
-    secure: Blyg4CVbH2y1C56VUnp17MRvm8ZVeudWX8fI0jpz7JyUBMRRA+ltIjI2qvs6EjUVyEfLXoryHjOAsqrghPyrGz83XKhex8cO+Bx+fKgl7vS9Vw2CMTCYUKrwjsxooKuI9n1caItMW5GmnonVPusY3Cu8dsnFN0j86N/PxYd+s84=
+    secure: f61A+9d7LpYPsXtIfzSWbOTucxsrb/NFALQkIn3SnFbLw37jmiTXCJmnhYq3N6SQBWZui/las1MygqXeQwEsipxBjSwp+5xGmwJZ+9bem3kL0HYfo1bSzolHKxrQBfrHN5bvFZF8gcwutMgWqq9wYKwopag0PuDtCQ+IlBOMwsc=
   local_dir: dpl_cd_upload
   skip_cleanup: true
   on: &2
     repo: datamade/dedupe-api
   bucket: datamade-codedeploy
 - provider: codedeploy
-  access_key_id: AKIAI46US37BJ27ZPPSQ
+  access_key_id: AKIAIDJFUA6FY4AKAJ6Q
   secret_access_key: *1
   bucket: datamade-codedeploy
   key: dedupeapi-latest.zip
