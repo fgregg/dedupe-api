@@ -33,21 +33,6 @@ except ImportError:
 except KeyError: #pragma: no cover
     sentry = None
 
-def packJSON(record):
-    if isinstance(record, dedupe.core.frozendict):
-        record = dict(record)
-    for k,v in record.items():
-        if isinstance(v, tuple):
-            record[k] = {'__class__': 'tuple', '__value__': list(v)}
-    return record
-
-def unpackJSON(record):
-    for k,v in record.items():
-        if isinstance(v, dict):
-            if v.get('__class__') == 'tuple':
-                record[k] = tuple(v['__value__'])
-    return record
-
 def updateTraining(session_id, 
                    distinct_ids=[], 
                    match_ids=[],

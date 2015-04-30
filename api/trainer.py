@@ -18,7 +18,7 @@ from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.helpers import getDistinct, slugify, STATUS_LIST, readFieldDefs
 from api.utils.db_functions import writeRawTable, updateTraining, \
-    readTraining, saveTraining, unpackJSON
+    readTraining, saveTraining
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
 from api.auth import check_roles, csrf, login_required, check_sessions
@@ -461,7 +461,7 @@ def getTrainingPair(session_id, deduper, training_ids=None):
         if tp:
             training_pair = []
             for record in tp.training_pair:
-                training_pair.append(unpackJSON(record))
+                training_pair.append(record)
 
             pair_type = tp.pair_type
             date_added = tp.date_added
