@@ -386,11 +386,8 @@ def cleanupTables(session_id, tables=None):
     for table in tables:
         tname = table.format(session_id)
         trans = conn.begin()
-        try:
-            conn.execute('DROP TABLE "{0}" CASCADE'.format(tname))
-            trans.commit()
-        except ProgrammingError as e:
-            trans.rollback()
+        conn.execute('DROP TABLE IF EXISTS "{0}" CASCADE'.format(tname))
+        trans.commit()
     conn.close()
 
 def drawSample(session_id):
