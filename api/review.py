@@ -55,8 +55,8 @@ def get_cluster():
     dedupe_session = db_session.query(DedupeSession).get(session_id)
     checkinSessions()
     entity_id, cluster, false_pos, false_neg = getCluster(session_id, 
-                         'entity_{0}', 
-                         'raw_{0}')
+                                                          'entity_{0}', 
+                                                          'raw_{0}')
     if cluster:
         resp['entity_id'] = entity_id 
         resp['objects'] = cluster
@@ -70,7 +70,7 @@ def get_cluster():
     resp['total_clusters'] = dedupe_session.entity_count
     resp['review_remainder'] = dedupe_session.review_count
 
-    response = make_response(json.dumps(resp), status_code)
+    response = make_response(json.dumps(resp, sort_keys=False), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
 
@@ -103,7 +103,7 @@ def get_canon_cluster():
     resp['total_clusters'] = dedupe_session.entity_count
     resp['review_remainder'] = dedupe_session.review_count
 
-    response = make_response(json.dumps(resp), status_code)
+    response = make_response(json.dumps(resp, sort_keys=False), status_code)
     response.headers['Content-Type'] = 'application/json'
     return response
 

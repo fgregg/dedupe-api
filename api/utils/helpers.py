@@ -222,6 +222,42 @@ def readFieldDefs(session_id):
 
     return updated_fds
 
+def arrangeFields(session_id):
+    dedupe_session = app_session.query(DedupeSession).get(session_id)
+    field_defs = json.loads(dedupe_session.field_defs.decode('utf-8'))
+    model_fields = list(set([f['field'] for f in field_defs ]))
+    dd = dedupe.StaticDedupe(BytesIO(dedupe_session.settings_file))
+    covered_fields = set()
+    for predicate in dd.predicates:
+        if predicate.type == 'CompoundPredicate':
+            for pred in predicate.predicates:
+                covered_fields.add(pred.field)
+        else:
+            covered_fields.add(predicate.field)
+    fields_by_type = getFieldsByType(field_defs)
+    name_fields = set([f for f, v in fields_by_type.items() if 'Name' in v])
+    address_fields = set([f for f, v in fields_by_type.items() if 'Address' in v])
+    arranged_fields = []
+    for field in name_fields & covered_fields:
+        if field not in arranged_fields:
+            arranged_fields.append(field)
+    for field in address_fields & covered_fields:
+        if field not in arranged_fields:
+            arranged_fields.append(field)
+    for field in covered_fields:
+        if field not in arranged_fields:
+            arranged_fields.append(field)
+    for field in name_fields:
+        if field not in arranged_fields:
+            arranged_fields.append(field)
+    for field in address_fields:
+        if field not in arranged_fields:
+            arranged_fields.append(field)
+    for field in fields_by_type.keys():
+        if field not in arranged_fields:
+            arranged_fields.append(field)
+    return arranged_fields
+
 def getCluster(session_id, entity_pattern, raw_pattern):
     ent_name = entity_pattern.format(session_id)
     raw_name = raw_pattern.format(session_id)
@@ -240,8 +276,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
         app_session.add(sess)
         app_session.commit()
         engine = app_session.bind
-        model_fields = list(set([f['field'] for f in \
-                json.loads(sess.field_defs.decode('utf-8'))]))
+        model_fields = arrangeFields(session_id)
         raw_cols = ', '.join(['r.{0}'.format(f) for f in model_fields])
         sel = text('''
             SELECT 
@@ -260,7 +295,7 @@ def getCluster(session_id, entity_pattern, raw_pattern):
             raw_fields = ['confidence'] + model_fields + ['record_id']
             false_pos, false_neg = machine.predict_remainder(threshold=0.0)
             for thing in records:
-                d = {}
+                d = OrderedDict()
                 for k,v in zip(raw_fields, thing):
                     d[k] = v
                 cluster_list.append(d)
