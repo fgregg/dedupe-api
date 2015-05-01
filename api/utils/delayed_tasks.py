@@ -727,48 +727,46 @@ def dedupeCanon(session_id, threshold=0.25):
         getMatchingReady(session_id)
 
 def writeCanonicalEntities(session_id, clustered_dupes):
-    fname = '/tmp/clusters_{0}.csv'.format(session_id)
-    with open(fname, 'w', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        for ids, scores in clustered_dupes:
-            new_ent = str(uuid4())
+    cluster_file = StringIO()
+    writer = csv.writer(cluster_file)
+    for ids, scores in clustered_dupes:
+        new_ent = str(uuid4())
+        writer.writerow([
+            new_ent,
+            ids[0],
+            scores[0],
+            None,
+            False,
+            False,
+        ])
+        for id, score in zip(ids[1:], scores):
             writer.writerow([
                 new_ent,
+                id,
+                score,
                 ids[0],
-                scores[0],
-                None,
                 False,
                 False,
             ])
-            for id, score in zip(ids[1:], scores):
-                writer.writerow([
-                    new_ent,
-                    id,
-                    score,
-                    ids[0],
-                    False,
-                    False,
-                ])
     engine = worker_session.bind
-    with open(fname, 'r', encoding='utf-8') as f:
-        conn = engine.raw_connection()
-        cur = conn.cursor()
-        try:
-            cur.copy_expert(''' 
-                COPY "entity_{0}_cr" (
-                    entity_id,
-                    record_id,
-                    confidence,
-                    target_record_id,
-                    clustered,
-                    checked_out
-                ) 
-                FROM STDIN CSV'''.format(session_id), f)
-            conn.commit()
-            os.remove(fname)
-        except (ProgrammingError, IntegrityError) as e: # pragma: no cover
-            conn.rollback()
-            raise e
+    cluster_file.seek(0)
+    conn = engine.raw_connection()
+    cur = conn.cursor()
+    try:
+        cur.copy_expert(''' 
+            COPY "entity_{0}_cr" (
+                entity_id,
+                record_id,
+                confidence,
+                target_record_id,
+                clustered,
+                checked_out
+            ) 
+            FROM STDIN CSV'''.format(session_id), cluster_file)
+        conn.commit()
+    except (ProgrammingError, IntegrityError) as e: # pragma: no cover
+        conn.rollback()
+        raise e
 
 @queuefunc
 def updateSettingsFiles():

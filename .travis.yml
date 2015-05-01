@@ -1,29 +1,26 @@
 branches:
-only:
-- master
+  only:
+    - master
 language: python
 notifications:
-email:
-on_success: change
-on_failure: always
-irc: chat.freenode.net#dedupe
+  irc: chat.freenode.net#dedupe
 python:
-- '3.4'
+  - '3.4'
 install: pip install -r requirements.txt
 after_success: coveralls
 sudo: false
 addons:
   postgresql: '9.4'
 services:
-- redis-server
+  - redis-server
 before_script:
-- cp tests/test_config.py.travis tests/test_config.py
-- cp api/app_config.py.travis api/app_config.py
+  - cp tests/test_config.py.travis tests/test_config.py
+  - cp api/app_config.py.travis api/app_config.py
 script: nosetests -v tests
 before_deploy:
-- zip -r dedupeapi-latest.zip .
-- mkdir -p dpl_cd_upload
-- mv dedupeapi-latest.zip dpl_cd_upload/dedupeapi-latest.zip
+  - zip -r dedupeapi-latest.zip .
+  - mkdir -p dpl_cd_upload
+  - mv dedupeapi-latest.zip dpl_cd_upload/dedupeapi-latest.zip
 deploy:
   provider: codedeploy
   access_key_id: AKIAIDJFUA6FY4AKAJ6Q
@@ -34,4 +31,4 @@ deploy:
   application: dedupe-api
   deployment_group: dedupe-api-group
   on:
-    repo: datamade/dedupe-api
+    tags: true

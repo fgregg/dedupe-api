@@ -741,7 +741,7 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         session_id = '{0}_cr'.format(session_id)
         pk_type = String
     else :
-        pk_type = Integer        
+        pk_type = Integer
 
     metadata = MetaData()
     engine = worker_session.bind
@@ -769,25 +769,13 @@ def writeBlockingMap(session_id, block_data, canonical=False):
         with engine.begin() as conn:
             conn.execute(bkm.insert(), *rows)
 
-    conn = engine.connect()
-    trans = conn.begin()
+    with engine.begin() as conn:
+        conn.execute('DROP INDEX IF EXISTS "bk_{0}_idx"'.format(session_id))
 
-    try:
+    with engine.begin() as conn:
         conn.execute(''' 
             CREATE INDEX "bk_{0}_idx" ON "block_{0}" (block_key)
         '''.format(session_id))
-        trans.commit()
-    except ProgrammingError:
-        trans.rollback()
-        conn.execute(''' 
-            DROP INDEX "bk_{0}_idx"
-        '''.format(session_id))
-        trans.commit()
-        
-        conn.execute(''' 
-            CREATE INDEX "bk_{0}_idx" ON "block_{0}" (block_key)
-        '''.format(session_id))
-        trans.commit()
 
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "plural_key_{0}"'.format(session_id))
