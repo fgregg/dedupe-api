@@ -675,26 +675,26 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
         GROUP BY e.entity_id
     '''.format(','.join(cols), session_id)
     names = cr.columns.keys()
-    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'w', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(names)
-        for row in engine.execute(rows):
-            r = [row.entity_id]
-            dicts = [dict(**{n:None for n in col_names}) for i in range(row.member_count)]
-            for idx, dct in enumerate(dicts):
-                for name in col_names:
-                    val = getattr(row, name)[idx]
-                    if name in array_cols:
-                        val = ','.join(val)
-                    dicts[idx][name] = val
-            canon_form = dedupe.canonicalize(dicts)
-            for name in names:
-                if canon_form.get(name) is not None:
-                    if name in array_cols:
-                        r.append('{"%s"}' % canon_form[name])
-                    else:
-                        r.append(canon_form[name])
-            writer.writerow(r)
+    canon_file = StringIO()
+    writer = csv.writer(canon_file)
+    writer.writerow(names)
+    for row in engine.execute(rows):
+        r = [row.entity_id]
+        dicts = [dict(**{n:None for n in col_names}) for i in range(row.member_count)]
+        for idx, dct in enumerate(dicts):
+            for name in col_names:
+                val = getattr(row, name)[idx]
+                if name in array_cols:
+                    val = ','.join(val)
+                dicts[idx][name] = val
+        canon_form = dedupe.canonicalize(dicts)
+        for name in names:
+            if canon_form.get(name) is not None:
+                if name in array_cols:
+                    r.append('{"%s"}' % canon_form[name])
+                else:
+                    r.append(canon_form[name])
+        writer.writerow(r)
     canon_table_name = name_pattern.format(session_id)
     copy_st = 'COPY "{0}" ('.format(canon_table_name)
     for idx, name in enumerate(names):
@@ -706,8 +706,8 @@ def writeCanonRep(session_id, name_pattern='cr_{0}'):
         copy_st += "FROM STDIN WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',', NULL ' ')"
     conn = engine.raw_connection()
     cur = conn.cursor()
-    with open('/tmp/{0}.csv'.format(name_pattern.format(session_id)), 'r', encoding='utf-8') as f:
-        cur.copy_expert(copy_st, f)
+    canon_file.seek(0)
+    cur.copy_expert(copy_st, canon_file)
     conn.commit()
 
 def writeBlockingMap(session_id, block_data, canonical=False):

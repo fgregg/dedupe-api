@@ -632,6 +632,9 @@ def reDedupeCanon(session_id, threshold=0.25):
     last_update = datetime.now().replace(tzinfo=TIME_ZONE)
     with engine.begin() as c:
         c.execute(upd, last_update=last_update)
+
+    # Check for records that have been entered into entity_map
+    # as a result of having gone through at least part of final review
     delete = ''' 
         DELETE FROM "entity_{0}" 
         WHERE record_id IN (
@@ -645,8 +648,9 @@ def reDedupeCanon(session_id, threshold=0.25):
         conn.execute(delete)
         trans.commit()
     except (ProgrammingError, IntegrityError) as e:
+        # If we get an exception here, it means that the final 
+        # review hasn't started, which is OK.
         trans.rollback()
-        raise e
     dedupeCanon(session_id)
 
 @queuefunc
