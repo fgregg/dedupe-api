@@ -41,8 +41,6 @@ def updateTrainingFromCluster(session_id,
     ''' 
     Update the sessions training data with the given record_ids
     '''
-    print("FOOOOBAR")
-
     all_ids = tuple(distinct_ids + match_ids)
     all_records = castRecords(session_id, all_ids)
 
@@ -78,9 +76,6 @@ def updateTrainingFromMatch(session_id,
     ''' 
     Update the sessions training from a match call
     '''
-
-    print("BBARRFOOO")
-
     ids = tuple(distinct_ids + match_ids + [target_id])
     records = castRecords(session_id, ids)
 
