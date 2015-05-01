@@ -17,7 +17,7 @@ import dedupe
 from api.utils.delayed_tasks import dedupeRaw, initializeSession, \
     initializeModel
 from api.utils.helpers import getDistinct, slugify, STATUS_LIST, readFieldDefs
-from api.utils.db_functions import writeRawTable, updateTraining, \
+from api.utils.db_functions import writeRawTable, updateTrainingFromCluster, \
     readTraining, saveTraining
 from api.models import DedupeSession, User, Group, WorkTable
 from api.database import app_session as db_session, init_engine
@@ -273,14 +273,14 @@ def training_run():
         record_ids = request.form['training_ids'].split(',')
         decision = request.form['decision']
         if decision == 'yes':
-            updateTraining(session_id, 
-                           match_ids=record_ids,
-                           trainer=current_user.name)
+            updateTrainingFromCluster(session_id, 
+                                      match_ids=record_ids,
+                                      trainer=current_user.name)
         
         elif decision == 'no':
-            updateTraining(session_id, 
-                           distinct_ids=record_ids,
-                           trainer=current_user.name)
+            updateTrainingFromCluster(session_id, 
+                                      distinct_ids=record_ids,
+                                      trainer=current_user.name)
         elif decision == 'unsure':
             training = {'unsure': [flask_session['current_pair']]}
             saveTraining(session_id,

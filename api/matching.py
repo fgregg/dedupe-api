@@ -10,7 +10,7 @@ from api.app_config import DOWNLOAD_FOLDER, TIME_ZONE
 from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
 from api.utils.helpers import preProcess, getMatches
-from api.utils.db_functions import addToEntityMap, updateTraining
+from api.utils.db_functions import addToEntityMap, updateTrainingFromMatch
 from api.utils.delayed_tasks import populateHumanReview
 from api.track_usage import tracker
 import dedupe
@@ -191,10 +191,11 @@ def train():
         # to allow us to add new training that does not already exist in the
         # raw data
         user = db_session.query(User).get(api_key)
-        updateTraining(session_id, 
-                       distinct_ids=distinct_ids, 
-                       match_ids=match_ids + [obj['record_id']],
-                       trainer=user.name)
+        updateTrainingFromMatch(session_id, 
+                                target_id=obj['record_id'],
+                                distinct_ids=distinct_ids, 
+                                match_ids=match_ids,
+                                trainer=user.name)
         if add_entity:
             addToEntityMap(session_id, obj, match_ids=match_ids, reviewer=user.name)
     resp = make_response(json.dumps(r))
