@@ -66,7 +66,7 @@ def get_cluster():
         dedupe_session.processing = True
         db_session.add(dedupe_session)
         db_session.commit()
-        dedupeCanon.delay(dedupe_session.id)
+        getMatchingReady.delay(dedupe_session.id)
     resp['total_clusters'] = dedupe_session.entity_count
     resp['review_remainder'] = dedupe_session.review_count
 
@@ -99,7 +99,7 @@ def get_canon_cluster():
         dedupe_session.processing = True
         db_session.add(dedupe_session)
         db_session.commit()
-        getMatchingReady.delay(session_id)
+        dedupeCanon.delay(session_id)
     resp['total_clusters'] = dedupe_session.entity_count
     resp['review_remainder'] = dedupe_session.review_count
 

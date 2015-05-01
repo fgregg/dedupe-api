@@ -55,7 +55,7 @@ def bulkMarkClusters(session_id, user=None):
         parent_entities = c.execute(update_parents, **upd_vals)
     
     updateEntityCount(session_id)
-    dedupeCanon(session_id)
+    getMatchingReady(session_id)
 
 @queuefunc
 def bulkMarkCanonClusters(session_id, user=None):
@@ -78,7 +78,6 @@ def bulkMarkCanonClusters(session_id, user=None):
                 '''.format(session_id)),
                 target=row[0], record_id=row[1])
     updateEntityCount(session_id)
-    getMatchingReady(session_id)
 
 def updateFromCanon(session_id):
     return text(''' 

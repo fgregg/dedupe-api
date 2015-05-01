@@ -11,7 +11,7 @@ from api.database import app_session as db_session, init_engine, Base
 from api.auth import csrf, check_sessions, login_required, check_roles
 from api.utils.helpers import preProcess, getMatches
 from api.utils.db_functions import addToEntityMap, updateTrainingFromMatch
-from api.utils.delayed_tasks import populateHumanReview
+from api.utils.delayed_tasks import populateHumanReview, dedupeCanon
 from api.track_usage import tracker
 import dedupe
 from dedupe.serializer import _to_json
@@ -224,11 +224,8 @@ def get_unmatched():
         if unseen_records :
             response_message = 'filling human review'
         else :
-            dedupe_session.status = 'canonical'
-            flash("Hooray! '%s' is now canonical!" % dedupe_session.name, 'success')
-            response_message = 'canonical'
-    else :
-        response_message = 'reviewing'
+            dedupe_session.status = 'canon clustered'
+            dedupeCanon.delay(session_id)
 
     left_to_review = estimateRemainingReview(session_id)
     dedupe_session.review_count = left_to_review
@@ -237,7 +234,7 @@ def get_unmatched():
 
     resp = {
         'status': 'ok',
-        'message': response_message,
+        'message': '',
     }
     resp['object'] = raw_record
     resp['matches'] = matched_records
