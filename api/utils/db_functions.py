@@ -33,13 +33,15 @@ except ImportError:
 except KeyError: #pragma: no cover
     sentry = None
 
-def updateTraining(session_id, 
-                   distinct_ids=[], 
-                   match_ids=[],
-                   trainer=None):
+
+def updateTrainingFromCluster(session_id, 
+                              distinct_ids=[], 
+                              match_ids=[],
+                              trainer=None):
     ''' 
     Update the sessions training data with the given record_ids
     '''
+    print("FOOOOBAR")
 
     all_ids = tuple(distinct_ids + match_ids)
     all_records = castRecords(session_id, all_ids)
@@ -67,6 +69,34 @@ def examplesFromCluster(distinct_ids, match_ids, records) :
                                             id_pair))
 
     return training
+
+def updateTrainingFromMatch(session_id,
+                            target_id,
+                            distinct_ids=[], 
+                            match_ids=[],
+                            trainer=None):
+    ''' 
+    Update the sessions training from a match call
+    '''
+
+    print("BBARRFOOO")
+
+    ids = tuple(distinct_ids + match_ids + [target_id])
+    records = castRecords(session_id, ids)
+
+    training = {'distinct': [], 'match': []}
+
+    for id_pair in itertools.product([target_id], distinct_ids) :
+        training['distinct'].append(recordPair(records,
+                                            id_pair))
+
+    for id_pair in itertools.combinations(match_ids + [target_id], 2) :
+        training['match'].append(recordPair(records,
+                                               id_pair))
+        
+
+    saveTraining(session_id, training, trainer)
+
     
 
 def recordPair(records, id_pair) :
