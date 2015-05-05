@@ -8,12 +8,37 @@
         <p>Below is a single record that doesn't belong to any entity. Match it to one or more of the entities below. If it doesn't belong with any of them, skip it and move on.</p>
 
         <div id="group-display"></div>
-        <div id="review-buttons">
-            <button class="btn btn-info" id="mark-match">
-                None of these match &raquo;
-            </button>
+        <div class="row">
+            <div class="col-md-8">
+                <div id="review-buttons">
+                    <button class="btn btn-info" id="mark-match">
+                        None of these match &raquo;
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-link" id="accept-confirm" data-toggle="modal" data-target="#confirm-modal">
+                    <i class='fa fa-check'></i>
+                    Accept the remaining matches &raquo;
+                </button>
+            </div>
         </div>
     </div>
+    <div id="confirm-modal" class="modal fade">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+                    <p class="modal-title">Are you sure you want to accept the remaining matches?</p>
+                    <p id='uncertain_modal'></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-link" data-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" data-dismiss="modal" id="accept-all"><i class='fa fa-check'></i> Accept</button>
+                </div>
+            </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
 {% endblock %}
 {% block extra_javascript %}
 <script src="{{ url_for('static', filename='js/spin.min.js') }}"></script>
@@ -23,7 +48,7 @@
     <div class='row'>
         <div class='col-md-4'>
         <h4 id='review-count' data-content="This is an estimate of the number of records we need you to review based on what you've matched so far. The more you review, the more accurate it will be." rel="popover" data-placement="top" data-trigger="hover">
-            Uncertain records left: 
+            Uncertain records left:
             <% if (remaining < 5) { %>
                 <strong><5</strong>
             <% } else { %>
@@ -77,7 +102,7 @@
     var match_obj;
     var matches;
     $(document).ready(function(){
-        getAndMatch();
+        getAndMatch(false);
         $('#mark-match').on('click', function(e){
             var data = {
                 'api_key': api_key,
@@ -102,20 +127,28 @@
             data['session_id'] = session_id
             $.when(addTraining(JSON.stringify(data))).then(
                 function(resp){
-                    getAndMatch();
+                    getAndMatch(false);
                 }
             )
         });
+        $('#accept-all').on('click', function(e){
+            getAndMatch(true);
+        })
     });
-    function getAndMatch(){
+    function getAndMatch(floor_it){
         $('#group-display').spin('large')
-        $.when(getRecord()).then(function(resp){
+        $.when(getRecord(floor_it)).then(function(resp){
             $('#group-display').spin(false);
             match_obj = resp['object'];
             matches = resp['matches'];
             remaining = parseInt(resp['remaining'])
             if (typeof match_obj !== 'undefined' && !$.isEmptyObject(match_obj)){
                 displayRecord(resp.matches, resp.object, remaining)
+            } else if (floor_it){
+                $('#group-display').spin(false);
+                $('#group-display').html('<h2>Accepting the rest ...</h2>');
+                $('#review-buttons').hide();
+                window.location = '/'
             } else {
                 $('#group-display').spin(false);
                 $('#group-display').html('<h2>Matching complete</h2>');
@@ -141,8 +174,8 @@
                 $('#mark-match').html("None of these match &raquo;");
         });
     }
-    function getRecord(){
-        return $.getJSON('/get-unmatched-record/?session_id=' + session_id)
+    function getRecord(floor_it){
+        return $.getJSON('/get-unmatched-record/?session_id=' + session_id + '&floor_it=' + floor_it)
     }
     function addTraining(data){
         return $.ajax({

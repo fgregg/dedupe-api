@@ -78,6 +78,13 @@ def bulkMarkCanonClusters(session_id, user=None):
                 '''.format(session_id)),
                 target=row[0], record_id=row[1])
     updateEntityCount(session_id)
+    with engine.begin() as conn:
+        conn.execute(text('''
+            UPDATE dedupe_session SET 
+              status = :status 
+            WHERE id = :session_id'''), 
+            status='canonical', 
+            session_id=session_id)
 
 def updateFromCanon(session_id):
     return text(''' 
@@ -220,17 +227,24 @@ def getMatchingReady(session_id):
             '''.format(session_id)
         )
 
-    # Get review count
-    sel = ''' 
-      SELECT COUNT(*)
-      FROM "raw_{0}" AS p
-      LEFT JOIN "entity_{0}" AS e
-        ON p.record_id = e.record_id
-      WHERE e.record_id IS NULL
+    delete = ''' 
+        DELETE FROM "entity_{0}" 
+        WHERE record_id IN (
+            SELECT record_id
+            FROM "match_review_{0}"
+        )
     '''.format(session_id)
-    count = engine.execute(sel).first()
-    sess.status = 'matching ready'
-    sess.review_count = count[0]
+    conn = engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute(delete)
+        trans.commit()
+    except (ProgrammingError, IntegrityError) as e:
+        print('Uh, exception %s' % e)
+        # If we get an exception here, it means that the match 
+        # review hasn't started, which is OK.
+        trans.rollback()
+    
     create_human_review = '''
         CREATE TABLE "match_review_{0}" AS
           SELECT
@@ -250,6 +264,19 @@ def getMatchingReady(session_id):
         conn.execute(create_human_review)
         conn.execute('CREATE INDEX "match_rev_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
     populateHumanReview(session_id)
+    
+    # Get review count
+    sel = ''' 
+      SELECT COUNT(*)
+      FROM "raw_{0}" AS p
+      LEFT JOIN "entity_{0}" AS e
+        ON p.record_id = e.record_id
+      WHERE e.record_id IS NULL
+    '''.format(session_id)
+    count = engine.execute(sel).first()
+    sess.status = 'matching ready'
+    sess.review_count = count[0]
+    
     sess.processing = False
     worker_session.add(sess)
     worker_session.commit()
@@ -257,7 +284,7 @@ def getMatchingReady(session_id):
     return None
 
 @queuefunc
-def populateHumanReview(session_id):
+def populateHumanReview(session_id, floor_it=False):
     dedupe_session = worker_session.query(DedupeSession).get(session_id)
     
     engine = worker_session.bind
@@ -292,7 +319,14 @@ def populateHumanReview(session_id):
         for record, matches in record_matches:
             matches = [match for match in matches if match['confidence'] > 0.2]
              
-            if len(matches) == 1 and matches[0]['confidence'] >= 0.8:
+            if floor_it:
+                addToEntityMap(session_id, 
+                               record, 
+                               match_ids=[m['record_id'] for m in matches],
+                               reviewer='machine')
+                markAsReviewed(session_id, record['record_id'], 'machine') 
+
+            elif len(matches) == 1 and matches[0]['confidence'] >= 0.8:
                 # Means Auto adding match 
                 addToEntityMap(session_id, 
                                record, 
@@ -306,12 +340,12 @@ def populateHumanReview(session_id):
                     'confidence': [m['confidence'] for m in matches]
                 }
                 upd = ''' 
-                UPDATE "match_review_{0}" SET
-                entities = :entities,
-                confidence = :confidence,
-                sent_for_review = TRUE
-                WHERE record_id = :record_id
-                '''.format(session_id)
+                    UPDATE "match_review_{0}" SET
+                      entities = :entities,
+                      confidence = :confidence,
+                      sent_for_review = TRUE
+                    WHERE record_id = :record_id
+                    '''.format(session_id)
                 with engine.begin() as conn:
                     conn.execute(text(upd), **r)
                 human_queue.append(record)
@@ -345,6 +379,9 @@ def populateHumanReview(session_id):
     deduper.writeSettings(fobj)
     dedupe_session.gaz_settings_file = fobj.getvalue()
 
+    if floor_it:
+        dedupeCanon(session_id)
+    
     worker_session.add(dedupe_session)
     worker_session.commit()
 
@@ -600,6 +637,19 @@ def getRecordRanges(intervals):
 
 @queuefunc
 def reDedupeRaw(session_id, threshold=0.75):
+    delete = ''' 
+        DELETE FROM "entity_{0}" 
+        WHERE record_id IN (
+          SELECT e.record_id
+          FROM "entity_{0}" AS e
+          LEFT JOIN "exact_match_{0}" as m
+            ON e.record_id = m.record_id
+          WHERE m.record_id IS NULL
+        )
+    '''
+    engine = worker_session.bind
+    with engine.begin() as conn:
+        conn.execute(delete.format(session_id))
     clustered_dupes = clusterDedupe(session_id)
     updateEntityMap(clustered_dupes, session_id)
     entity_count, review_count = updateSessionInfo(session_id)

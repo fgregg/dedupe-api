@@ -206,39 +206,52 @@ def train():
 @check_sessions()
 def get_unmatched():
     session_id = request.args['session_id']
+    floor_it = False
 
-    # metadata for session
-    dedupe_session = db_session.query(DedupeSession).get(session_id)
-
-    fields = {f['field'] 
-              for f in 
-              json.loads(dedupe_session.field_defs.decode('utf-8'))}
-    fields.add('record_id')
-
-    # We have to check if there are any unseen records BEFORE polling
-    # records for review in order to avoid a race condition
-    unseen_records = unseenRecords(session_id)
-    raw_record, matched_records = pollHumanReview(session_id, fields)
-
-    if not matched_records :
-        if unseen_records :
-            response_message = 'filling human review'
-        else :
-            dedupe_session.status = 'canon clustered'
-            dedupeCanon.delay(session_id)
-
-    left_to_review = estimateRemainingReview(session_id)
-    dedupe_session.review_count = left_to_review
-    db_session.add(dedupe_session)
-    db_session.commit()
-
+    if request.args.get('floor_it') == 'true':
+        floor_it = True
+    
     resp = {
         'status': 'ok',
         'message': '',
     }
-    resp['object'] = raw_record
-    resp['matches'] = matched_records
-    resp['remaining'] = left_to_review
+    
+    # metadata for session
+    dedupe_session = db_session.query(DedupeSession).get(session_id)
+
+    if floor_it:
+        populateHumanReview.delay(session_id, floor_it=True)
+        dedupe_session.status = 'canon clustered'
+        dedupe_session.processing = True
+    
+    else:
+        fields = {f['field'] 
+                  for f in 
+                  json.loads(dedupe_session.field_defs.decode('utf-8'))}
+        fields.add('record_id')
+
+        # We have to check if there are any unseen records BEFORE polling
+        # records for review in order to avoid a race condition
+        unseen_records = unseenRecords(session_id)
+        raw_record, matched_records = pollHumanReview(session_id, fields)
+
+        if not matched_records :
+            if unseen_records :
+                response_message = 'filling human review'
+            else :
+                dedupe_session.status = 'canon clustered'
+                dedupe_session.processing = True
+                dedupeCanon.delay(session_id)
+
+        left_to_review = estimateRemainingReview(session_id)
+        dedupe_session.review_count = left_to_review
+        
+        resp['object'] = raw_record
+        resp['matches'] = matched_records
+        resp['remaining'] = left_to_review
+    
+    db_session.add(dedupe_session)
+    db_session.commit()
 
     return jsonResponse(resp)
 
@@ -306,6 +319,7 @@ def pollHumanReview(session_id, fields) :
     raw_record, matches = matchRowsToDict(matched_records)
 
     dedupe_session = db_session.query(DedupeSession).get(session_id)
+
     if queueCount(session_id) <= 10 and not dedupe_session.processing:
         populateHumanReview.delay(session_id)
 
@@ -342,7 +356,7 @@ def estimateRemainingReview(session_id) :
 
     unseen = unseenRecords(session_id)
     queue_count = queueCount(session_id)
-
+    
     remaining_count = round(unseen * upper_proportion) + queue_count
 
     print(remaining_count, unseen, proportion, std_err)

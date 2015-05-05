@@ -380,6 +380,7 @@ def review():
             d['field_defs'] = json.loads(row.field_defs.tobytes().decode('utf-8'))
         if row.status == 'matching ready':
             queue_count = queueCount(row.id)
+            print(queue_count)
             if queue_count == 0:
                 d['processing'] = True
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
