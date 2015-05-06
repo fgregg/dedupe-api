@@ -15,7 +15,7 @@ from sqlalchemy import MetaData, Table, Column, Integer, String, \
     create_engine, Float, Boolean, BigInteger, distinct, text, select, \
     Text, func, Index
 from sqlalchemy.sql import label
-from sqlalchemy.exc import ProgrammingError, IntegrityError
+from sqlalchemy.exc import ProgrammingError, IntegrityError, NoSuchTableError
 from sqlalchemy.dialects.postgresql.base import ARRAY
 from unidecode import unidecode
 from uuid import uuid4
@@ -304,8 +304,13 @@ def writeProcessedTable(session_id,
     metadata = MetaData()
     proc_table_name = proc_table_format.format(session_id)
     raw_table_name = raw_table_format.format(session_id)
-    raw_table = Table(raw_table_name, metadata, 
-        autoload=True, autoload_with=engine)
+    while True:
+        try:
+            raw_table = Table(raw_table_name, metadata, 
+                autoload=True, autoload_with=engine)
+            break
+        except NoSuchTableError:
+            continue
     raw_fields = [f for f in raw_table.columns.keys() if f != 'record_id']
     create = 'CREATE TABLE "{0}" AS (SELECT record_id, '.format(proc_table_name)
     for idx, field in enumerate(raw_fields):

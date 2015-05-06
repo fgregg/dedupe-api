@@ -47,16 +47,22 @@ def create_app(config='api.app_config'):
     @app.errorhandler(404)
     def page_not_found(e):
         app.logger.info(traceback.format_exc())
+        if sentry:
+            sentry.captureException()
         return render_template('404.html'), 404
 
     @app.errorhandler(ImportFailed)
     def page_not_found(e):
         app.logger.info(traceback.format_exc())
+        if sentry:
+            sentry.captureException()
         return render_template('import_error.html', error=e), 400
 
     @app.errorhandler(Exception)
     def page_not_found(e):
         app.logger.info(traceback.format_exc())
+        if sentry:
+            sentry.captureException()
         return render_template('error.html', error=e), 500
 
     @app.template_filter('format_number')
