@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from flask import Flask, make_response, request, Blueprint, \
-    session as flask_session, render_template, current_app
+    session as flask_session, render_template, current_app, flash
 from api.database import app_session as db_session, Base
 from api.models import User, DedupeSession
 from api.auth import login_required, check_roles, check_sessions
