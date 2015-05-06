@@ -3,7 +3,8 @@ from os.path import join, abspath, dirname
 from flask import request, session
 from sqlalchemy import text
 from api.utils.delayed_tasks import initializeSession, initializeModel, \
-    dedupeRaw, bulkMarkClusters, bulkMarkCanonClusters
+    dedupeRaw, bulkMarkClusters, bulkMarkCanonClusters, getMatchingReady, \
+    populateHumanReview
 from tests import DedupeAPITestCase
 from api.utils.helpers import slugify
 from api.database import app_session as db_session
@@ -44,6 +45,8 @@ class ReviewTest(DedupeAPITestCase):
         entity_table = 'entity_{0}'.format(self.dd_sess.id)
         if canonical:
             bulkMarkClusters(self.dd_sess.id, user=self.user.name)
+            getMatchingReady(self.dd_sess.id)
+            populateHumanReview(self.dd_sess.id, floor_it=True)
             endpoints = {
                 'get': '/get-canon-review-cluster/?session_id={0}'.format(self.dd_sess.id),
                 'mark_one': '/mark-canon-cluster/?session_id={0}'.format(self.dd_sess.id),
