@@ -59,7 +59,6 @@ class TrackUsageTest(unittest.TestCase):
         initializeModel(cls.dd_sess.id)
         dedupeRaw(cls.dd_sess.id)
         bulkMarkClusters(cls.dd_sess.id, user=cls.user.name)
-        bulkMarkCanonClusters(cls.dd_sess.id, user=cls.user.name)
 
     @classmethod
     def tearDownClass(cls):

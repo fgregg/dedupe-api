@@ -250,7 +250,7 @@ class AdminTest(DedupeAPITestCase):
         
         bulkMarkClusters(self.dd_sess.id)
         db_session.refresh(self.dd_sess)
-        assert self.dd_sess.status == 'canon clustered'
+        assert self.dd_sess.status == 'matching ready'
         
         with self.app.test_request_context():
             self.login()
