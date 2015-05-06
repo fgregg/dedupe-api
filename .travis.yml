@@ -1,6 +1,7 @@
 branches:
   only:
     - master
+    - /^v0.*$/
 language: python
 notifications:
   irc: chat.freenode.net#dedupe
