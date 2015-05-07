@@ -539,8 +539,6 @@ def blockDedupe(session_id,
     full_data = ((getattr(row, 'record_id'), dict(zip(row.keys(), row.values()))) \
         for row in engine.execute(select_block_records))
 
-    full_data = list(full_data)
-
     return deduper.blocker(full_data)
 
 def clusterDedupe(session_id, canonical=False, threshold=0.75):
