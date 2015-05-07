@@ -347,17 +347,8 @@ def review():
             d.entity_count,
             d.review_count,
             d.processing,
-            d.field_defs,
-            w.return_value AS last_work_status
+            d.field_defs
         FROM dedupe_session AS d
-        LEFT JOIN (
-            SELECT return_value, session_id
-            FROM work_table
-            WHERE claimed = TRUE
-            ORDER BY updated DESC
-            LIMIT 1
-        ) AS w
-        ON d.id = w.session_id
         WHERE 1=1
     '''
     qargs = {}
@@ -384,9 +375,7 @@ def review():
                 d['processing'] = True
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
-        if row.last_work_status:
-            d['last_work_status'] = row.last_work_status
-
+        
         if d['status'] == 'canonical':
             canonical_sessions.append(d)
         else:
