@@ -90,7 +90,7 @@
                            href="{{ url_for('trainer.training_run',
                                             training_ids=previous_ids,
                                             session_id=session.session_id)}}">
-                      <i class='fa fa-mail-reply'></i> Undo
+                      <i class='fa fa-mail-reply'></i> Previous
                     </a>
                   {% endif %}
                   {% if next_ids or pair_type %}
@@ -99,7 +99,7 @@
                            href="{{ url_for('trainer.training_run',
                                             training_ids=next_ids,
                                             session_id=session.session_id)}}">
-                      Redo <i class='fa fa-mail-forward'></i>
+                      Next <i class='fa fa-mail-forward'></i>
                     </a>
                   {% endif %}
                 {% endif %}

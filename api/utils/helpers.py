@@ -54,20 +54,20 @@ STATUS_LIST = [
         'next_step': 3
     },
     {
+        'step': 4,
+        'machine_name': 'matching ready',
+        'human_name': 'Entities merged', 
+        'next_step_name': 'Add to entities',
+        'next_step_url': '/match-review/?session_id={0}',
+        'next_step': 5
+    },
+    {
         'step': 5,
         'machine_name': 'canon clustered',
         'human_name': 'Entities reviewed', 
         'next_step_name': 'Final review',
         'next_step_url': '/session-review/?session_id={0}&second_review=True',
         'next_step': 6
-    },
-    {
-        'step': 4,
-        'machine_name': 'matching ready',
-        'human_name': 'Entities merged', 
-        'next_step_name': 'Matching review',
-        'next_step_url': '/match-review/?session_id={0}',
-        'next_step': 5
     },
     {
         'step': 6,

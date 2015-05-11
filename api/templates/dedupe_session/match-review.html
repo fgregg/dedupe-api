@@ -4,8 +4,8 @@
 {% block content %}
     <div class="col-md-12">
         {{ dedupe_steps( dedupe_session ) }}
-        <h3>5. Final review</h3>
-        <p>Below is a single record that doesn't belong to any entity. Match it to one or more of the entities below. If it doesn't belong with any of them, skip it and move on.</p>
+        <h3>5. Add to entities</h3>
+        <p>Below are one or more records that don't belong to any entity. Match it to one or more of the entities below. If it doesn't belong with any of them, skip it and move on.</p>
 
         <div id="group-display"></div>
         <div class="row">
@@ -61,7 +61,7 @@
         <table class="table table-bordered table-condensed">
             <thead>
                 <tr>
-                    <td></td>
+                    <th class='nowrap' style='width: 80px'><label data-content="Toggle all" id="check_toggle_all"><input checked type="checkbox" /> <small id='check_toggle_all_label'>(all)</small></label></th>
                     <% $.each(obj, function(field, value){ %>
                         <% if (field != 'record_id') { %>
                             <th><%= field %></th>
@@ -71,7 +71,7 @@
             </thead>
             <tbody>
                 <tr class='warning'>
-                    <td>Unmatched record</td>
+                    <td>To match</td>
                     <% $.each(obj, function(field, value){ %>
                         <% if (field != 'record_id') { %>
                             <td><%= value %></td>
@@ -82,7 +82,7 @@
                     <% $.each(matches, function(i, match){ %>
                         <tr>
                             <td data-record_id="<%= match.record_id %>" class='nowrap'>
-                                <label><input type="checkbox" class='select_entity' id="check_<%= match.record_id %>"/> match</label>
+                                <label><input type="checkbox" checked class='select_entity check_record' id="check_<%= match.record_id %>"/> match</label>
                             </td>
                             <% $.each(match, function(field, val){ %>
                                 <% if (field != 'record_id' && field != 'entity_id' && field != 'confidence') { %>
@@ -155,6 +155,35 @@
                 $('#review-buttons').hide();
                 window.location = '/'
             }
+
+            $('.check_record, #check_toggle_all').popover({trigger: "hover", placement: "right"});
+            $('#check_toggle_all input').on('click', function(e){
+              var checkbox = $(this);
+              var label = $("#check_toggle_all_label");
+              if (label.html() == "(all)")
+                label.html("(none)");
+              else
+                label.html("(all)");
+              $('.check_record').each(function() {
+                if (checkbox.prop("checked")) this.checked = true;
+                else this.checked = false;
+              });
+            });
+
+            $('.check_record, #check_toggle_all input').on('click', function(e){
+
+              var none_checked = true;
+              $.each($('.check_record, #check_toggle_all input'), function(i,el){
+                var checkbox = $(this);
+                if (checkbox.prop("checked"))
+                  none_checked = false;
+              });
+
+              if (none_checked)
+                $('#mark-match').html("None of these match &raquo;");
+              else
+                $('#mark-match').html("Match record(s) &raquo;");
+            });
         });
     }
     function displayRecord(matches, obj, remaining){

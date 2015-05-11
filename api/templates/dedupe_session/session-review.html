@@ -15,8 +15,8 @@
           <h3>4. Review entities</h3>
           <p>Below is a group of records that refer to the same entity. If any of them don't belong, <strong>uncheck</strong> the box next to it. <br />When you're done, review the next entity or accept the remaining records.</p>
       {% else %}
-          <h3>6. Merge entities</h3>
-          <p>Some of the entities can be merged. If any of them don't belong, <strong>uncheck</strong> the box next to it. If they look good, you can automatically accept the rest.</p>
+          <h3>6. Final review</h3>
+          <p>You're on the last step! Some of the entities we identified can be merged together. If any of them don't belong, <strong>uncheck</strong> the box next to it. If they look good, you can automatically accept the rest.</p>
       {% endif %}
       <div class="col-md-12" id="group-display"></div>
     </div>
@@ -175,6 +175,7 @@
         $('#group-display').spin(false);
         if (resp.objects.length > 0){
             resp.uncertain_records = parseInt(resp.false_negative) + parseInt(resp.false_positive);
+            console.log(resp.uncertain_records)
             var template = new EJS({'text': $('#reviewTemplate').html()})
             $('#group-display').html(template.render({resp: resp}));
             $('.mark-entity').off('click', markEntity);
@@ -186,6 +187,8 @@
             $("#modal_remaining").html(resp.review_remainder);
             if (resp.uncertain_records > 0)
               $('#uncertain_modal').html("There are still <strong>" + resp.uncertain_records + "</strong> entities we are unsure about.");
+            else
+              $('#uncertain_modal').hide();
 
             $('#check_toggle_all input').on('click', function(e){
               var checkbox = $(this);
