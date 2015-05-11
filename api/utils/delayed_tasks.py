@@ -240,9 +240,6 @@ def getMatchingReady(session_id):
         conn.execute(delete)
         trans.commit()
     except (ProgrammingError, IntegrityError) as e:
-        print('Uh, exception %s' % e)
-        # If we get an exception here, it means that the match 
-        # review hasn't started, which is OK.
         trans.rollback()
     
     create_human_review = '''
@@ -680,24 +677,6 @@ def reDedupeCanon(session_id, threshold=0.25):
     with engine.begin() as c:
         c.execute(upd, last_update=last_update)
 
-    # Check for records that have been entered into entity_map
-    # as a result of having gone through at least part of final review
-    delete = ''' 
-        DELETE FROM "entity_{0}" 
-        WHERE record_id IN (
-            SELECT record_id
-            FROM "match_review_{0}"
-        )
-    '''.format(session_id)
-    conn = engine.connect()
-    trans = conn.begin()
-    try:
-        conn.execute(delete)
-        trans.commit()
-    except (ProgrammingError, IntegrityError) as e:
-        # If we get an exception here, it means that the final 
-        # review hasn't started, which is OK.
-        trans.rollback()
     dedupeCanon(session_id)
 
 @queuefunc
