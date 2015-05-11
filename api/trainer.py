@@ -405,9 +405,12 @@ def getPrevNext(session_id, training_ids):
         if len(records) == 3:
             previous_ids = ','.join([str(first.left_record_id), str(first.right_record_id)])
             next_ids = ','.join([str(last.left_record_id), str(last.right_record_id)])
-        else:
-            if first.date_added != min_max.oldest:
+        elif len(records) == 2:
+            if first.left_record_id == left_id and first.right_record_id == right_id:
+                next_ids = ','.join([str(last.left_record_id), str(last.right_record_id)])
+            else:
                 previous_ids = ','.join([str(first.left_record_id), str(first.right_record_id)])
+
     return previous_ids, next_ids
 
 def getTrainingCounts(session_id):

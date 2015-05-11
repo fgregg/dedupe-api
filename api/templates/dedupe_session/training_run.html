@@ -91,25 +91,26 @@
                     </button>
                 </div>
                 {% endif %}
-            </p>
             {% if ( counter.yes + counter.no + counter.unsure ) > 0 %}
-              <p class='pull-right'>
+              &nbsp;&nbsp;&nbsp;
                 {% if previous_ids %}
-                <a class="btn btn-info"
-                       role="button"
-                       href="{{ url_for('trainer.training_run',
-                                        training_ids=previous_ids,
-                                        session_id=session.session_id)}}">
-                  &laquo; Back
-                </a>
+                  <a class="btn btn-link"
+                         role="button"
+                         href="{{ url_for('trainer.training_run',
+                                          training_ids=previous_ids,
+                                          session_id=session.session_id)}}">
+                    <i class='fa fa-mail-reply'></i> Undo
+                  </a>
                 {% endif %}
-                <a class="btn btn-info"
-                       role="button"
-                       href="{{ url_for('trainer.training_run',
-                                        training_ids=next_ids,
-                                        session_id=session.session_id)}}">
-                  Forward &raquo;
-                </a>
+                {% if next_ids or pair_type %}
+                  <a class="btn btn-link"
+                         role="button"
+                         href="{{ url_for('trainer.training_run',
+                                          training_ids=next_ids,
+                                          session_id=session.session_id)}}">
+                    Redo <i class='fa fa-mail-forward'></i>
+                  </a>
+                {% endif %}
               </p>
             {% endif %}
         </form>
