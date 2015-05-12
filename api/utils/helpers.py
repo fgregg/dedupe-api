@@ -54,20 +54,36 @@ STATUS_LIST = [
         'next_step': 3
     },
     {
-        'step': 5,
-        'machine_name': 'canon clustered',
-        'human_name': 'Entities reviewed', 
-        'next_step_name': 'Final review',
-        'next_step_url': '/session-review/?session_id={0}&second_review=True',
-        'next_step': 6
-    },
-    {
         'step': 4,
         'machine_name': 'matching ready',
         'human_name': 'Entities merged', 
         'next_step_name': 'Matching review',
         'next_step_url': '/match-review/?session_id={0}',
         'next_step': 5
+    },
+    {
+        'step': 4,
+        'machine_name': 'filling human review',
+        'human_name': 'Filling review queue', 
+        'next_step_name': 'Matching review',
+        'next_step_url': '/match-review/?session_id={0}',
+        'next_step': 5
+    },
+    {
+        'step': 4,
+        'machine_name': 'matching complete',
+        'human_name': 'Matching complete', 
+        'next_step_name': 'Final review',
+        'next_step_url': '/match-review/?session_id={0}',
+        'next_step': 5
+    },
+    {
+        'step': 5,
+        'machine_name': 'canon clustered',
+        'human_name': 'Entities reviewed', 
+        'next_step_name': 'Final review',
+        'next_step_url': '/session-review/?session_id={0}&second_review=True',
+        'next_step': 6
     },
     {
         'step': 6,
@@ -518,9 +534,7 @@ def updateEntityCount(session_id):
         trans.rollback()
         conn = engine.connect()
         trans = conn.begin()
-        dedupe_session = worker_session.query(DedupeSession).get(session_id)
-        field_names = set([f['field'] for f in \
-                json.loads(dedupe_session.field_defs.decode('utf-8'))])
+        field_names = set([f['field'] for f in readFieldDefs(session_id)])
         fields = ', '.join(['MAX(r.{0}) AS {0}'.format(f) for f in field_names])
         create = ''' 
             CREATE MATERIALIZED VIEW "browser_{1}" AS (

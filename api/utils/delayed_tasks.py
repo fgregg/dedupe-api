@@ -282,14 +282,14 @@ def getMatchingReady(session_id):
 
 @queuefunc
 def populateHumanReview(session_id, floor_it=False):
-    dedupe_session = worker_session.query(DedupeSession).get(session_id)
     
     engine = worker_session.bind
-
-    raw_fields = sorted(list(set([f['field'] \
-            for f in json.loads(dedupe_session.field_defs.decode('utf-8'))])))
+    
+    field_defs = readFieldDefs(session_id)
+    raw_fields = sorted(list(set([f['field'] for f in field_defs])))
     raw_fields.append('record_id')
     fields = ', '.join(['r.{0}'.format(f) for f in raw_fields])
+    
     sel = ''' 
       SELECT {0}
       FROM "processed_{1}" as r
@@ -298,12 +298,14 @@ def populateHumanReview(session_id, floor_it=False):
       WHERE e.record_id IS NULL
       ORDER BY RANDOM()
     '''.format(fields, session_id)
+    
     rows = (OrderedDict(zip(raw_fields, r)) for r in engine.execute(text(sel)))
+    
     human_queue = []
     cleared = []
-
     chunk_size = 100
     query_exhausted = False
+
 
     while len(human_queue) < 20 and not query_exhausted :
         
@@ -362,9 +364,15 @@ def populateHumanReview(session_id, floor_it=False):
     
     updateEntityCount(session_id)
     
+    settings = ''' 
+        SELECT gaz_settings_file AS sf
+        FROM dedupe_session
+        WHERE id = :session_id
+    '''
+    settings = engine.execute(text(settings), session_id=session_id).first().sf
+    
     # Train classifier
-    settings_file = BytesIO(dedupe_session.gaz_settings_file)
-    deduper = RetrainGazetteer(settings_file, num_cores=1)
+    deduper = RetrainGazetteer(BytesIO(settings), num_cores=1)
     
     training_data = readTraining(session_id)
 
@@ -374,14 +382,20 @@ def populateHumanReview(session_id, floor_it=False):
     deduper._trainClassifier()
     fobj = BytesIO()
     deduper.writeSettings(fobj)
-    dedupe_session.gaz_settings_file = fobj.getvalue()
+    
+    update_settings = ''' 
+        UPDATE dedupe_session SET
+          gaz_settings_file = :settings_file
+        WHERE id = :session_id
+    '''
+
+    with engine.begin() as conn:
+        conn.execute(text(update_settings), 
+                     settings_file=fobj.getvalue(),
+                     session_id=session_id)
 
     if floor_it:
         dedupeCanon(session_id)
-    
-    worker_session.add(dedupe_session)
-    worker_session.commit()
-
 
 def markAsReviewed(session_id, record_id, reviewer) :
     engine = worker_session.bind
@@ -723,9 +737,11 @@ def updateSessionInfo(session_id, table_fmt='entity_{0}'):
 
 @queuefunc
 def dedupeCanon(session_id, threshold=0.25):
-    trainDedupe(session_id)
-    dd = worker_session.query(DedupeSession).get(session_id)
     engine = worker_session.bind
+    
+    trainDedupe(session_id)
+    
+    dd = worker_session.query(DedupeSession).get(session_id)
     metadata = MetaData()
     writeCanonRep(session_id)
     writeProcessedTable(session_id, 
@@ -741,16 +757,17 @@ def dedupeCanon(session_id, threshold=0.25):
         canonical=True)
     writeBlockingMap(session_id, block_gen, canonical=True)
     clustered_dupes = clusterDedupe(session_id, canonical=True, threshold=threshold)
+    
     if clustered_dupes:
         writeCanonicalEntities(session_id, clustered_dupes)
         entity_count, review_count = updateSessionInfo(session_id, table_fmt='entity_{0}_cr')
         dd.review_count = review_count
         dd.status = 'canon clustered'
-        worker_session.add(dd)
-        worker_session.commit()
     else: # pragma: no cover
-        print('did not find clusters')
-        getMatchingReady(session_id)
+        dd.status = 'canonical'
+        dd.review_count = None
+    worker_session.add(dd)
+    worker_session.commit()
 
 def writeCanonicalEntities(session_id, clustered_dupes):
     cluster_file = StringIO()

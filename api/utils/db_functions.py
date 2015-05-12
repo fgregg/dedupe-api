@@ -8,7 +8,7 @@ from hashlib import md5
 from api.database import app_session, worker_session
 from api.models import DedupeSession, entity_map, block_map_table, get_uuid
 from api.utils.helpers import preProcess, slugify, updateEntityCount, \
-    RetrainGazetteer, getFieldsByType
+    RetrainGazetteer, getFieldsByType, readFieldDefs
 from api.app_config import TIME_ZONE
 from csvkit import convert
 from sqlalchemy import MetaData, Table, Column, Integer, String, \
@@ -426,11 +426,7 @@ def addToEntityMap(session_id,
                    reviewer=None, 
                    block_keys=None):
 
-    sess = worker_session.query(DedupeSession).get(session_id)
-    
-    engine = worker_session.bind
-    
-    field_defs = json.loads(sess.field_defs.decode('utf-8'))
+    field_defs = readFieldDefs(session_id)
     fds = getFieldsByType(field_defs)
 
     engine = worker_session.bind
@@ -543,7 +539,13 @@ def addToEntityMap(session_id,
             block_keys = [{'record_id': new_entity['record_id'], 'block_key': b} \
                           for b in block_keys]
         else:
-            deduper = RetrainGazetteer(BytesIO(sess.gaz_settings_file))
+            settings = ''' 
+                SELECT gaz_settings_file AS sf
+                FROM dedupe_session
+                WHERE id = :session_id
+            '''
+            settings = engine.execute(text(settings), session_id=session_id).first().sf
+            deduper = RetrainGazetteer(BytesIO(settings))
             field_types = {}
             for field in field_defs:
                 if field_types.get(field['field']):

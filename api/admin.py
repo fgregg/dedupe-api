@@ -328,12 +328,20 @@ def review():
     all_sessions = []
     in_progress_sessions = []
     canonical_sessions = []
-    sessions = db_session.query(DedupeSession.id)\
-        .filter(DedupeSession.group.has(
-            Group.id.in_([i.id for i in current_user.groups])))\
-        .order_by(DedupeSession.date_updated.desc())\
-        .all()
+    
+    sessions = ''' 
+        SELECT id 
+        FROM dedupe_session 
+        WHERE EXISTS (
+          SELECT 1 FROM dedupe_group
+          WHERE dedupe_group.id = dedupe_session.group_id
+            AND dedupe_group.id IN (:group_ids)
+        )
+    '''
     engine = db_session.bind
+    sessions = list(engine.execute(text(sessions), 
+                   group_ids=tuple(i.id for i in current_user.groups)))
+    
     sel = '''
         SELECT
             d.id,
@@ -369,10 +377,6 @@ def review():
             d['date_updated'] = row.date_added.isoformat()
         if row.field_defs:
             d['field_defs'] = json.loads(row.field_defs.tobytes().decode('utf-8'))
-        if row.status == 'matching ready':
-            queue_count = queueCount(row.id)
-            if queue_count == 0:
-                d['processing'] = True
         d['status_info'] = [i.copy() for i in STATUS_LIST if i['machine_name'] == row.status][0]
         d['status_info']['next_step_url'] = d['status_info']['next_step_url'].format(row.id)
         
