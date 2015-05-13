@@ -16,7 +16,7 @@
       <li class='{% if request.path in ["/select-fields/", "/select-field-types/"] %} active {% endif %}'>2. Fields to compare</li>
       <li class='{% if request.path == "/training-run/" %} active {% endif %}'>3. Train</li>
       <li class='{% if request.path == "/session-review/" and request.args.get("second_review") != 'True' %} active {% endif %}'>4. Review entities</li>
-      <li class='{% if request.path == "/match-review/" %} active {% endif %}'>5. Matching review</li>
-      <li class='{% if request.path == "/session-review/" and request.args.get("second_review") == 'True' %} active {% endif %}'>6. Merge entities</li>
+      <li class='{% if request.path == "/match-review/" %} active {% endif %}'>5. Add to entities</li>
+      <li class='{% if request.path == "/session-review/" and request.args.get("second_review") == 'True' %} active {% endif %}'>6. Final review</li>
     </ul>
 {%- endmacro %}

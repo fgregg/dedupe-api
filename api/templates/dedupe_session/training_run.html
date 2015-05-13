@@ -12,10 +12,15 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             {% if pair_type and date_added and trainer %}
             <p>
-              Below are two records which
-              <strong>{{ trainer|title }}</strong> said were
-              <strong>{{ pair_type|title }}</strong> on
-              <strong>{{ date_added|format_date_sort(fmt='%A %B %m, %Y at %H:%M')}}</strong>
+              <strong>{{ trainer }}</strong> marked these records as
+              {% if pair_type == 'distinct' %}
+                <label class='label label-primary'>not the same</label>
+              {% elif pair_type == 'match' %}
+                <label class='label label-success'>the same</label>
+              {% else %}
+                <label class='label label-default'>unsure</label>
+              {% endif %}
+              on <strong>{{ date_added|format_date_sort(fmt='%A %B %m, %Y at %H:%M')}}</strong>
             </p>
             {% else %}
             <p>
@@ -77,6 +82,28 @@
                   Unsure
                 </button>
                 &nbsp;&nbsp;&nbsp;
+
+                {% if ( counter.yes + counter.no + counter.unsure ) > 0 %}
+                  {% if previous_ids %}
+                    <a class="btn btn-link"
+                           role="button"
+                           href="{{ url_for('trainer.training_run',
+                                            training_ids=previous_ids,
+                                            session_id=session.session_id)}}">
+                      <i class='fa fa-mail-reply'></i> Previous
+                    </a>
+                  {% endif %}
+                  {% if next_ids or pair_type %}
+                    <a class="btn btn-link"
+                           role="button"
+                           href="{{ url_for('trainer.training_run',
+                                            training_ids=next_ids,
+                                            session_id=session.session_id)}}">
+                      Next <i class='fa fa-mail-forward'></i>
+                    </a>
+                  {% endif %}
+                {% endif %}
+
                 {% if counter.yes >= 10 and counter.no >= 10 %}
                 <div id="show-next-step">
                     <div class='clearfix'></div>
@@ -91,27 +118,6 @@
                     </button>
                 </div>
                 {% endif %}
-            </p>
-            {% if ( counter.yes + counter.no + counter.unsure ) > 0 %}
-              <p class='pull-right'>
-                {% if previous_ids %}
-                <a class="btn btn-info"
-                       role="button"
-                       href="{{ url_for('trainer.training_run',
-                                        training_ids=previous_ids,
-                                        session_id=session.session_id)}}">
-                  &laquo; Back
-                </a>
-                {% endif %}
-                <a class="btn btn-info"
-                       role="button"
-                       href="{{ url_for('trainer.training_run',
-                                        training_ids=next_ids,
-                                        session_id=session.session_id)}}">
-                  Forward &raquo;
-                </a>
-              </p>
-            {% endif %}
         </form>
     </div>
     <div class='col-md-4'>
