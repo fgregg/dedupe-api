@@ -358,24 +358,31 @@ def initializeEntityMap(session_id, fields):
           ) AS s
         )
         '''.format(session_id, ', '.join(fields))
+    
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "exact_match_{0}"'.format(session_id))
         conn.execute(create)
     exact_table = Table('exact_match_{0}'.format(session_id), metadata,
                   autoload=True, autoload_with=engine, keep_existing=True)
-    rows = worker_session.query(exact_table)
+    
     entity_table = entity_map('entity_%s' % session_id, metadata)
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "entity_{0}" CASCADE'.format(session_id))
     entity_table.create(engine)
+    
+    
+    rows = worker_session.query(exact_table)
+    rows = sorted(rows, key=itemgetter(0))
+    
     s = StringIO()
     writer = csv.writer(s)
     now = datetime.now().replace(tzinfo=TIME_ZONE).isoformat()
-    rows = sorted(rows, key=itemgetter(0))
     grouped = {}
+    
     for k, g in itertools.groupby(rows, key=itemgetter(0)):
         rs = [r[1] for r in g]
         grouped[k] = rs
+    
     for king,serfs in grouped.items():
         entity_id = str(uuid4())
         writer.writerow([
@@ -383,11 +390,11 @@ def initializeEntityMap(session_id, fields):
             None, 
             entity_id, 
             1.0,
-            'raw_{0}'.format(session_id),
             'TRUE',
             'FALSE',
-            'exact',
+            'root_exact',
             now,
+            'auto_exact'
         ])
         for serf in serfs:
             writer.writerow([
@@ -395,11 +402,11 @@ def initializeEntityMap(session_id, fields):
                 int(king),
                 entity_id,
                 1.0,
-                'raw_{0}'.format(session_id),
                 'TRUE',
                 'FALSE',
                 'exact',
                 now,
+                'auto_exact'
             ])
     s.seek(0)
     conn = engine.raw_connection()
@@ -410,11 +417,11 @@ def initializeEntityMap(session_id, fields):
             target_record_id, 
             entity_id, 
             confidence,
-            source,
-            clustered,
+            reviewed,
             checked_out,
             match_type,
-            last_update
+            last_update,
+            reviewer
         ) 
         FROM STDIN CSV'''.format(session_id), s)
     conn.commit()
@@ -483,7 +490,7 @@ def addToEntityMap(session_id,
             'entity_id': str(uuid4()),
             'record_id': new_entity['record_id'],
             'source_hash': md5_hash,
-            'clustered': True,
+            'reviewed': True,
             'checked_out': False,
             'last_update': last_update,
             'match_type': 'match'
@@ -501,31 +508,55 @@ def addToEntityMap(session_id,
                         .entity_id
             entity['entity_id'] = entity_id
             if len(match_ids) > 1:
-                upd_args = {
+                match_ids = tuple([m for m in match_ids])
+                
+                entity_ids = ''' 
+                    SELECT entity_id
+                    FROM "entity_{0}"
+                    WHERE record_id IN :match_ids
+                '''.format(session_id)
+
+                entity_ids = tuple(r.entity_id for r in \
+                             engine.execute(text(entity_ids), match_ids=match_ids))
+
+                root_args = {
                     'entity_id': entity_id,
-                    'clustered': True,
+                    'reviewed': True,
                     'checked_out': False,
                     'last_update': last_update,
                     'reviewer': reviewer,
-                    'match_ids': tuple([m for m in match_ids]),
+                    'entity_ids': entity_ids,
                     'match_type': 'merge from match'
                 }
-                upd = text('''
+                
+                update_roots = '''
                     UPDATE "entity_{0}" SET 
                         entity_id = :entity_id,
-                        clustered = :clustered,
+                        reviewed = :reviewed,
                         checked_out = :checked_out,
                         last_update = :last_update,
                         reviewer = :reviewer,
                         match_type = :match_type
-                    WHERE entity_id IN (
-                        SELECT entity_id
-                        FROM "entity_{0}"
-                        WHERE record_id IN :match_ids
-                    )
-                    '''.format(session_id))
+                    WHERE entity_id IN :entity_ids
+                      AND target_record_id IS NULL
+                    '''.format(session_id)
+                
+                branch_args = {
+                    'entity_id': entity_id,
+                    'last_update': last_update,
+                    'entity_ids': entity_ids,
+                }
+                update_branches = ''' 
+                    UPDATE "entity_{0}" SET 
+                        entity_id = :entity_id,
+                        last_update = :last_update
+                    WHERE entity_id IN :entity_ids
+                      AND target_record_id IS NOT NULL
+                '''.format(session_id)
+
                 with engine.begin() as conn:
-                    conn.execute(upd, **upd_args)
+                    conn.execute(text(update_roots), **root_args)
+                    conn.execute(text(update_branches), **branch_args)
         ins = text(''' 
             INSERT INTO "entity_{0}" ({1}) VALUES ({2})
         '''.format(session_id, 
@@ -603,7 +634,6 @@ def updateEntityMap(clustered_dupes,
     temp_table = Table('temp_{0}'.format(session_id), metadata,
                        Column('entity_id', String),
                        Column('record_id', record_id_type),
-                       Column('target_record_id', record_id_type),
                        Column('confidence', Float))
     temp_table.drop(bind=engine, checkfirst=True)
     temp_table.create(bind=engine)
@@ -624,8 +654,7 @@ def updateEntityMap(clustered_dupes,
 
             rows.append({'entity_id': new_ent,
                          'record_id': record_id,
-                         'confidence': float(score),
-                         'target_record_id': None})
+                         'confidence': float(score)})
 
             if len(rows) % 50000 == 0:
                 with engine.begin() as conn:
@@ -641,10 +670,9 @@ def updateEntityMap(clustered_dupes,
         UPDATE "{0}" 
           SET entity_id = temp.entity_id, 
             confidence = temp.confidence, 
-            clustered = FALSE,
+            reviewed = FALSE,
             checked_out = FALSE,
-            last_update = :last_update,
-            target_record_id = temp.target_record_id
+            last_update = :last_update
           FROM "temp_{1}" temp 
         WHERE "{0}".record_id = temp.record_id 
     '''.format(entity_table, session_id))
@@ -653,14 +681,13 @@ def updateEntityMap(clustered_dupes,
     ins = text('''
         INSERT INTO "{0}" 
         (record_id, entity_id, confidence, 
-         clustered, checked_out, target_record_id) 
+         reviewed, checked_out) 
           SELECT 
             record_id, 
             entity_id, 
             confidence, 
-            FALSE AS clustered, 
-            FALSE AS checked_out,
-            target_record_id
+            FALSE AS reviewed, 
+            FALSE AS checked_out
           FROM "temp_{1}" temp 
           LEFT JOIN (
             SELECT record_id 

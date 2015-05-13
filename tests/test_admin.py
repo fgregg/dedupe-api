@@ -224,7 +224,7 @@ class AdminTest(DedupeAPITestCase):
                     FROM "raw_{0}" AS r
                     JOIN "entity_{0}" AS e
                       ON r.record_id = e.record_id
-                    WHERE e.clustered = TRUE
+                    WHERE e.reviewed = TRUE
                 '''.format(self.dd_sess.id)
                 with self.engine.begin() as conn:
                     row_count = list(conn.execute(row_count))

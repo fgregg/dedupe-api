@@ -84,7 +84,7 @@ class ReviewTest(DedupeAPITestCase):
                 rv = c.get('{0}{1}'\
                     .format(endpoints['mark_one'],params))
                 sel = '''
-                    select clustered, record_id, reviewer 
+                    select reviewed, record_id, reviewer 
                     from "entity_{0}" 
                     where entity_id = :entity_id
                     '''.format(self.dd_sess.id)
@@ -110,7 +110,7 @@ class ReviewTest(DedupeAPITestCase):
                     bulkMarkClusters(self.dd_sess.id, user=self.user.name)
                 else:
                     bulkMarkCanonClusters(self.dd_sess.id, user=self.user.name)
-                sel = 'select clustered from "entity_{0}"'\
+                sel = 'select reviewed from "entity_{0}"'\
                     .format(self.dd_sess.id)
                 with self.engine.begin() as conn:
                     rows = list(conn.execute(sel))

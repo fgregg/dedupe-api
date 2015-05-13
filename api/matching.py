@@ -197,7 +197,10 @@ def train():
                                 match_ids=match_ids,
                                 trainer=user.name)
         if add_entity:
-            addToEntityMap(session_id, obj, match_ids=match_ids, reviewer=user.name)
+            addToEntityMap(session_id, 
+                           obj, 
+                           match_ids=match_ids, 
+                           reviewer=user.name)
     resp = make_response(json.dumps(r))
     resp.headers['Content-Type'] = 'application/json'
     return resp

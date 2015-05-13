@@ -407,7 +407,7 @@ def entity_map_dump():
           FROM \"raw_{0}\" AS r
           LEFT JOIN \"entity_{0}\" AS e
             ON r.record_id = e.record_id
-          WHERE e.clustered = TRUE
+          WHERE e.reviewed = TRUE
           ORDER BY e.entity_id NULLS LAST
         ) TO STDOUT WITH CSV HEADER DELIMITER ','
     """.format(session_id)

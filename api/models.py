@@ -28,7 +28,7 @@ def entity_map(name, metadata, record_id_type=BigInteger):
         Column('confidence', Float(precision=50)),
         Column('source_hash', String(32)),
         Column('source', String),
-        Column('clustered', Boolean, default=False),
+        Column('reviewed', Boolean, default=False),
         Column('checked_out', Boolean, default=False),
         Column('checkout_expire', DateTime),
         extend_existing=True

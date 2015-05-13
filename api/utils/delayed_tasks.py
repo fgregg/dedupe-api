@@ -41,42 +41,66 @@ def bulkMarkClusters(session_id, user=None):
     
     upd_vals = {
         'user_name': user, 
-        'clustered': True,
-        'match_type': 'bulk accepted',
         'last_update': now,
+        'match_type': 'bulk accepted'
     }
     
-    update_children = updateChildren(session_id)
+    update_records = updateClusterRecords(session_id)
     with engine.begin() as c:
-        child_entities = c.execute(update_children, **upd_vals)
+        c.execute(update_records, **upd_vals)
     
-    update_parents = updateParents(session_id)
-    with engine.begin() as c:
-        parent_entities = c.execute(update_parents, **upd_vals)
-    
-    updateEntityCount(session_id)
     getMatchingReady(session_id)
 
 @queuefunc
 def bulkMarkCanonClusters(session_id, user=None):
     engine = worker_session.bind
-    upd_vals = {
-        'user_name': user, 
-        'clustered': True,
-        'match_type': 'bulk accepted - canon',
-        'last_update': datetime.now().replace(tzinfo=TIME_ZONE)
+    last_update = datetime.now().replace(tzinfo=TIME_ZONE)
+    
+    root_args = {
+        'reviewed': True,
+        'checked_out': False,
+        'last_update': last_update,
+        'reviewer': user,
+        'match_type': 'bulk entity merge'
     }
-    update_entity_map = updateFromCanon(session_id)
+    
+    update_roots = '''
+        UPDATE "entity_{0}" AS ent_map SET 
+            entity_id = cr_ent_map.entity_id,
+            reviewed = :reviewed,
+            checked_out = :checked_out,
+            last_update = :last_update,
+            reviewer = :reviewer,
+            match_type = :match_type
+        FROM (
+            SELECT entity_id, record_id
+            FROM "entity_{0}_cr"
+            WHERE reviewed = FALSE
+        ) AS cr_ent_map
+        WHERE ent_map.entity_id = cr_ent_map.record_id
+          AND target_record_id IS NULL
+        '''.format(session_id)
+    
+    branch_args = {
+        'last_update': last_update,
+    }
+    update_branches = ''' 
+        UPDATE "entity_{0}" AS ent_map SET 
+            entity_id = cr_ent_map.entity_id,
+            last_update = :last_update
+        FROM (
+            SELECT entity_id, record_id
+            FROM "entity_{0}_cr"
+            WHERE reviewed = FALSE
+        ) AS cr_ent_map
+        WHERE ent_map.entity_id = cr_ent_map.record_id
+          AND target_record_id IS NOT NULL
+    '''.format(session_id)
+
     with engine.begin() as c:
-        updated = c.execute(update_entity_map, **upd_vals)
-        for row in updated:
-            c.execute(text(''' 
-                    UPDATE "entity_{0}_cr" SET
-                        target_record_id = :target,
-                        clustered = TRUE
-                    WHERE record_id = :record_id
-                '''.format(session_id)),
-                target=row[0], record_id=row[1])
+        c.execute(text(update_roots), **root_args)
+        c.execute(text(update_branches), **branch_args)
+
     updateEntityCount(session_id)
     with engine.begin() as conn:
         conn.execute(text('''
@@ -90,7 +114,7 @@ def updateFromCanon(session_id):
     return text(''' 
         UPDATE "entity_{0}" SET 
             entity_id=subq.entity_id,
-            clustered= :clustered,
+            reviewed= :reviewed,
             reviewer = :user_name,
             match_type = :match_type,
             last_update = :last_update
@@ -111,50 +135,71 @@ def updateFromCanon(session_id):
         RETURNING "entity_{0}".entity_id, subq.canon_record_id
         '''.format(session_id))
 
-def updateParents(session_id):
-    return text(''' 
-        UPDATE "entity_{0}" SET
-            clustered = :clustered,
-            reviewer = :user_name,
-            last_update = :last_update,
-            match_type = :match_type
-        WHERE target_record_id IS NULL
-            AND clustered=FALSE
-    '''.format(session_id))
-
-def updateChildren(session_id):
+def updateClusterRecords(session_id):
     return text(''' 
         UPDATE "entity_{0}" SET 
-            entity_id=subq.entity_id,
-            clustered= :clustered,
-            reviewer = :user_name,
-            match_type = :match_type,
-            last_update = :last_update
+          entity_id = subq.entity_id,
+          reviewed = TRUE,
+          reviewer = :user_name,
+          last_update = :last_update,
+          match_type = :match_type
         FROM (
-                SELECT 
-                    s.entity_id AS entity_id,
-                    e.record_id 
-                FROM "entity_{0}" AS e
-                JOIN (
-                    SELECT 
-                        record_id, 
-                        entity_id
-                    FROM "entity_{0}"
-                ) AS s
-                    ON e.target_record_id = s.record_id
-            ) as subq 
+            SELECT 
+              entity_id,
+              record_id,
+              match_type
+            FROM "entity_{0}"
+            WHERE reviewed=FALSE 
+          ) as subq 
         WHERE "entity_{0}".record_id=subq.record_id 
-            AND ( "entity_{0}".clustered=FALSE 
-                  OR "entity_{0}".match_type != 'clerical review' )
         '''.format(session_id))
+
+def updateExactMatches(session_id):
+    return text(''' 
+        UPDATE "entity_{0}" SET
+          entity_id = subq.parent_entity_id,
+          last_update = :last_update
+        FROM (
+          SELECT
+            parent.entity_id AS parent_entity_id,
+            child.record_id AS child_record_id
+          FROM "entity_{0}" AS parent
+          JOIN (
+            SELECT
+              record_id,
+              target_record_id,
+              entity_id
+            FROM "entity_{0}"
+            WHERE match_type = :exact_match_type
+          ) AS child
+            ON parent.record_id = child.target_record_id
+        ) as subq 
+        WHERE "entity_{0}".record_id = subq.child_record_id
+        '''.format(session_id))
+
 
 ### Prepare session to match records ###
 
 @queuefunc
 def getMatchingReady(session_id):
+    
+    # Update orphaned exact matches
+    now =  datetime.now().replace(tzinfo=TIME_ZONE)
+    upd_vals = {
+        'last_update': now,
+        'exact_match_type': 'exact',
+    }
+    
+    update_exact = updateExactMatches(session_id)
+    engine = worker_session.bind
+    
+    with engine.begin() as c:
+        c.execute(update_exact, **upd_vals)
+
+    updateEntityCount(session_id)
+
     addRowHash(session_id)
     cleanupTables(session_id)
-    engine = worker_session.bind
     with engine.begin() as conn:
         conn.execute('DROP TABLE IF EXISTS "match_blocks_{0}"'\
             .format(session_id))
@@ -260,6 +305,7 @@ def getMatchingReady(session_id):
         conn.execute('DROP TABLE IF EXISTS "match_review_{0}"'.format(session_id))
         conn.execute(create_human_review)
         conn.execute('CREATE INDEX "match_rev_idx_{0}" ON "match_review_{0}" (record_id)'.format(session_id))
+
     populateHumanReview(session_id)
     
     # Get review count
@@ -682,7 +728,7 @@ def reDedupeCanon(session_id, threshold=0.25):
             FROM "entity_{0}_cr" AS c
             JOIN "entity_{0}" AS e
                 ON c.target_record_id = e.entity_id
-            WHERE c.clustered = TRUE
+            WHERE c.reviewed = TRUE
             ) AS subq
         WHERE "entity_{0}".entity_id = subq.new_entity_id
     '''.format(session_id))
@@ -717,14 +763,14 @@ def updateSessionInfo(session_id, table_fmt='entity_{0}'):
     entity_count = worker_session.query(entity_table.c.entity_id.distinct())\
         .count()
     review_count = worker_session.query(entity_table.c.entity_id.distinct())\
-        .filter(entity_table.c.clustered == False)\
+        .filter(entity_table.c.reviewed == False)\
         .count()
     sel = ''' 
         SELECT 
             entity_id, 
             array_agg(confidence)
         FROM "{0}"
-        WHERE clustered = FALSE
+        WHERE reviewed = FALSE
         GROUP BY entity_id
     '''.format(table_name)
     clusters = engine.execute(sel)
@@ -802,7 +848,7 @@ def writeCanonicalEntities(session_id, clustered_dupes):
                 record_id,
                 confidence,
                 target_record_id,
-                clustered,
+                reviewed,
                 checked_out
             ) 
             FROM STDIN CSV'''.format(session_id), cluster_file)

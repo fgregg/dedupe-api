@@ -488,14 +488,16 @@ def hasMissing(field_name, session_id):
 def checkinSessions():
     now = datetime.now()
     all_sessions = [i.id for i in app_session.query(DedupeSession.id).all()]
-    engine = init_engine(current_app.config['DB_CONN'])
+    engine = app_session.bind
     for sess_id in all_sessions:
         try:
-            table = Table('entity_%s' % sess_id, Base.metadata, 
-                autoload=True, autoload_with=engine)
-            upd = table.update().where(table.c.checkout_expire <= now)\
-                .where(table.c.clustered == False)\
-                .values(checked_out = False, checkout_expire = None)
+            upd = ''' 
+                UPDATE "entity_{0}" SET 
+                  checked_out = FALSE,
+                  checkout_expire = None
+                WHERE checkout_expire <= NOW()
+                  AND reviewed = FALSE
+            '''.format(sess_id)
             with engine.begin() as c:
                 c.execute(upd)
         except (NoSuchTableError, ProgrammingError): # pragma: no cover 

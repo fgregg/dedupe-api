@@ -148,21 +148,20 @@ def mark_cluster():
     match_ids = request.args.get('match_ids')
     distinct_ids = request.args.get('distinct_ids')
     if match_ids:
-        ids = tuple([int(m) for m in match_ids.split(',')])
+        match_ids = tuple([int(m) for m in match_ids.split(',')])
         upd_vals = {
             'entity_id': entity_id,
-            'record_ids': ids,
             'user_name': user.name, 
-            'clustered': True,
+            'reviewed': True,
             'match_type': 'clerical review',
             'last_update': datetime.now().replace(tzinfo=TIME_ZONE), 
-            'match_ids': ids,
+            'match_ids': match_ids,
         }
         upd = text(''' 
             UPDATE "entity_{0}" SET
               entity_id = :entity_id,
               reviewer = :user_name,
-              clustered = :clustered,
+              reviewed = :reviewed,
               match_type = :match_type,
               last_update = :last_update
             WHERE entity_id = :entity_id
@@ -172,37 +171,40 @@ def mark_cluster():
             conn.execute(upd, **upd_vals)
         update_existing = text('''
             UPDATE "entity_{0}" SET 
-                entity_id = :entity_id, 
-                clustered = :clustered,
-                reviewer = :user_name,
-                match_type = :match_type,
-                last_update = :last_update
-                FROM (
-                    SELECT e.record_id 
-                        FROM "entity_{0}" AS e 
-                        JOIN (
-                            SELECT record_id 
-                                FROM "entity_{0}"
-                                WHERE entity_id = :entity_id
-                                    AND record_id IN :record_ids
-                        ) AS s 
-                        ON e.target_record_id = s.record_id
-                ) AS subq 
+              entity_id = :entity_id, 
+              reviewed = :reviewed,
+              reviewer = :user_name,
+              last_update = :last_update
+              FROM (
+                SELECT e.record_id 
+                  FROM "entity_{0}" AS e 
+                  JOIN (
+                    SELECT record_id 
+                    FROM "entity_{0}"
+                    WHERE entity_id = :entity_id
+                      AND record_id IN :match_ids
+                  ) AS s 
+                  ON e.target_record_id = s.record_id
+              ) AS subq 
             WHERE "entity_{0}".record_id = subq.record_id
             '''.format(session_id))
+        del upd_vals['match_type']
         with engine.begin() as c:
             c.execute(update_existing,**upd_vals)
     if distinct_ids:
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
-        ids = tuple([int(d) for d in distinct_ids.split(',')])
-        delete = entity_table.delete()\
-            .where(entity_table.c.entity_id == entity_id)\
-            .where(entity_table.c.record_id.in_(ids))
+        distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
+        delete = ''' 
+            DELETE FROM "entity_{0}"
+            WHERE entity_id = :entity_id
+              AND record_id IN :record_ids
+              AND match_type IS NULL
+        '''.format(session_id)
         with engine.begin() as c:
-            c.execute(delete)
-    distinct_ids = [d for d in distinct_ids.split(',') if d]
-    match_ids = [m for m in match_ids.split(',') if m]
+            c.execute(text(delete), 
+                      entity_id=entity_id,
+                      record_ids=distinct_ids)
     updateTrainingFromCluster(session_id, 
                               match_ids=match_ids, 
                               distinct_ids=distinct_ids,
@@ -249,44 +251,61 @@ def mark_canon_cluster():
         engine = db_session.bind
         if match_ids:
             match_ids = tuple([d for d in match_ids.split(',')])
-            upd = text('''
+            last_update = datetime.now().replace(tzinfo=TIME_ZONE)
+            
+            root_args = {
+                'entity_id': entity_id,
+                'reviewed': True,
+                'checked_out': False,
+                'last_update': last_update,
+                'reviewer': user.name,
+                'entity_ids': match_ids,
+                'match_type': 'entity merge'
+            }
+
+            update_roots = '''
                 UPDATE "entity_{0}" SET 
                     entity_id = :entity_id,
-                    clustered = :clustered,
+                    reviewed = :reviewed,
                     checked_out = :checked_out,
                     last_update = :last_update,
-                    reviewer = :user_name
-                WHERE entity_id in (
-                    SELECT record_id 
-                        FROM "entity_{0}_cr"
-                    WHERE entity_id = :entity_id
-                        AND record_id IN :record_ids
-                )
-                '''.format(session_id))
+                    reviewer = :reviewer,
+                    match_type = :match_type
+                WHERE entity_id IN :entity_ids
+                  AND target_record_id IS NULL
+                '''.format(session_id)
+            
+            branch_args = {
+                'entity_id': entity_id,
+                'last_update': last_update,
+                'entity_ids': match_ids,
+            }
+            update_branches = ''' 
+                UPDATE "entity_{0}" SET 
+                    entity_id = :entity_id,
+                    last_update = :last_update
+                WHERE entity_id IN :entity_ids
+                  AND target_record_id IS NOT NULL
+            '''.format(session_id)
+            
             upd_cr = text(''' 
                 UPDATE "entity_{0}_cr" SET
                     target_record_id = :entity_id,
-                    clustered = :clustered,
+                    reviewed = :reviewed,
                     checked_out = :checked_out,
                     last_update = :last_update,
                     reviewer = :user_name
                 WHERE record_id IN :record_ids
             '''.format(session_id))
-            last_update = datetime.now().replace(tzinfo=TIME_ZONE)
             with engine.begin() as c:
-                c.execute(upd, 
-                          entity_id=entity_id, 
-                          last_update=last_update,
-                          user_name=user.name,
-                          record_ids=match_ids,
-                          clustered=True,
-                          checked_out=False)
+                c.execute(text(update_roots), **root_args)
+                c.execute(text(update_branches), **branch_args)
                 c.execute(upd_cr, 
                           entity_id=entity_id, 
                           last_update=last_update,
                           user_name=user.name,
                           record_ids=match_ids,
-                          clustered=True,
+                          reviewed=True,
                           checked_out=False)
         if distinct_ids:
             distinct_ids = tuple([d for d in distinct_ids.split(',')])

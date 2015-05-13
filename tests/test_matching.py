@@ -208,6 +208,7 @@ class MatchingTest(unittest.TestCase):
                     }
                     rv = c.post('/match/', data=json.dumps(post_data))
                     matches = json.loads(rv.data.decode('utf-8'))['matches']
+                    print(matches)
                 
                 for match in matches:
                     match['match'] = 1
