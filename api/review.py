@@ -145,10 +145,10 @@ def mark_cluster():
     engine = db_session.bind
     # TODO: Return an error if these args are not present.
     entity_id = request.args.get('entity_id')
-    match_ids = request.args.get('match_ids')
-    distinct_ids = request.args.get('distinct_ids')
+
+    match_ids = tuple(int(m) for m in request.args.get('match_ids').split(','))
+    distinct_ids = tuple(int(m) for m in request.args.get('distinct_ids').split(','))
     if match_ids:
-        match_ids = tuple([int(m) for m in match_ids.split(',')])
         upd_vals = {
             'entity_id': entity_id,
             'user_name': user.name, 
@@ -194,7 +194,6 @@ def mark_cluster():
     if distinct_ids:
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
-        distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
         delete = ''' 
             DELETE FROM "entity_{0}"
             WHERE entity_id = :entity_id
