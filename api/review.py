@@ -145,6 +145,8 @@ def mark_cluster():
     engine = db_session.bind
     # TODO: Return an error if these args are not present.
     entity_id = request.args.get('entity_id')
+    match_ids = request.args.get('match_ids')
+    distinct_ids = request.args.get('distinct_ids')
 
     if match_ids:
         match_ids = tuple(int(m) for m in match_ids.split(','))
