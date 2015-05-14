@@ -147,8 +147,10 @@ def mark_cluster():
     entity_id = request.args.get('entity_id')
     match_ids = request.args.get('match_ids')
     distinct_ids = request.args.get('distinct_ids')
+
     if match_ids:
-        match_ids = tuple([int(m) for m in match_ids.split(',')])
+        match_ids = tuple(int(m) for m in match_ids.split(','))
+
         upd_vals = {
             'entity_id': entity_id,
             'user_name': user.name, 
@@ -191,10 +193,14 @@ def mark_cluster():
         del upd_vals['match_type']
         with engine.begin() as c:
             c.execute(update_existing,**upd_vals)
+    else :
+        match_ids = ()
+
     if distinct_ids:
+        distinct_ids = tuple(int(m) for m in distinct_ids.split(','))
+
         entity_table = Table('entity_{0}'.format(session_id), Base.metadata,
             autoload=True, autoload_with=engine)
-        distinct_ids = tuple([int(d) for d in distinct_ids.split(',')])
         delete = ''' 
             DELETE FROM "entity_{0}"
             WHERE entity_id = :entity_id
@@ -205,6 +211,9 @@ def mark_cluster():
             c.execute(text(delete), 
                       entity_id=entity_id,
                       record_ids=distinct_ids)
+    else :
+        distinct_ids = ()
+
     updateTrainingFromCluster(session_id, 
                               match_ids=match_ids, 
                               distinct_ids=distinct_ids,
