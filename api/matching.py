@@ -234,10 +234,9 @@ def get_unmatched():
         unseen_records = unseenRecords(session_id)
         raw_record, matched_records = pollHumanReview(session_id, fields)
 
-        if not matched_records :
-            if unseen_records == 0 : 
-                upd['status'] = 'matching complete'
-                dedupeCanon.delay(session_id)
+        if not matched_records and unseen_records == 0 :
+            upd['status'] = 'matching complete'
+            dedupeCanon.delay(session_id)
         elif queueCount(session_id) < 10 :
             processing = ''' 
             SELECT processing 
