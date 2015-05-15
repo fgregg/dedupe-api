@@ -237,6 +237,7 @@ def get_unmatched():
         if not matched_records and unseen_records == 0 :
             upd['status'] = 'matching complete'
             dedupeCanon.delay(session_id)
+            upd['processing'] = True
         elif queueCount(session_id) < 10 :
             processing = ''' 
             SELECT processing 
