@@ -231,16 +231,14 @@ def get_unmatched():
         fields = {f['field'] for f in readFieldDefs(session_id)}
         fields.add('record_id')
 
-        raw_record, matched_records = pollHumanReview(session_id, fields)
-
         unseen_records = unseenRecords(session_id)
-        queue_count = queueCount(session_id)
+        raw_record, matched_records = pollHumanReview(session_id, fields)
 
         if not matched_records :
             if unseen_records == 0 : 
                 upd['status'] = 'matching complete'
                 dedupeCanon.delay(session_id)
-        elif queue_count < 10 :
+        elif queueCount(session_id) < 10 :
             processing = ''' 
             SELECT processing 
             FROM dedupe_session 
