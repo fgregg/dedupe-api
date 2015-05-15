@@ -231,18 +231,28 @@ def get_unmatched():
         fields = {f['field'] for f in readFieldDefs(session_id)}
         fields.add('record_id')
 
-        # We have to check if there are any unseen records BEFORE polling
-        # records for review in order to avoid a race condition
-        unseen_records = unseenRecords(session_id)
         raw_record, matched_records = pollHumanReview(session_id, fields)
 
+        unseen_records = unseenRecords(session_id)
+        queue_count = queueCount(session_id)
+
         if not matched_records :
-            upd['processing'] = True
-            if unseen_records :
-                upd['status'] = 'filling human review'
-            else :
+            if unseen_records == 0 : 
                 upd['status'] = 'matching complete'
                 dedupeCanon.delay(session_id)
+        elif queue_count < 10 :
+            processing = ''' 
+            SELECT processing 
+            FROM dedupe_session 
+            WHERE id = :session_id
+            '''
+            processing = engine.execute(text(processing), 
+                                        session_id=session_id)\
+                               .first()\
+                               .processing
+            if not processing :
+                populateHumanReview.delay(session_id)
+                upd['processing'] = True
 
         left_to_review = estimateRemainingReview(session_id)
         upd['review_count'] = left_to_review
@@ -326,20 +336,6 @@ def pollHumanReview(session_id, fields) :
     matched_records = list(engine.execute(matches))
 
     raw_record, matches = matchRowsToDict(matched_records)
-
-    processing = ''' 
-        SELECT processing 
-        FROM dedupe_session 
-        WHERE id = :session_id
-    '''
-    
-    processing = engine.execute(text(processing), 
-                                session_id=session_id)\
-                 .first()\
-                 .processing
-
-    if queueCount(session_id) <= 10 and not processing:
-        populateHumanReview.delay(session_id)
 
     return raw_record, matches
 

@@ -98,17 +98,13 @@ def processMessage(db_conn=DB_CONN):
         if sess:
             upd = '{0}, session_id = :sess_id'.format(upd)
             upd_args['sess_id'] = sess.id
+            with engine.begin() as conn:
+                conn.execute(text('''
+                    UPDATE dedupe_session SET
+                        processing = FALSE
+                    WHERE id = :id
+                    '''), id=sess.id)
             
-            sel = text('SELECT status from dedupe_session WHERE id = :id')
-            status = engine.execute(sel, id=str(args[0])).first().status
-            
-            if status not in ['filling human review', 'matching complete']:
-                with engine.begin() as conn:
-                    conn.execute(text('''
-                        UPDATE dedupe_session SET
-                            processing = FALSE
-                        WHERE id = :id
-                        '''), id=sess.id)
         upd = text('{0} WHERE key = :key'.format(upd))
         with engine.begin() as conn:
             conn.execute(upd, **upd_args)
