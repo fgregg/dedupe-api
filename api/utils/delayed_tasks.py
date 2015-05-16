@@ -716,7 +716,7 @@ def reDedupeRaw(session_id, threshold=0.75):
     worker_session.commit()
 
 @queuefunc
-def reDedupeCanon(session_id, threshold=0.25):
+def reDedupeCanon(session_id, threshold=0.90):
     upd = text(''' 
         UPDATE "entity_{0}" SET
             entity_id = subq.old_entity_id,
@@ -782,7 +782,7 @@ def updateSessionInfo(session_id, table_fmt='entity_{0}'):
     return entity_count, review_count
 
 @queuefunc
-def dedupeCanon(session_id, threshold=0.25):
+def dedupeCanon(session_id, threshold=0.90):
     engine = worker_session.bind
     
     trainDedupe(session_id)
@@ -864,3 +864,4 @@ def updateSettingsFiles():
         if session.settings_file:
             trainDedupe(session.id)
 
+            
