@@ -130,11 +130,15 @@ class WorkTable(Base):
     work_value = Column(LargeBinary)
     traceback = Column(Text)
     session_id = Column(String(36))
+    task_name = Column(String(255))
     updated = Column(DateTime(timezone=True))
     claimed = Column(Boolean,
                 server_default=text('FALSE'))
     cleared = Column(Boolean,
                 server_default=text('TRUE'))
+    completed = Column(Boolean,
+                       server_default=text('FALSE'))
+
 
     def __repr__(self):
         return '<WorkTable {0}>'.format(str(self.key))

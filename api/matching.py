@@ -238,18 +238,8 @@ def get_unmatched():
             upd['status'] = 'matching complete'
             dedupeCanon.delay(session_id)
         elif queueCount(session_id) < 10 :
-            processing = ''' 
-            SELECT processing 
-            FROM dedupe_session 
-            WHERE id = :session_id
-            '''
-            processing = engine.execute(text(processing), 
-                                        session_id=session_id)\
-                               .first()\
-                               .processing
-            if not processing :
-                populateHumanReview.delay(session_id)
-                upd['processing'] = True
+            populateHumanReview.delay(session_id)
+            upd['processing'] = True
 
         left_to_review = estimateRemainingReview(session_id)
         upd['review_count'] = left_to_review

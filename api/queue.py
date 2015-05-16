@@ -1,4 +1,4 @@
-from pickle import loads, dumps
+import pickle
 from uuid import uuid4
 from datetime import datetime
 import sys
@@ -20,19 +20,36 @@ except KeyError:
     client = None
 
 def queuefunc(f):
+
     def delay(*args, **kwargs):
         
         from api.database import engine
         
-        s = dumps((f, args, kwargs))
+        pickled_task = pickle.dumps((f, args, kwargs))
         key = str(uuid4())
-        
+
+        if args:
+            session_id = args[0]
+        else :
+            session_id = None
+
+        task_name = f.__name__
+
         with engine.begin() as conn:
             conn.execute(text(''' 
-                INSERT INTO work_table(key, work_value) 
-                VALUES (:key, :value)
-            '''), key=key, value=s)
+                INSERT INTO work_table
+                    (key, work_value, session_id, task_name) 
+                SELECT :key, :value, :session_id, :task_name
+                WHERE NOT EXISTS (
+                    SELECT * FROM work_table WHERE 
+                         work_value = :value AND
+                         session_id = :session_id
+                         AND completed = FALSE)
+            '''), 
+                         key=key, value=pickled_task, session_id=session_id, 
+                         task_name = task_name)
         return key
+
     f.delay = delay
     return f
 
@@ -49,67 +66,59 @@ def processMessage(db_conn=DB_CONN):
             RETURNING work_table.*
         '''
         work = conn.execute(upd).first()
+
     if not work:
         time.sleep(1)
-    else:
-        func, args, kwargs = loads(work.work_value)
-        sess = None
-        if args:
-            sel = text('SELECT id from dedupe_session WHERE id = :id')
-            sess = engine.execute(sel, id=str(args[0])).first()
-        upd = """ 
-            UPDATE work_table SET
-                claimed = TRUE
-        """
-        upd_args = {'key': work.key}
-        if sess:
-            upd = '{0}, session_id = :session_id'.format(upd)
-            upd_args['session_id'] = sess.id
-        upd = '{0} WHERE key = :key'.format(upd)
-        with engine.begin() as conn:
-            conn.execute(text(upd), **upd_args)
-        
-        upd_args = {
-            'tb': None,
-            'return_value': None,
-            'key': work.key,
-            'updated': datetime.now().replace(tzinfo=TIME_ZONE),
-            'cleared': True,
-        }
-        try:
-            upd_args['return_value'] = func(*args, **kwargs)
-        except Exception as e:
-            function_name = func.__name__
-            if client: # pragma: no cover
-                client.captureException()
-            upd_args['tb'] = traceback.format_exc()
-            upd_args['return_value'] = str(e)
+        engine.dispose()
+        return
+    
+    func, args, kwargs = pickle.loads(work.work_value)
 
-            if function_name in ['initializeModel', 'initializeSession']:
-                upd_args['cleared'] = False
-            print(upd_args['tb'])
-        upd = ''' 
-                UPDATE work_table SET
-                    traceback = :tb,
-                    return_value = :return_value,
-                    updated = :updated,
-                    cleared = :cleared
-            '''
-        if sess:
-            upd = '{0}, session_id = :sess_id'.format(upd)
-            upd_args['sess_id'] = sess.id
-            with engine.begin() as conn:
-                conn.execute(text('''
-                    UPDATE dedupe_session SET
-                        processing = FALSE
-                    WHERE id = :id
-                    '''), id=sess.id)
-            
-        upd = text('{0} WHERE key = :key'.format(upd))
+    upd_args = {
+        'key': work.key,
+        'updated': datetime.now().replace(tzinfo=TIME_ZONE),
+        'completed': True,
+    }
+
+    try:
+        upd_args['return_value'] = func(*args, **kwargs)
+        upd_args['cleared'] = True
+        upd_args['tb'] = None
+    except Exception as e:
+        if client: # pragma: no cover
+            client.captureException()
+        upd_args['tb'] = traceback.format_exc()
+        print(upd_args['tb'])
+
+        upd_args['return_value'] = str(e)
+        
+        if func.__name__ in ['initializeModel', 'initializeSession']:
+            upd_args['cleared'] = False
+
+
+    upd = ''' 
+           UPDATE work_table SET
+                traceback = :tb,
+                return_value = :return_value,
+                updated = :updated,
+                completed = :completed,
+                cleared = :cleared
+                WHERE key = :key
+          '''
+    with engine.begin() as conn:
+        conn.execute(text(upd), **upd_args)
+
+    if work.session_id :
         with engine.begin() as conn:
-            conn.execute(upd, **upd_args)
-        del args
-        del kwargs
+            conn.execute(text('''
+            UPDATE dedupe_session SET
+                processing = FALSE
+            WHERE id = :id
+            '''), id=work.session_id)
+
+    del args
+    del kwargs
+
     engine.dispose()
 
 def queue_daemon(db_conn=DB_CONN): # pragma: no cover
