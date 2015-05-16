@@ -94,7 +94,8 @@ def processMessage(db_conn=DB_CONN):
         
         if func.__name__ in ['initializeModel', 'initializeSession']:
             upd_args['cleared'] = False
-
+        else :
+            upd_args['cleared'] = True
 
     upd = ''' 
            UPDATE work_table SET
