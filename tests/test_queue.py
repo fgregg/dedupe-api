@@ -11,7 +11,7 @@ import logging
 logging.getLogger('dedupe').setLevel(logging.WARNING)
 
 @queuefunc
-def add(a, b):
+def add(session_id, a, b):
     return a + b
 
 @queuefunc
@@ -53,7 +53,7 @@ class QueueTest(unittest.TestCase):
                 ), follow_redirects=True)
 
     def test_queuefunc(self):
-        key = add.delay(1,3)
+        key = add.delay('sess_id', 1,3)
         processMessage(db_conn=self.app.config['DB_CONN'])
         time.sleep(1)
         work = self.engine.execute(
